@@ -1,0 +1,34 @@
+This directory contains the files "PEGASE.2.tar.gz" and "stellibLCBcor.tar.gz".
+You have to "gunzip" them and then to "untar" them.
+E.g.,
+	gunzip PEGASE.2.tar.gz
+and 
+	tar xvf PEGASE.2.tar
+.
+
+The contents of the .tar files will be put in a directory called "PEGASE.2".
+Look at the README file to know how to run the code.
+
+NOTA BENE: 
+
+1. 10/12/1999: The file "BD+17o4708.dat" was forgotten and has been added to
+               PEGASE.2.tar.
+2. 16/12/1999: Some systems may have problems with files called by the
+               fortran codes and having a unit number greater than 99.
+3. 07/01/2000: Problem #2 fixed.
+4. 07/01/2000: "SSPs.f", line 1070:  "m2max=max(m1,massmax-m1)" 
+               -> "m2max=min(m1,massmax-m1)".
+5. 04/02/2000: "WW.dat" modified [accuracy + (model 40A, Z=Zsol)].
+6. 10/05/2001: # Minor modifications in SSPs.f (in "interpstellib", the 
+               "i1*...*i4.eq.0" have been replaced with "i1.eq.0.or.
+               ... .or.i4.eq.0" to avoid possible overflows). 
+               # The computation of fluxes in the filters has been improved 
+               in "calib.f" and "colors.f". 
+               # In "colors.f", an error in the contribution of emission lines 
+               to the flux in filters having a transmission defined in terms 
+               of photon number has been corrected.
+==============================================================================
+Michel Fioc - 10/05/2001
+
+
+

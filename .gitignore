@@ -1,0 +1,17 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.swp
+*~
+depend.inc
+tags
+/src/log
+/test.out
+/test/test.out
+
+# Generated output and local backups
+/bk/
+/out/
+/test/out
+.ipynb_checkpoints/
