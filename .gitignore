@@ -15,3 +15,6 @@ tags
 /out/
 /test/out
 .ipynb_checkpoints/
+
+# Local gnuplot scripts
+/plot/**/*.gp
