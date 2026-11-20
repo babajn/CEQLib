@@ -11,6 +11,10 @@
 #include "PhotochemicalGasPhaseChemistry.h"
 #include "Xray.h"
 
+/* Wolfire et al. (1995), Appendix A, gives the accuracy of the soft X-ray
+   ionization fit down to xe = 1e-4. Keep local probes at or above that limit. */
+static const double XrayFitMinimumElectronFraction = 1.0e-4;
+
 typedef struct {
     double density;
     double residual;
@@ -120,6 +124,44 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
     return point;
 }
 
+typedef enum {
+    LocalChargeMiss,
+    LocalChargeRoot,
+    LocalChargeBracket
+} LocalChargeResult;
+
+/* Place new probes within [minimumDensity, maximumDensity). */
+static LocalChargeResult ExpandChargeBracket(ChargeSearch *search, ChargePoint hint,
+                                             double minimumDensity, double maximumDensity,
+                                             ChargePoint *lower, ChargePoint *upper)
+{
+    const bool increase = hint.residual > 0.0;
+    const int failure = search->failure;
+    ChargePoint previous = hint;
+    double factor = 1.05;
+    for(int step=0; step<40; step++){
+        const double density = increase ? previous.density * factor : previous.density / factor;
+        if(density <= 0.0 || density < minimumDensity || density >= maximumDensity ||
+                density == previous.density)
+            break;
+
+        const ChargePoint next = EvaluateCharge(search,density);
+        if(next.status != CEQ_SUCCESS)
+            break;
+        if(fabs(next.residual) <= search->accuracy)
+            return LocalChargeRoot;
+        if((next.residual < 0.0) != (previous.residual < 0.0)){
+            *lower = increase ? previous : next;
+            *upper = increase ? next : previous;
+            return LocalChargeBracket;
+        }
+        previous = next;
+        factor = fmin(10.0,factor*factor);
+    }
+    search->failure = failure;
+    return LocalChargeMiss;
+}
+
 static bool NarrowChargeBracket(ChargeSearch *search, ChargePoint *lower, ChargePoint *upper)
 {
     /* Outside the X-ray and molecular regimes, the charge returned by each
@@ -135,29 +177,9 @@ static bool NarrowChargeBracket(ChargeSearch *search, ChargePoint *lower, Charge
     if(seed <= 0.0 || (!increase && (upper->density != seed || upper->residual >= 0.0)))
         return false;
 
-    ChargePoint previous = increase ? *lower : *upper;
-    const int failure = search->failure;
-    double factor = 1.05;
-    for(int step=0; step<40; step++){
-        const double density = increase ? previous.density * factor : previous.density / factor;
-        if(density <= lower->density || density >= upper->density || density == previous.density)
-            break;
-
-        const ChargePoint next = EvaluateCharge(search,density);
-        if(next.status != CEQ_SUCCESS)
-            break;
-        if(fabs(next.residual) <= search->accuracy)
-            return true;
-        if((next.residual < 0.0) != (previous.residual < 0.0)){
-            *lower = increase ? previous : next;
-            *upper = increase ? next : previous;
-            return false;
-        }
-        previous = next;
-        factor = fmin(10.0,factor*factor);
-    }
-    search->failure = failure;
-    return false;
+    const ChargePoint hint = increase ? *lower : *upper;
+    return ExpandChargeBracket(search,hint,nextafter(lower->density,upper->density),
+                               upper->density,lower,upper) == LocalChargeRoot;
 }
 
 static void BisectCharge(ChargeSearch *search, ChargePoint lower, ChargePoint upper,
@@ -168,7 +190,8 @@ static void BisectCharge(ChargeSearch *search, ChargePoint lower, ChargePoint up
             (lower.residual < 0.0) == (upper.residual < 0.0))
         return;
 
-    if(search->hasXrayIonization && lower.density < 1.0e-4*search->initial->n[ipHYDROGEN])
+    if(search->hasXrayIonization &&
+            lower.density < XrayFitMinimumElectronFraction*search->initial->n[ipHYDROGEN])
         interpolate = false;
     if(interpolate && NarrowChargeBracket(search,&lower,&upper)) return;
 
@@ -206,13 +229,26 @@ static void BisectCharge(ChargeSearch *search, ChargePoint lower, ChargePoint up
     search->failure = CEQ_NO_CONVERGENCE;
 }
 
+static void SearchChargeAroundHint(ChargeSearch *search, ChargePoint hint,
+                                   double minimumDensity, double maximumDensity)
+{
+    if(hint.status != CEQ_SUCCESS || hint.density <= 0.0 || hint.density < minimumDensity)
+        return;
+
+    ChargePoint lower, upper;
+    const int failure = search->failure;
+    if(ExpandChargeBracket(search,hint,minimumDensity,maximumDensity,&lower,&upper) == LocalChargeBracket)
+        BisectCharge(search,lower,upper,true);
+    if(!search->found) search->failure = failure;
+}
+
 static void SearchChargeInterval(ChargeSearch *search, double lowerDensity, double upperDensity,
                                  ChargePoint hint)
 {
     unsigned int initialSolutions = search->solutions;
     ChargePoint lower = EvaluateCharge(search,lowerDensity);
     ChargePoint upper = EvaluateCharge(search,upperDensity);
-    double xrayRangeStart = 1.0e-4*search->initial->n[ipHYDROGEN];
+    double xrayRangeStart = XrayFitMinimumElectronFraction*search->initial->n[ipHYDROGEN];
     bool probeBelowXrayRange = lowerDensity == 0.0 && search->hasXrayIonization &&
         hint.density < xrayRangeStart && lower.status == CEQ_SUCCESS && lower.residual == 0.0;
 
@@ -344,11 +380,22 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
             while(boundary/nH > 0.5) boundary = nextafter(boundary,0.0);
             double afterBoundary = nextafter(boundary,INFINITY);
             while(afterBoundary/nH <= 0.5) afterBoundary = nextafter(afterBoundary,INFINITY);
-            SearchChargeInterval(&search,0.0,boundary,hint);
-            if(afterBoundary <= maximumCharge)
-                SearchChargeInterval(&search,afterBoundary,maximumCharge,hint);
+            if(hint.density <= boundary){
+                double rangeStart = XrayFitMinimumElectronFraction*nH;
+                if(rangeStart/nH < XrayFitMinimumElectronFraction)
+                    rangeStart = nextafter(rangeStart,INFINITY);
+                SearchChargeAroundHint(&search,hint,rangeStart,afterBoundary);
+            }else{
+                SearchChargeAroundHint(&search,hint,afterBoundary,maximumCharge);
+            }
+            if(!search.found){
+                SearchChargeInterval(&search,0.0,boundary,hint);
+                if(afterBoundary <= maximumCharge)
+                    SearchChargeInterval(&search,afterBoundary,maximumCharge,hint);
+            }
         }else{
-            SearchChargeInterval(&search,0.0,maximumCharge,hint);
+            SearchChargeAroundHint(&search,hint,0.0,maximumCharge);
+            if(!search.found) SearchChargeInterval(&search,0.0,maximumCharge,hint);
         }
     }
 

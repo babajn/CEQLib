@@ -140,6 +140,23 @@ static void CheckOxygenLimit(void)
     assert(state.nmol[ipCO] == 0.0);
 }
 
+static void CheckMolecularXrayLocalSearch(void)
+{
+    StructCEQData state = GasState(1.0e3,200.0,1.0e21);
+    state.nel = 1.0;
+    const double accuracy = 1.0e-9;
+    assert(CEQLibChemicalReactionEquilibrium(&state,accuracy) == CEQ_SUCCESS);
+
+    /* Reference densities from the full search with the same electron seed. */
+    const double ne = 0.297561308014;
+    const double nH2 = 499.902127618;
+    const double nCO = 0.00386665466694;
+    assert(fabs(state.nel - ne) <= 1.0e-8 * ne);
+    assert(fabs(state.nmol[ipH2] - nH2) <= 1.0e-8 * nH2);
+    assert(fabs(state.nmol[ipCO] - nCO) <= 1.0e-8 * nCO);
+    assert(fabs(CEQLibGetElectronNumberDensity(&state) - state.nel) <= accuracy * state.nel);
+}
+
 static void CheckEnergyAndEquationOfState(void)
 {
     StructCEQData state = GasState(1000.0,6000.0,1.0e22);
@@ -342,6 +359,7 @@ int main(int argc, char **argv)
 
     CEQLibiSetRunParamGrainSurfaceProcesses(true);
     CEQLibiSetRunParamSoftXrayIonization(true);
+    CheckMolecularXrayLocalSearch();
     CheckEnergyAndEquationOfState();
     CheckThermalBranchAtCOBoundary();
     CheckCIIHydrogenCollisionCooling();
