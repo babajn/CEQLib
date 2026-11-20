@@ -1,5 +1,26 @@
 #include "CEQDataStructure.h"
 
+int CEQSolveIonLadder(double density, double ionization0, double recombination1,
+                      double ionization1, double recombination2,
+                      double *neutral, double *ion, double *doubleIon);
+int CEQSolveHydrogenEquilibrium(StructCEQData *state, double accuracy);
+int CEQSolveCarbonEquilibrium(StructCEQData *state, double previousCO, double accuracy);
+
+typedef struct {
+    double upperFraction;
+    double logColumnAtAnchor;
+    double logShieldingAtAnchor;
+    double slope;
+    double lowerSelfShielding;
+    double upperSelfShielding;
+} CEQCarbonShieldingInterval;
+
+/* Allocate room for CEQCOShieldingPointCount() + 1 intervals. */
+int CEQPrepareCarbonShieldingIntervals(const StructCEQData *state,
+                                       CEQCarbonShieldingInterval *intervals, int points);
+int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double accuracy,
+                               const CEQCarbonShieldingInterval *intervals, int count);
+
 void EquilibriumHydrogenFractionalAbundance(StructCEQData *PhydroPP);
 void EquilibriumHeliumFractionalAbundance(StructCEQData *PhydroPP);
 void EquilibriumCarbonFractionalAbundance(StructCEQData *PhydroPP);

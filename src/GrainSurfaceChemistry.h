@@ -19,4 +19,5 @@ double CoolingGasDustEnergyTransfer(double T, double Tdust, double nH, double Z)
 double HeatingGasDustEnergyTransfer(double T, double Tdust, double nH, double Z);
 
 double ApproximateDustTemperature(double Ntot, double G0);
+double EffectiveDustTemperature(const StructCEQData *state);
 double ApproximateDustToGasRatio(double T);

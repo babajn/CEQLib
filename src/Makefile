@@ -3,11 +3,12 @@
 
 CC = gcc
 #CC = cc
+GSL_DIR ?= /home/babajn/lib/gsl
 
 CFLAGS = -std=c99 -O3 -g -Wall -ffast-math  #-fPIC
 #CFLAGS += -I/home/babajn/lib/gsl-1.9/include 
 #CFLAGS += -I/home/babajn/lib/dbg_malloc 
-CFLAGS += -I/home/babajn/lib/gsl/include 
+CPPFLAGS += -I$(GSL_DIR)/include
 
 #GIT_VERSION = $(shell git log -1 --format="%H")
 #CFLAGS += -DGITVERSION=\"$(GIT_VERSION)\"
@@ -23,6 +24,8 @@ OBJS	= RandomNumberGenerator.o \
 		  nrutil.o \
 		  NewtonRaphson.o \
 		ChemicalEquilibriumCooling.o \
+		ChemicalEquilibriumSolver.o \
+		ThermalEquilibrium.o \
 		ChemicalElements.o \
 		EquilibriumAbundance.o \
 		CollisionalGasPhaseChemistry.o \
@@ -43,6 +46,8 @@ SRCS 	= RandomNumberGenerator.c \
 		  nrutil.c \
 		  NewtonRaphson.c \
 		ChemicalEquilibriumCooling.c \
+		ChemicalEquilibriumSolver.c \
+		ThermalEquilibrium.c \
 		ChemicalElements.c \
 		EquilibriumAbundance.c \
 		CollisionalGasPhaseChemistry.c \
@@ -92,12 +97,16 @@ libCEQLib.a: $(OBJS)
 	$(AR) -r $@ $^
 	ranlib $@
 
+# These modules check for non-finite values or return NaN for invalid trials.
+ChemicalEquilibriumCooling.o ChemicalEquilibriumSolver.o ThermalEquilibrium.o \
+EquilibriumAbundance.o MoleculeChemistry.o GrainSurfaceChemistry.o Xray.o PhotochemicalGasPhaseChemistry.o \
+CoolingCIE.o CosmicRay.o: override CFLAGS += -fno-fast-math
+
 tag:
 	ctags *.[c,h]
 
 .PHONY: depend
 depend: $(OBJS:.o=.c)
-	-@ $(RM) depend.inc
-	-@ for i in $^; do cpp -MM $$i | sed "s/\ [_a-zA-Z0-9][_a-zA-Z0-9]*\.c//g" >> depend.inc; done
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MM $^ > depend.inc
 
 -include depend.inc

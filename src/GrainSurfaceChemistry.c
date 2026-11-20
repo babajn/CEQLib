@@ -15,8 +15,7 @@ static double PhotoelectricHeatingEfficiency(double T, double k);
 void InitializeGrainSurfaceChemistry(int Check){
 
     if(Check==1){
-        sprintf(CEQFileName,"%s/GrainSurfaceChemistry.dat",CEQOutDir);
-        FILE *output = fopen(CEQFileName,"w");
+        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/GrainSurfaceChemistry.dat","w");
         for(double logk=0.0; logk<=7.0; logk+=0.01){
             double k = pow(10.0,logk);
             fprintf(output,"%e ",k);
@@ -40,9 +39,13 @@ static double C_HeII[] = {5.572,3.185e-7,1.512,5.115e+3,3.903e-7,0.4956,5.494e-7
 static double C_CII[]  = {45.58,6.089e-3,1.128,4.331e+2,4.845e-2,0.8120,1.333e-4};
 static double C_SiII[] = {2.166,5.678e-8,1.874,4.375e+4,1.635e-6,0.8964,7.538e-5};
 static double RecombinationRateOnDust(double T, double G0, double ne, double Z, double C[7]){
-    if(CEQLibRunParameters.UseGrainSurfaceProcesses==false) return  0.0;
+    if(CEQLibRunParameters.UseGrainSurfaceProcesses==false || Z==0.0) return 0.0;
+    double numerator = 1.e-14*(Z/Zsol)*C[0];
+    if(G0==0.0) return numerator;
+    if(ne==0.0) return 0.0;
     double psi = G0*sqrt(T)/ne;
-    return 1.e-14*(Z/Zsol)*C[0]/(1.e0+C[1]*pow(psi,C[2])*(1.e0+C[3]*pow(T,C[4])*pow(psi,-C[5]-C[6]*log(T))));
+    double secondExponent = C[2] - C[5] - C[6]*log(T);
+    return numerator/(1.0 + C[1]*(pow(psi,C[2]) + C[3]*pow(T,C[4])*pow(psi,secondExponent)));
 }
 double HIIRecombinationRateOnDust(double T, double G0, double ne, double Z){
     return RecombinationRateOnDust(T,G0,ne,Z,C_HII);
@@ -124,7 +127,7 @@ double CoolingDustRecombination(StructCEQData *PhydroPP){
     double Zd   = PhydroPP->Zd;
     double G0   = PhydroPP->G0;
     double Ntot = PhydroPP->Nt;
-    if(CEQLibRunParameters.UseGrainSurfaceProcesses==false) return  0.0;
+    if(CEQLibRunParameters.UseGrainSurfaceProcesses==false || ne==0.0 || Zd==0.0) return 0.0;
     if(CEQLibRunParameters.UseDustAttenuation==true)
         G0 *= DustShieldingFactor(Ntot,Zd,2.5);
     double k = G0*sqrt(T)/(ne*phiPAH);
@@ -145,6 +148,7 @@ double HeatingDustPhotoelectic(StructCEQData *PhydroPP){
     double Zd    = PhydroPP->Zd;
     double G0    = PhydroPP->G0;
     double Ntot  = PhydroPP->Nt;
+    if(ne==0.0 || G0==0.0 || Zd==0.0) return 0.0;
     if(CEQLibRunParameters.UseDustAttenuation==true)
         G0 *= DustShieldingFactor(Ntot,Zd,2.5);
     double k = G0*sqrt(T)/(ne*phiPAH);
@@ -192,6 +196,11 @@ double ApproximateDustTemperature(double Ntot, double G0){
             +3.4e-2*(0.42-log(3.5e-2*tau100*T0))*tau100*pow(T0,6.0),0.2);
 #endif
     return DUST_TEMPERATURE;
+}
+
+double EffectiveDustTemperature(const StructCEQData *state){
+    return isfinite(state->Td) && state->Td > 0.0 ?
+           state->Td : ApproximateDustTemperature(state->Nt,state->G0);
 }
 
 double ApproximateDustToGasRatio(double T){

@@ -23,7 +23,7 @@ typedef struct StructCEQData_tag{
     double T;
     double invT;
     double logT;
-    double Td;
+    double Td;          // Positive dust temperature in K, otherwise use the library estimate.
     double Z;           // Metallicity of gas.
     double Zd;          // Dust/Gas mass ratio
     double NLyn;        // Lymann photons (>13.6 eV) flux [/s/cm^2]

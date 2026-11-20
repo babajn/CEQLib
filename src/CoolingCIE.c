@@ -14,7 +14,6 @@
 #define Zsol (SOLAR_METALLICITY)
 
 static int FlagCoolingTable = OFF;
-static gsl_interp_accel *AccAccessLogT[COOLING_TABLE_CIE_SIZE_Z];
 static gsl_spline       *SplineAccessLogT[COOLING_TABLE_CIE_SIZE_Z];
 
 void InitializeCoolingTableCIE(int Check){
@@ -22,14 +21,17 @@ void InitializeCoolingTableCIE(int Check){
     //InitializeCoolingRateLookUpTableCIE(Check);
     if(FlagCoolingTable == ON)  return;
 
-    sprintf(CEQFileName,"%s/CIECooling.dat",CEQOutDir);
-    FILE *output = fopen(CEQFileName,"w");
+    FILE *output = NULL;
+    if(Check == 1){
+        output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CIECooling.dat","w");
+        if(output == NULL) perror(CEQ_DIAGNOSTIC_DIRECTORY "/CIECooling.dat");
+    }
     for(int im=1;im<COOLING_TABLE_CIE_SIZE_Z;im++){
         for(int it=0; it<COOLING_TABLE_CIE_SIZE_T; it++){
             double LambZ = pow(10.0,CoolingTableCIELogLambda[im][it]);
             double Lamb0 = pow(10.0,CoolingTableCIELogLambda[0][it]);
             CoolingTableCIELogLambda[im][it] = log10(MAX(1.e-100,LambZ-Lamb0));
-            if(Check==1){
+            if(output != NULL){
                 //fprintf(stderr,"logZ=%f logT=%f LambZ=%e Lamb0=%e LambZ-Lamb0=%e\n",
                 //        CoolingTableCIELogZ[im],CoolingTableCIELogT[it],
                 //        LambZ,Lamb0,
@@ -41,13 +43,12 @@ void InitializeCoolingTableCIE(int Check){
                         );
             }
         }
-        AccAccessLogT[im]    = gsl_interp_accel_alloc();
         //SplineAccessLogT[im] = gsl_spline_alloc(gsl_interp_cspline,COOLING_TABLE_CIE_SIZE_T);
         SplineAccessLogT[im] = gsl_spline_alloc(gsl_interp_linear,COOLING_TABLE_CIE_SIZE_T);
         gsl_spline_init(SplineAccessLogT[im],CoolingTableCIELogT,
                 CoolingTableCIELogLambda[im],COOLING_TABLE_CIE_SIZE_T);
     }
-    fclose(output);
+    if(output != NULL) fclose(output);
     //exit(1);
 
     //if(Check==1){
@@ -81,8 +82,11 @@ const static double iBaseSh = 1.0/(logTmax-logTmin);
 double CoolingRateCIE(StructCEQData *PhydroPP){
     
     if(CEQLibRunParameters.UseCIEResonanceCooling==false)   return 0.e0;
+    if(FlagCoolingTable == OFF || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0
+       || !isfinite(PhydroPP->Z) || PhydroPP->Z < 0.0) return NAN;
 
     double logT = log10(PhydroPP->T); 
+    if(logT > CoolingTableCIELogT[COOLING_TABLE_CIE_SIZE_T-1]) return NAN;
     double Z    = PhydroPP->Z; 
     double ne   = PhydroPP->nel;
     double nH   = PhydroPP->n[ipHYDROGEN];
@@ -96,13 +100,13 @@ double CoolingRateCIE(StructCEQData *PhydroPP){
         if(logT<CoolingTableCIELogT[0])
             val = CoolingTableCIELogLambda[0][0];
         else
-            val = gsl_spline_eval(SplineAccessLogT[1],logT,AccAccessLogT[1]);
+            val = gsl_spline_eval(SplineAccessLogT[1],logT,NULL);
     } else if(FeH >= CoolingTableCIELogZ[COOLING_TABLE_CIE_SIZE_Z-1]){
         if(logT<CoolingTableCIELogT[0])
             val = CoolingTableCIELogLambda[COOLING_TABLE_CIE_SIZE_Z-1][0];
         else{
             val = gsl_spline_eval(SplineAccessLogT[COOLING_TABLE_CIE_SIZE_Z-1],
-                    logT,AccAccessLogT[COOLING_TABLE_CIE_SIZE_Z-1]);
+                    logT,NULL);
         }
     } else {
         int i=0;
@@ -113,8 +117,8 @@ double CoolingRateCIE(StructCEQData *PhydroPP){
             val2 = CoolingTableCIELogLambda[i  ][0];
         }
         else{
-            val1 = gsl_spline_eval(SplineAccessLogT[i-1],logT,AccAccessLogT[i-1]);
-            val2 = gsl_spline_eval(SplineAccessLogT[i  ],logT,AccAccessLogT[i  ]);
+            val1 = gsl_spline_eval(SplineAccessLogT[i-1],logT,NULL);
+            val2 = gsl_spline_eval(SplineAccessLogT[i  ],logT,NULL);
         }
         val = ((CoolingTableCIELogZ[i]-FeH)*val1+(FeH-CoolingTableCIELogZ[i-1])*val2)
                 /(CoolingTableCIELogZ[i]-CoolingTableCIELogZ[i-1]);

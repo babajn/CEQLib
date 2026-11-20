@@ -394,12 +394,9 @@ void InitializeFineStructureLines(int Check){
         double nOI = 1.0, nOI0, nOI1, nOI2, nOIcrit;
         double nSiII = 1.0, nSiII0, nSiII1, nSiIIcrit;
         double CoolingOI063um, CoolingOI044um, CoolingOI146um;
-        sprintf(CEQFileName,"%s/FineStructureLineTestCII.dat",CEQOutDir);
-        FILE *outCII  = fopen(CEQFileName,"w");
-        sprintf(CEQFileName,"%s/FineStructureLineTestOI.dat",CEQOutDir);
-        FILE *outOI   = fopen(CEQFileName,"w");
-        sprintf(CEQFileName,"%s/FineStructureLineTestSiII.dat",CEQOutDir);
-        FILE *outSiII = fopen(CEQFileName,"w");
+        FILE *outCII  = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestCII.dat","w");
+        FILE *outOI   = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestOI.dat","w");
+        FILE *outSiII = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestSiII.dat","w");
         for(int i=0;i<nRho;i++){
             double nH  = pow(10.0,-1+i*0.1);
             double nel = xe*nH;
@@ -510,6 +507,9 @@ double CoolingCI(double nCI, double T, double nel, double nHII, double nHI, doub
     *CoolingCI370um = L_CI370um;
     return L_CI;
 #else
+    *CoolingCI610um = 0.0;
+    *CoolingCI230um = 0.0;
+    *CoolingCI370um = 0.0;
     return 0.e0;
 #endif
 }
@@ -660,6 +660,9 @@ double CoolingOI(double nOI, double T, double nel, double nHII, double nHI, doub
     *CoolingOI146um = L_OI146um;
     return L_OI;
 #else
+    *CoolingOI063um = 0.0;
+    *CoolingOI044um = 0.0;
+    *CoolingOI146um = 0.0;
     return 0.e0;
 #endif
 }
@@ -769,10 +772,14 @@ double CoolingOI146um(StructCEQData *PhydroPP){
 double CoolingSiI(double nSiI, double T, double nHI, double nHII,
         double *CoolingSiI130um, double *CoolingSiI45um, double *CoolingSiI68um){
 #ifdef FINE_STRUCUTRE_COOLING_SiI
-    exit(1);
+    const double rate = NAN; // Si I cooling is unimplemented.
 #else
-    return 0.e0;
+    const double rate = 0.0;
 #endif
+    *CoolingSiI130um = rate;
+    *CoolingSiI45um = rate;
+    *CoolingSiI68um = rate;
+    return rate;
 }
 
 double CoolingSiI130um(double nSiI, double T, double nHI, double nHII){
@@ -922,14 +929,20 @@ static double q21_CI_e(double T){
 
 
 //////// De-excitation Rates [cm^3/s] for [CII] 157.7um
-// ref.) Table 6 of Glover & Jappsen (2007)
+// Glover & Jappsen (2007), Table 6 and references 8–9.
+// Anchor the published T^0.07 extrapolation to the low-temperature fit
+// at 250 K to remove the jump in the tabulated formula.
+static const double CIIH2FitUpperTemperature = 250.0;
+
 static double q10_CII_oH2(double T){
-    if(T<=250.0)    return 4.70e-10 + 4.6e-13*T;
-    else            return 5.85e-10*pow(T,0.07);
+    const double fitTemperature = fmin(T,CIIH2FitUpperTemperature);
+    const double rate = 4.70e-10 + 4.6e-13*fitTemperature;
+    return T <= CIIH2FitUpperTemperature ? rate : rate*pow(T/CIIH2FitUpperTemperature,0.07);
 }
 static double q10_CII_pH2(double T){
-    if(T<=250.0)    return 2.50e-10*pow(T,0.12);
-    else            return 4.85e-10*pow(T,0.07);
+    const double fitTemperature = fmin(T,CIIH2FitUpperTemperature);
+    const double rate = 2.50e-10*pow(fitTemperature,0.12);
+    return T <= CIIH2FitUpperTemperature ? rate : rate*pow(T/CIIH2FitUpperTemperature,0.07);
 }
 static double q10_CII_HI(double T){
     if(T<=2000.0)   return 8.0e-10*pow(0.01*T,0.07);

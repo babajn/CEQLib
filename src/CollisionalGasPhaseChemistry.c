@@ -29,9 +29,7 @@ static double Zsol = SOLAR_METALLICITY;
 void InitializeCollisionalIonization(int Check){
         
     if(Check==1){
-        sprintf(CEQFileName,"%s/CollisionalIonization.dat",CEQOutDir);
-        //fprintf(stderr,"%s\n",CEQFileName);
-        FILE *output = fopen(CEQFileName,"w");
+        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CollisionalIonization.dat","w");
         for(double logT=1.0; logT<=6.0; logT+=0.1){
             double T = pow(10.0,logT);
             fprintf(output,"%e ",T);
@@ -46,8 +44,7 @@ void InitializeCollisionalIonization(int Check){
         }
         fclose(output);
 
-        sprintf(CEQFileName,"%s/CollisionalRecombination.dat",CEQOutDir);
-        FILE *output2 = fopen(CEQFileName,"w");
+        FILE *output2 = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CollisionalRecombination.dat","w");
         for(double logT=1.0; logT<=6.0; logT+=0.1){
             double T = pow(10.0,logT);
             fprintf(output2,"%e ",T);

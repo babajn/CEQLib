@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <math.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "Astro.h"
 #include "Constants.h"
 #include "Utilities.h"
@@ -41,23 +44,28 @@ struct StructCEQLibParameters_tag CEQLibRunParameters;
 //static double EnergyEquationSolverChemcalEquilibriumCoolingHeatingLSODASubcycle(struct StructPhydroPP_tag *PhydroPP, double Accuracy);
 //#endif
 
-static double EnergyEquationSolverChemcalEquilibriumCoolingHeatingSemiImplicit(const StructCEQData *PhydroPP, double Accuracy);
-static void InsertPhydroPPdata(StructCEQData *PhydroPPoriginal, StructCEQData *PhydroPPtarget);
-
 #define NumberOfFreedomForSingleAtoms   (3.0)       // transverse motion
 #define NumberOfFreedomForMolecules     (5.0)       // transverse motion + rotation
 
 
-static double sqrt11,isqrt11;
+static bool EnsureDiagnosticDirectory(const char *path){
+    if(mkdir(path,0755) == 0) return true;
+    struct stat info;
+    return errno == EEXIST && stat(path,&info) == 0 &&
+           S_ISDIR(info.st_mode) && access(path,W_OK | X_OK) == 0;
+}
 
-void CEQLibInitialization(int Check){
-    
+CEQLibStatus CEQLibTryInitialization(int Check, const char *pegaseDirectory){
+    if(Check == 1 && (!EnsureDiagnosticDirectory(CEQ_DIAGNOSTIC_DIRECTORY) ||
+            (CEQLibRunParameters.UseHIIRegion && !EnsureDiagnosticDirectory("out")))){
+        fprintf(stderr,"CEQLib could not create its diagnostic output directories\n");
+        return CEQ_INITIALIZATION_FAILED;
+    }
+    const CEQLibStatus status = CEQInitializePhotochemistry(Check,pegaseDirectory);
+    if(status != CEQ_SUCCESS) return status;
+
     InitializeChemicalElementTable(Check);
-
-    MakeDir(CEQOutDir);
-    
     InitializeCollisionalIonization(Check);
-    InitializePhotochemistory(Check);
     InitializeMoleculeChemistory(Check);
     InitializeFineStructureLines(Check);
     InitializeGrainSurfaceChemistry(Check);
@@ -70,14 +78,15 @@ void CEQLibInitialization(int Check){
     if(Check==1)
         fprintf(stderr,"... done.\n");
 
-    sqrt11  = sqrt(1.1);
-    isqrt11 = 1.e0/sqrt11;
-
 #ifdef LSODA_SUBCYCLE_COOLING_SOLVER
     InitializeLSODA(10000);
 #endif
 
-    return ;
+    return CEQ_SUCCESS;
+}
+
+void CEQLibInitialization(int Check){
+    if(CEQLibTryInitialization(Check,NULL) != CEQ_SUCCESS) exit(EXIT_FAILURE);
 }
 
 void CEQLibiSetRunParamDebugMode(bool Use){
@@ -122,95 +131,6 @@ void CEQLibiSetRunParamCOFormation(bool Use, double Cp){
     CEQLibRunParameters.CpForCO = Cp;
 }
 
-static double EnergyEquationSolverChemcalEquilibriumCoolingHeatingSemiImplicit(const StructCEQData *PhydroPP, double Accuracy){
-
-    const int IterMax = 1000;
-    int iter = 0;
-    
-    double dt   = PhydroPP->dt;
-    StructCEQData PhydroPPwork, PhydroPPupper, PhydroPPlower;
-    InsertPhydroPPdata(PhydroPP,&PhydroPPwork);
-    
-    //PhydroPPwork.U = PhydroPP->U + 0.5*dt*PhydroPP->Du;
-    //if(PhydroPPwork.U < 0.5*PhydroPP->U){
-    //    PhydroPPwork.U = 0.5*PhydroPP->U;
-    //}
-    double Uold = PhydroPPwork.U;
-    double Uini = PhydroPPwork.U;
-    double Told = CEQLibConvertUtoT(&PhydroPPwork);
-
-    InsertPhydroPPdata(&PhydroPPwork,&PhydroPPupper);
-    InsertPhydroPPdata(&PhydroPPwork,&PhydroPPlower);
-
-    double LambdaNet = CEQLibNetCoolingRateChemcalEquilibrium(&PhydroPPwork);
-    if(PhydroPPwork.U < Uold+LambdaNet*dt){
-        PhydroPPupper.U *= sqrt11;
-        int itr = 0;
-        while(PhydroPPupper.U < Uold+CEQLibNetCoolingRateChemcalEquilibrium(&PhydroPPupper)*dt){
-            PhydroPPupper.U *= sqrt11;
-            //if(iter++ > IterMax){
-            //    eprintlmpi(PhydroPPupper.U);
-            //    //CheckIterationU(index);
-            //}
-        }
-    }
-    if(PhydroPPwork.U > Uold+LambdaNet*dt){
-        PhydroPPlower.U *= isqrt11;
-        int itr = 0;
-        while(PhydroPPlower.U > Uold+CEQLibNetCoolingRateChemcalEquilibrium(&PhydroPPlower)*dt){
-            PhydroPPlower.U *= isqrt11;
-            //if(iter++ > IterMax){
-            //    eprintlmpi(PhydroPPlower.U);
-            //    //CheckIterationU(index);
-            //}
-        }
-    }
-
-    double DeltaU;
-    do{
-        PhydroPPwork.U = 0.5*(PhydroPPupper.U + PhydroPPlower.U);
-        LambdaNet = CEQLibNetCoolingRateChemcalEquilibrium(PhydroPP);
-        if((PhydroPPwork.U-(Uold+LambdaNet)*dt) > 0.e0){
-            InsertPhydroPPdata(&PhydroPPwork,&PhydroPPupper);
-        }
-        else{
-            InsertPhydroPPdata(&PhydroPPwork,&PhydroPPlower);
-        }
-        DeltaU = PhydroPPupper.U - PhydroPPlower.U;
-        iter ++;
-        //if(iter >= (MaxIteration-10)){
-        //    double T = U*Pall.ConvertUtoT;
-        //    eprintlmpi(T);
-        //    eprintlmpi(fH2);
-        //    fprintlmpi(G0);
-        //    fprintlmpi(Metallicity);
-        //    eprintlmpi(LambdaNet);
-        //}
-    } while( (fabs(DeltaU/PhydroPPwork.U) > Accuracy) && (iter < IterMax) );
-       
-    if(CEQLibRunParameters.UseDebugMode==true){
-        //fprintf(stderr,"  ==> (Uold,Told) = (%e,%e) dU/dt*dt = %e\n",Uold,Told,LambdaNet*dt);
-        //fprintf(stderr,"  ==> (U,T) = (%e,%e)\n",PhydroPP->U,PhydroPP->T);
-    }
-
-    if(iter >= IterMax){
-        fprintf(stderr,"Failed to converge : function %s line %d file %s\n",__FUNCTION__,__LINE__,__FILE__);
-        fprintf(stderr," U = %g\n T = %g\n Rho = %g\n dt = %g\n",
-                PhydroPP->U,PhydroPP->T,PhydroPP->Rho,dt);
-        fflush(NULL);
-        exit(1);
-    }
-
-    if(PhydroPPwork.U < 0.e0){
-        fprintf(stderr,"In %s, line %d, function %s",__FILE__,__LINE__,__FUNCTION__);
-        fprintf(stderr,"U Uinit = %g %g\n",PhydroPPwork.U,Uini);
-        //MPI_Finalize();
-        exit(1);
-    }
-    return (PhydroPPwork.U-Uini)/dt;
-}
-
-
 //#ifdef LSODA_SUBCYCLE_COOLING_SOLVER
 //static void RateEquations(double t, double *n, double *ndot, struct StructPhydroPP_tag *PhydroPPwork){
 //   
@@ -242,8 +162,7 @@ static double EnergyEquationSolverChemcalEquilibriumCoolingHeatingSemiImplicit(c
 //        atol[i] = 0.e0;
 //    }
 //    
-//    struct StructPhydroPP_tag PhydroPPwork;
-//    InsertPhydroPPdata(PhydroPP,&PhydroPPwork);
+//    StructCEQData PhydroPPwork = *PhydroPP;
 //    
 //    /// LSODA
 //    lsoda(RateEquations,ineq,y,&t,tout,itol,rtol,atol,itask,&istate,iopt,jt,
@@ -269,39 +188,28 @@ static double EnergyEquationSolverChemcalEquilibriumCoolingHeatingSemiImplicit(c
 //}
 //#endif
 
-double CEQLibEnergyEquationSolverChemcalEquilibriumCoolingHeating(StructCEQData *PhydroPP, double Accuracy){
-    return EnergyEquationSolverChemcalEquilibriumCoolingHeatingSemiImplicit(PhydroPP,Accuracy);
-    //return EnergyEquationSolverChemcalEquilibriumCoolingHeatingLSODASubcycle(PhydroPP,Accuracy);
-}
+CEQLibStatus CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(StructCEQData *state, double accuracy){
+    if(state == NULL) return CEQ_INVALID_INPUT;
 
-double CEQLibNetCoolingRateChemcalEquilibrium(StructCEQData *PhydroPP){
-    
-    PhydroPP->T  = CEQLibConvertUtoT(PhydroPP);
-    PhydroPP->Td = ApproximateDustTemperature(PhydroPP->Nt,PhydroPP->G0);
-    //PhydroPP->Zd = PhydroPP->Zd; //*ApproximateDustToGasRatio(PhydroPP->T);
-    
-    CEQLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
-    CEQLibCalculateCoolingHeatingRates(PhydroPP);
-    
-    // net cooling rate [erg/s/cc]
-    return -(PhydroPP->L_tot - PhydroPP->H_tot)/PhydroPP->Rho;
+    StructCEQData trial = *state;
+    int status = CEQLibChemicalReactionEquilibrium(&trial,accuracy);
+    if(status < 0) return (CEQLibStatus)status;
+
+    trial.invT = 1.0/trial.T;
+    trial.logT = log10(trial.T);
+    status = CEQLibCalculateCoolingHeatingRates(&trial);
+    if(status != CEQ_SUCCESS) return (CEQLibStatus)status;
+
+    *state = trial;
+    return CEQ_SUCCESS;
 }
 
 void CEQLibCalulateChemcalAbundanceCoolingHeatingRates(StructCEQData *PhydroPP){
-
-    int itr = CEQLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
-    if(itr<0){
-        //fprintf(out_err,"Index=%d: ",Index);
-        //fprintf(out_err," T  = %e",PhydroPP->T);
-        //fprintf(out_err," nH = %e",PhydroPP->n[ipHYDROGEN]);
-        //fprintf(out_err," G0 = %e",PhydroPP->G0);
-        //fprintf(out_err," Nt = %e",PhydroPP->Nt);
-        //fprintf(out_err," Z  = %e",PhydroPP->Z);
-        //fprintf(out_err,"\n");
-        fflush(NULL);
+    CEQLibStatus status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(PhydroPP,1.e-3);
+    if(status != CEQ_SUCCESS){
+        fprintf(stderr,"CEQLib could not evaluate the chemical equilibrium rates: status %d\n",status);
+        return;
     }
-
-    int check = CEQLibCalculateCoolingHeatingRates(PhydroPP);
 
     if(CEQLibRunParameters.UseDebugMode==true){
         double Ts = SpinTemperatureHI21cm(PhydroPP->natom[ipHYDROGEN],PhydroPP->T);
@@ -319,7 +227,7 @@ void CEQLibCalulateChemcalAbundanceCoolingHeatingRates(StructCEQData *PhydroPP){
         fprintf(stderr," ==>");
         fprintf(stderr," Ciii/C = %e ",PhydroPP->nCIII           /PhydroPP->n[ipCARBON  ]);
         fprintf(stderr," Cii /C = %e ",PhydroPP->nion[ipCARBON  ]/PhydroPP->n[ipCARBON  ]);
-        fprintf(stderr," Ci  /C = %e ",PhydroPP->nion[ipCARBON  ]/PhydroPP->n[ipCARBON  ]);
+        fprintf(stderr," Ci  /C = %e ",PhydroPP->natom[ipCARBON ]/PhydroPP->n[ipCARBON  ]);
         fprintf(stderr," CO /C  = %e ",PhydroPP->nmol[ipCO      ]/PhydroPP->n[ipCARBON  ]);
         fprintf(stderr,"\n");
         fprintf(stderr," ==>");
@@ -370,9 +278,13 @@ void CEQLibCalulateChemcalAbundanceCoolingHeatingRates(StructCEQData *PhydroPP){
 
 int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
 
+    if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return CEQ_INVALID_INPUT;
+
+    PhydroPP->L_res = CoolingRateCIE(PhydroPP);
+    if(!isfinite(PhydroPP->L_res)) return CEQ_INVALID_INPUT;
+
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double T    = PhydroPP->T;
-    double logT = log10(T);
 
     // heating rate [erg/s/cc]
     PhydroPP->H_PI      = HeatingPhotoionization(PhydroPP); //T,nH,ne,Z,G0,Nt);
@@ -394,7 +306,6 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
                         + PhydroPP->H_H2;
 
     // cooling rate = angular-integrated emission coefficient (= 4*pi*j) [erg/s/cc]
-    PhydroPP->L_res     = CoolingRateCIE(PhydroPP);
     PhydroPP->L_ff      = CoolingBremsstrahalung(PhydroPP);
     PhydroPP->L_HI      = CoolingCollisionalExcitation(PhydroPP)
                         + CoolingCollisionalIonization(PhydroPP)
@@ -414,8 +325,9 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     PhydroPP->L_CI370   = 0.0; //CoolingCI370um(nCI,T,ne,nHII,nHI,nH2);
     PhydroPP->L_OIII    = 0.e0;
     PhydroPP->L_OII     = 0.e0;
-    PhydroPP->L_OI63    = CoolingOI63um(PhydroPP);
-    PhydroPP->L_OI146   = CoolingOI146um(PhydroPP); //nOI,T,ne,nHII,nHI,nH2);
+    double coolingOI44;
+    CoolingOI(PhydroPP->natom[ipOXYGEN],T,PhydroPP->nel,PhydroPP->nion[ipHYDROGEN],
+              nHI,PhydroPP->nmol[ipH2],&PhydroPP->L_OI63,&coolingOI44,&PhydroPP->L_OI146);
     PhydroPP->L_SiII35  = CoolingSiII35um(PhydroPP); //nSiII,T,ne,nHI);
     PhydroPP->L_DustRec = CoolingDustRecombination(PhydroPP); //T,nH,ne,Z,G0,Nt);
     if(CEQLibRunParameters.UseH2Formation==true){
@@ -465,90 +377,10 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     double Lce      = 0.e0;  //CoolingLinesHIIregionOxygen(T,ne,nOII,nOIII);
 #endif
 
-    return 0;
-}
-
-int CEQLibChemicalReactionEquilibrium(StructCEQData *PhydroPP, const double Accuracy){
-
-    int iteration = 0;
-    const int IterMax = 1.e+3;
-    const int SubIterMax = 1.e+3;
-    double Error1, Error2, Error3;
-
-    for(int itr=0; ; itr++){ 
-        
-        for(int itr_sub=0; itr_sub<=SubIterMax; itr_sub++){
-            double neli_sub = PhydroPP->nel;
-            double nH2i_sub = PhydroPP->nmol[ipH2];
-            EquilibriumHydrogenFractionalAbundance(PhydroPP);
-            PhydroPP->nel = CEQLibGetElectronNumberDensity(PhydroPP);
-           
-            EquilibriumHeliumFractionalAbundance(PhydroPP);
-            PhydroPP->nel = CEQLibGetElectronNumberDensity(PhydroPP);
-
-            double nelf_sub = PhydroPP->nel;
-            double nH2f_sub = PhydroPP->nmol[ipH2];
-            Error1 = fabs(nH2f_sub-nH2i_sub)/MAX(1.e0,nH2i_sub); 
-                
-            if(itr_sub>0
-               &&fabs(nelf_sub -neli_sub)<=Accuracy*neli_sub
-               &&fabs(nH2f_sub -nH2i_sub)<=Accuracy*nH2i_sub)  break;
-        }
-
-        double neli = PhydroPP->nel;
-        double nCOi = PhydroPP->nmol[ipCO];
-        EquilibriumCarbonFractionalAbundance(PhydroPP);
-        //PhydroPP->nel = CEQLibGetElectronNumberDensity(PhydroPP);
-        
-        EquilibriumOxygenFractionalAbundance(PhydroPP);
-        //EquilibriumOxygenFractionalAbundanceChargeTransfer(PhydroPP);
-
-        EquilibriumSiliconFractionalAbundance(PhydroPP);
-
-
-        PhydroPP->nel                 = CEQLibGetElectronNumberDensity(PhydroPP);
-        PhydroPP->MeanMolecularWeight = CEQLibGetMeanMolecularWeight(PhydroPP);
-        PhydroPP->DegreeOfFreedom     = CEQLibGetMeanDegreeOfFreedom(PhydroPP);
-        PhydroPP->Gamma               = (1.0+PhydroPP->DegreeOfFreedom)/PhydroPP->DegreeOfFreedom;
-        PhydroPP->Gm1                 = PhydroPP->Gamma-1.0;
-        PhydroPP->GGm1                = PhydroPP->Gamma*PhydroPP->Gm1;
-
-        double nelf = PhydroPP->nel;
-        double nCOf = PhydroPP->nmol[ipCO];
-            
-        Error2 = fabs(nelf-neli)/MAX(1.e-50,neli); 
-        Error3 = fabs(nCOf-nCOi)/MAX(1.e-50,nCOi); 
-
-        if(itr>=IterMax||(
-                itr>2
-                &&fabs(nelf-neli)<=Accuracy*neli
-                //&&fabs(nHIIf-nHIIi)<=Accuracy*nHIIi
-                //&&fabs(nHeIf-nHeIi)<=Accuracy*nHeIi
-                //&&fabs(Nh2f -Nh2i )<=Accuracy*Nh2i
-                &&fabs(nCOf-nCOi)<=Accuracy*nCOi
-                )){
-
-            if(itr==IterMax){
-                fprintf(stderr," itr = %d\n",itr);
-                fprintf(stderr,"  nel(i,f)  = (%e,%e) Error = %f\n",neli,nelf,fabs(nelf-neli)/neli);
-                fprintf(stderr,"  nCO(i,f)  = (%e,%e) Error = %f\n",nCOi,nCOf,fabs(nCOf-nCOi)/nCOi);
-                fprintf(stderr,"  T = %e",PhydroPP->T);
-                fprintf(stderr," nH = %e",PhydroPP->n[ipHYDROGEN]);
-                fprintf(stderr," G0 = %e",PhydroPP->G0);
-                fprintf(stderr," Nt = %e",PhydroPP->Nt);
-                fprintf(stderr," Z  = %e" ,PhydroPP->Z);
-                fprintf(stderr," Zd = %e" ,PhydroPP->Zd);
-                fprintf(stderr,"\n");
-                iteration = -1;
-            }
-
-            break ;
-        }
-
-        iteration ++;
-    }
-
-    return iteration;
+    if(!isfinite(PhydroPP->H_tot) || !isfinite(PhydroPP->L_tot)
+       || !isfinite(PhydroPP->L_Halpha) || !isfinite(PhydroPP->L_HI21cm)
+       || !isfinite(PhydroPP->k_HI21cm)) return CEQ_INVALID_INPUT;
+    return CEQ_SUCCESS;
 }
 
 double CEQLibGetTotalNumberDensity(StructCEQData *PhydroPP){
@@ -603,47 +435,6 @@ double CEQLibConvertTtoU(StructCEQData *PhydroPP){
 
 double CEQLibConvertUtoT(StructCEQData *PhydroPP){
     return PhydroPP->MeanMolecularWeight*PROTON_MASS_CGS*PhydroPP->U/(PhydroPP->DegreeOfFreedom*BOLTZMANN_CONSTANT_CGS);
-}
-
-static void InsertPhydroPPdata(StructCEQData *PhydroPPoriginal, StructCEQData *PhydroPPtarget){
-    
-    PhydroPPtarget->dt     = PhydroPPoriginal->dt    ;
-    PhydroPPtarget->Mass   = PhydroPPoriginal->Mass  ;
-    PhydroPPtarget->Rho    = PhydroPPoriginal->Rho   ;
-    PhydroPPtarget->nHeIII = PhydroPPoriginal->nHeIII;
-    PhydroPPtarget->nCIII  = PhydroPPoriginal->nCIII ;
-    PhydroPPtarget->nOIII  = PhydroPPoriginal->nOIII ;
-    PhydroPPtarget->nSiIII = PhydroPPoriginal->nSiIII;
-    for(int i=0; i<NumberChemicalElement; i++){
-        PhydroPPtarget->n[i]     = PhydroPPoriginal->n[i]    ;
-        PhydroPPtarget->nion[i]  = PhydroPPoriginal->nion[i] ;
-        PhydroPPtarget->natom[i] = PhydroPPoriginal->natom[i];
-    }
-    for(int i=0; i<NumberMoleculeSpeacies; i++)
-        PhydroPPtarget->nmol[i] = PhydroPPoriginal->nmol[i];
-    PhydroPPtarget->nel  = PhydroPPoriginal->nel ;
-    PhydroPPtarget->U    = PhydroPPoriginal->U   ;
-    PhydroPPtarget->Du   = PhydroPPoriginal->Du  ;
-    PhydroPPtarget->T    = PhydroPPoriginal->T   ;
-    PhydroPPtarget->invT = PhydroPPoriginal->invT;
-    PhydroPPtarget->logT = PhydroPPoriginal->logT ;
-    PhydroPPtarget->Td   = PhydroPPoriginal->Td  ;
-    PhydroPPtarget->Z    = PhydroPPoriginal->Z   ;
-    PhydroPPtarget->Zd   = PhydroPPoriginal->Zd  ;
-    PhydroPPtarget->NLyn = PhydroPPoriginal->NLyn;
-    PhydroPPtarget->G0   = PhydroPPoriginal->G0  ;
-    PhydroPPtarget->X0   = PhydroPPoriginal->X0  ;
-    PhydroPPtarget->Nt   = PhydroPPoriginal->Nt  ;
-    //PhydroPPtarget->N2   = PhydroPPoriginal->N2  ;
-    //PhydroPPtarget->Nco  = PhydroPPoriginal->Nco ;
-
-    PhydroPPtarget->MeanMolecularWeight = PhydroPPoriginal->MeanMolecularWeight;
-    PhydroPPtarget->DegreeOfFreedom     = PhydroPPoriginal->DegreeOfFreedom    ;
-    PhydroPPtarget->Gamma               = PhydroPPoriginal->Gamma              ;
-    PhydroPPtarget->Gm1                 = PhydroPPoriginal->Gm1                ;
-    PhydroPPtarget->GGm1                = PhydroPPoriginal->GGm1               ;
-
-    return ;
 }
 
 double CEQApproximateDustToGasRatio(double T){

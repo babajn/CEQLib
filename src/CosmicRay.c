@@ -34,36 +34,24 @@ static double HeatDepositedForEachPrimaryElectron(double E_in_eV, double xe);
 
 static double x_e[] = {1.e-4,1.e-3,1.e-2,1.e-1};
 static double f_3[] = {3.25,7.20,16.2,31.0};
-gsl_interp_accel *xeAccess;
-gsl_spline       *f3Access;
+enum { ElectronFractionTableSize = sizeof(x_e)/sizeof(x_e[0]) };
+static gsl_spline *f3Access;
 void InitializeCosmicRayIonization(int Check){
-    
-    if(CEQLibRunParameters.UseCosmicRayIonization==true){
-        xeAccess = gsl_interp_accel_alloc();
-        f3Access = gsl_spline_alloc(gsl_interp_linear,4);
-        gsl_spline_init(f3Access,x_e,f_3,4);
-
-        if(Check==1){
-            //FILE *output = fopen("out/CosmicRayIonization.dat","w");
-            sprintf(CEQFileName,"%s/CosmicRayIonization.dat",CEQOutDir);
-            FILE *output = fopen(CEQFileName,"w");
-            StructCEQData PhydroPP;
-            PhydroPP.n[ipHYDROGEN] = 1.;
-            PhydroPP.X0  = 1.;
-            for(double xe=1.e-6; xe<=1.0; xe *= 2.0){
-                //fprintf(stderr,"xe=%e f3=%e Deposited Energy=%e\n",
-                //        xe,gsl_spline_eval(f3Access,xe,xeAccess),
-                //        HeatDepositedForEachPrimaryElectron((double)E_ELECTRON,xe));
-                PhydroPP.nel = xe*PhydroPP.n[ipHYDROGEN];
-                double Eh = HeatDepositedForEachPrimaryElectron((double)E_ELECTRON,xe);
-                fprintf(output,"%e %e %e\n",
-                        xe,Eh,TotalCosmicRayHeatingRate(&PhydroPP));
-            }
-            fclose(output);
-        }
+    if(f3Access == NULL){
+        f3Access = gsl_spline_alloc(gsl_interp_linear,ElectronFractionTableSize);
+        gsl_spline_init(f3Access,x_e,f_3,ElectronFractionTableSize);
     }
 
-    return ;
+    if(Check == 1 && CEQLibRunParameters.UseCosmicRayIonization){
+        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CosmicRayIonization.dat","w");
+        StructCEQData state = {.n = {1.0}, .X0 = 1.0};
+        for(double xe = 1.e-6; xe <= 1.0; xe *= 2.0){
+            state.nel = xe*state.n[ipHYDROGEN];
+            double deposited = HeatDepositedForEachPrimaryElectron((double)E_ELECTRON,xe);
+            fprintf(output,"%e %e %e\n",xe,deposited,TotalCosmicRayHeatingRate(&state));
+        }
+        fclose(output);
+    }
 }
 
 // CR ionization
@@ -176,7 +164,16 @@ static double HeatDepositedForEachPrimaryElectron(double E_in_eV, double xe){
     double f1i = 1.0-pow(xe,0.2663); 
     double f1  = 0.9971*(1.0-pow(f1i,1.3163));
     double f2  = 2.0*E_in_eV-13.6;
-    double f3  = gsl_spline_eval(f3Access,xe,xeAccess);
+    const int last = ElectronFractionTableSize - 1;
+    double f3;
+    if(xe < x_e[0] || xe > x_e[last]){
+        // Continue the endpoint segment linearly, as in the reference diagnostic table.
+        const int lo = xe < x_e[0] ? 0 : last - 1;
+        const int hi = lo + 1;
+        f3 = f_3[lo] + (xe - x_e[lo]) * (f_3[hi] - f_3[lo]) / (x_e[hi] - x_e[lo]);
+    }else{
+        f3 = gsl_spline_eval(f3Access,xe,NULL);
+    }
     if(isnan(f1)||isnan(f2)||isnan(f3)){
         fprintf(stderr,"#%s():Line%d:%s\n",__FUNCTION__,__LINE__,__FILE__);
         fprintf(stderr,"  f1=%e f2=%e f3=%e xe=%e\n",f1,f2,f3,xe);

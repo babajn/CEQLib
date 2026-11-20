@@ -1,6 +1,7 @@
-#include "CEQDataStructure.h"
+#include "ChemicalEquilibriumCooling.h"
 
 void InitializePhotochemistory(int Check);
+CEQLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory);
 
 double HIPhotoIonizationRate(double NLyn);
 double HeIPhotoIonizationRate(double NLyn);

@@ -20,6 +20,8 @@ double CoolingOI146um(StructCEQData *PhydroPP);
 //double CoolingOI44um(double nOI, double T, double nel, double nHII, double nHI, double nH2);
 //double CoolingOI146um(double nOI, double T, double nel, double nHII, double nHI, double nH2);
 
+/* With Si I disabled, all rates are zero. Enabling the unimplemented model
+   returns NaN for the total and each line, including through the wrappers. */
 double CoolingSiI(double nSiI, double T, double nHI, double nHII,
         double *CoolingSiI130um, double *CoolingSiI45um, double *CoolingSiI68um);
 double CoolingSiI130um(double nSiI, double T, double nHI, double nHII);

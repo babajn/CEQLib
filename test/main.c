@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
@@ -31,11 +32,15 @@ int main_test_NonlinerEquationSolver(void);
 
 static int main_dust(void);
 static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double Z, double X0, char *fname);
+static unsigned wolfireFailures;
 static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, double X0, double Ac, double Ao, char *fname);
 
 int main(int argc, char *argv[]){
     
-    //MakeDir("./out");
+    if(mkdir("./out",0777) != 0 && errno != EEXIST){
+        perror("./out");
+        return EXIT_FAILURE;
+    }
 
     //return main_dust();
     //return main_test_NonlinerEquationSolver();
@@ -132,7 +137,7 @@ int main_test_NonlinerEquationSolver(void){
     return ;
 }
 
-int SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double Zd,  double X0, double Ac, double Ao, StructCEQData *PhydroPP){
+static CEQLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double Zd,  double X0, double Ac, double Ao, StructCEQData *PhydroPP){
     
     // tentative fractional abundances
     double fHII   = 0.90, fHI   = 0.01, fH2  = 1.0-fHI  -fHII  ;
@@ -180,22 +185,11 @@ int SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double Zd,  d
     // electron
     PhydroPP->nel               = CEQLibGetElectronNumberDensity(PhydroPP);
 
-    PhydroPP->MeanMolecularWeight = CEQLibGetMeanMolecularWeight(PhydroPP);
-    PhydroPP->DegreeOfFreedom     = CEQLibGetMeanDegreeOfFreedom(PhydroPP);
-
-    PhydroPP->Gamma  = (1.0+PhydroPP->DegreeOfFreedom)/PhydroPP->DegreeOfFreedom;
-    PhydroPP->Gm1    = PhydroPP->Gamma-1.0;
-    PhydroPP->GGm1   = PhydroPP->Gamma*PhydroPP->Gm1;
-   
-    // [g/cc]
-    PhydroPP->Rho    = CEQLibGetTotalMassDensity(PhydroPP);
-    // [erg/g]
-    PhydroPP->U      = CEQLibConvertTtoU(PhydroPP);
-        
-    CEQLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
-    CEQLibCalculateCoolingHeatingRates(PhydroPP);
-    
-    return true;
+    CEQLibStatus status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(PhydroPP,1.e-3);
+    if(status != CEQ_SUCCESS) return status;
+    PhydroPP->Rho = CEQLibGetTotalMassDensity(PhydroPP);
+    PhydroPP->U = CEQLibConvertTtoU(PhydroPP);
+    return CEQ_SUCCESS;
 }
 
 static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, double X0, double Ac, double Ao, char *fname){
@@ -214,16 +208,27 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, doub
     double Tinit  = 1.e+1;
     if(NLyn!=0.e0)  Tinit = 1.e+4;
     
-    StructCEQData PhydroPP;
-    FILE *out   = fopen(fname,"w");
+    FILE *out = fopen(fname,"w");
+    if(out == NULL){
+        perror(fname);
+        wolfireFailures++;
+        return;
+    }
     for(int i=0; i<Nsample; i++){
+        StructCEQData PhydroPP = {0};
 
         PhydroPP.dt     = dt;
         PhydroPP.Du     = 0.0;
         PhydroPP.n[ipHYDROGEN] = pow(10.0,lognHmin + i*dlognH);
         PhydroPP.T             = Tinit;    // [K]
         PhydroPP.NLyn          = NLyn;
-        SetInitialHydroDataWolfireTest(G0,Nt,Z,Zd,X0,Ac,Ao,&PhydroPP);
+        CEQLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,Zd,X0,Ac,Ao,&PhydroPP);
+        if(status != CEQ_SUCCESS){
+            fprintf(stderr,"Wolfire initial state failed: %s index=%d nH=%g status=%d\n",
+                    fname,i,PhydroPP.n[ipHYDROGEN],status);
+            wolfireFailures++;
+            continue;
+        }
 
         //if(CEQLibRunParameters.UseDebugMode==true){
             fprintf(stderr,"Index=%d: \n",i);
@@ -249,15 +254,20 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, doub
                 PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
         for(int it=0; t<500.0*MEGAYEAR_CGS; it++){
             
-            PhydroPP.Du = CEQLibEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4);
+            status = CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4,&PhydroPP.Du);
+            if(status != CEQ_SUCCESS) break;
             PhydroPP.U += PhydroPP.dt*PhydroPP.Du;
-            //CEQLibChemicalReactionEquilibrium(&PhydroPP,1.e-3);
-            //CEQLibCalculateCoolingHeatingRates(&PhydroPP);
             t += PhydroPP.dt;
 
             // if L_net*dt << U, the gas reaches thermal equilibrium
             double L_net = fabs(PhydroPP.L_tot - PhydroPP.H_tot)/PhydroPP.Rho;
             if(L_net*PhydroPP.dt<1.e-5*PhydroPP.U)   break;
+        }
+        if(status != CEQ_SUCCESS){
+            fprintf(stderr,"Wolfire step failed: %s index=%d nH=%g T=%g t=%g Myr status=%d\n",
+                    fname,i,PhydroPP.n[ipHYDROGEN],PhydroPP.T,t/MEGAYEAR_CGS,status);
+            wolfireFailures++;
+            continue;
         }
         fprintf(stderr," ==> t = %f Myr: (U,T) = (%e,%e) (mu,gamm)=(%f,%f)\n",
                 t/MEGAYEAR_CGS,PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
@@ -705,7 +715,7 @@ int main_WolfireTest(void){
     main_WolfireTestBody(G0,Nt,Z,Zd,X0,Ac,Ao,fname);
 #endif
 
-    return ;
+    return wolfireFailures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
     
@@ -736,7 +746,7 @@ int main_WolfireMilkyWayTest(void){
     sprintf(fname,"./out/PostProcessMap_Nt%02.1e_Go%02.1e_Zs%02.1e.dat",Nt,G0,Z/Zsol);
     main_WolfireTestBody(G0,Nt,Z,Zd,X0,Ac,Ao,fname);
  
-    return ;
+    return wolfireFailures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 int main_HIIregionTest(void){
@@ -799,7 +809,12 @@ int main_HIIregionTest(void){
         PhydroPP.n[ipHYDROGEN] = pow(10.0,lognHmin + inH *dlognH);
         PhydroPP.T             = pow(10.0,logTmin  + itmp*dlogT );
         PhydroPP.NLyn          = NLyn;
-        SetInitialHydroDataWolfireTest(G0,Nt,Z,Zd,X0,Ac,Ao,&PhydroPP);
+        CEQLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,Zd,X0,Ac,Ao,&PhydroPP);
+        if(status != CEQ_SUCCESS){
+            fprintf(stderr,"Initial state failed: %s index=%d status=%d\n",fname,i,status);
+            fclose(out);
+            return EXIT_FAILURE;
+        }
 
         fprintf(stderr,"Index=%d: \n",i);
         fprintf(stderr," T = %e" ,PhydroPP.T);
@@ -1111,7 +1126,12 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
         PhydroPP.n[ipHYDROGEN] = nH; //pow(10.0,lognHmin + inH *dlognH);
         PhydroPP.T             = pow(10.0,logTmin  + itmp*dlogT );
         PhydroPP.NLyn          = NLyn;
-        SetInitialHydroDataWolfireTest(G0,Nt,Z,Zd,X0,Ac,Ao,&PhydroPP);
+        CEQLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,Zd,X0,Ac,Ao,&PhydroPP);
+        if(status != CEQ_SUCCESS){
+            fprintf(stderr,"Initial state failed: %s index=%d status=%d\n",fname,i,status);
+            fclose(out);
+            return;
+        }
 
         fprintf(stderr,"Index=%d: \n",i);
         fprintf(stderr," T = %e" ,PhydroPP.T);

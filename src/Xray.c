@@ -14,8 +14,7 @@ static double SoftXrayHeatingRateBody(double xe, double Ntot);
 void InitializeSoftXrayIonization(int Check){
     
     if(Check==1){
-        sprintf(CEQFileName,"%s/SoftXrayIonization.dat",CEQOutDir);
-        FILE *output = fopen(CEQFileName,"w");
+        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/SoftXrayIonization.dat","w");
         for(double logNt=17.0; logNt<=22.0; logNt+=0.01){
             double Ntot  = pow(10.0,logNt);
             fprintf(output,"%e ",Ntot);
@@ -38,7 +37,7 @@ void InitializeSoftXrayIonization(int Check){
 /// X-ray ionization per H [1/s/H]
 static double SoftXrayIonizationRate(double xe, double Ntot){
     // ref. (A6)(A7)(A8) of Wolfire et al. (1995)
-    if(xe<0.0)  return 0.e0;
+    if(xe<=0.0) return 0.0;
     if(xe>0.5)  return 0.e0;
     double p1 = MAX(-0.3,log10(1.e-18*Ntot));
     double p2 = log10(xe);
@@ -87,7 +86,7 @@ double SoftXrayIonizationRateSiII(double xe, double Ntot){
 static double SoftXrayHeatingRateBody(double xe, double Ntot){
     // eq(A9)(A10) of Wolfire et al. (1995)
     //// note: this fitting formula might be obtained in the equilibrium state (Wolfire et al. 1995)
-    if(xe<0.0)  return 0.e0;
+    if(xe<=0.0) return 0.0;
     //if(xe>0.5)  return 0.e0;
     double p1 = MAX(-0.3,log10(1.e-18*Ntot));
     double p2 = log10(xe);

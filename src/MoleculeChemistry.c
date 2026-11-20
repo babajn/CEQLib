@@ -34,19 +34,18 @@ extern double b_turb;
 //static double HIcollisionCoefficient(double T, double nH, double nHI, double nH2);
 //static double H2collisionCoefficient(double T, double nH, double nHI, double nH2);
 static double CriticalDensity(double T, double yHI, double yH2);
+static double f_co_self(double logNco);
+static double f_co_H2(double logNh2);
 
 static int NumberTableShieldingCO;
 static int NumberTableShieldingH2;
-gsl_interp_accel *logNcoAccess;
-gsl_interp_accel *logNh2Access;
-gsl_spline       *logShieldCOAccess;
-gsl_spline       *logShieldH2Access;
+static gsl_spline *logShieldCOAccess;
+static gsl_spline *logShieldH2Access;
 
 void InitializeMoleculeChemistory(int Check){
 
     if(CEQLibRunParameters.UseH2Formation==true&&Check==1){
-        sprintf(CEQFileName,"%s/H2ShieldingFactor.dat",CEQOutDir);
-        FILE *output = fopen(CEQFileName,"w");
+        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/H2ShieldingFactor.dat","w");
         for(double logNh2=12.0; logNh2<=23.0; logNh2+=0.01){
             double b5   = 3.0;
             double f_H2 = H2SelfShieldingFactor(pow(10,logNh2),b5);
@@ -54,8 +53,7 @@ void InitializeMoleculeChemistory(int Check){
         }
         fclose(output);
         
-        sprintf(CEQFileName,"%s/CoolingRateH2.dat",CEQOutDir);
-        output = fopen(CEQFileName,"w");
+        output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CoolingRateH2.dat","w");
         double nHI = 1.0, nHII = 0.e0, ne = nHII, nHe = 0.0; 
         //for(double lognH2=-1.0; lognH2<=4.0; lognH2+=1.0){
         for(double lognH2=2.0; lognH2<=2.0; lognH2+=1.0){
@@ -79,7 +77,7 @@ void InitializeMoleculeChemistory(int Check){
         fclose(output);
     }
 
-    if(CEQLibRunParameters.UseCOFormation==true){
+    if(NumberTableShieldingCO == 0){
         NumberTableShieldingCO = sizeof(TableNco)/sizeof(double);
         NumberTableShieldingH2 = sizeof(TableNh2)/sizeof(double);
 
@@ -88,7 +86,6 @@ void InitializeMoleculeChemistory(int Check){
             TableShieldingCO[i] = log10(TableShieldingCO[i]);
             //fprintf(stderr,"%f %f\n",TableNco[i],TableShieldingCO[i]);
         }
-        logNcoAccess      = gsl_interp_accel_alloc();
         logShieldCOAccess = gsl_spline_alloc(gsl_interp_linear,NumberTableShieldingCO);
         gsl_spline_init(logShieldCOAccess,TableNco,TableShieldingCO,NumberTableShieldingCO);
 
@@ -97,23 +94,21 @@ void InitializeMoleculeChemistory(int Check){
             TableShieldingH2[i] = log10(TableShieldingH2[i]);
             //fprintf(stderr,"%f %f\n",TableNh2[i],TableShieldingH2[i]);
         }
-        logNh2Access      = gsl_interp_accel_alloc();
         logShieldH2Access = gsl_spline_alloc(gsl_interp_linear,NumberTableShieldingH2);
         gsl_spline_init(logShieldH2Access,TableNh2,TableShieldingH2,NumberTableShieldingH2);
-        
-        if(Check==1){
-            sprintf(CEQFileName,"%s/COShieldingFactor.dat",CEQOutDir);
-            FILE *output = fopen(CEQFileName,"w");
-            for(double logNco=12.0; logNco<=23.0; logNco+=0.01){
-                double f_self = gsl_spline_eval(logShieldCOAccess,logNco,logNcoAccess);
-                fprintf(output,"%e %e\n",logNco,pow(10,f_self));
-            }
-            for(double logNh2=12.0; logNh2<=23.0; logNh2+=0.01){
-                double f_H2   = gsl_spline_eval(logShieldH2Access,logNh2,logNh2Access);
-                fprintf(output,"%e %e\n",logNh2,pow(10,f_H2));
-            }
-            fclose(output);
+    }
+
+    if(CEQLibRunParameters.UseCOFormation==true && Check==1){
+        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/COShieldingFactor.dat","w");
+        for(double logNco=12.0; logNco<=23.0; logNco+=0.01){
+            double f_self = f_co_self(logNco);
+            fprintf(output,"%e %e\n",logNco,pow(10,f_self));
         }
+        for(double logNh2=12.0; logNh2<=23.0; logNh2+=0.01){
+            double f_H2   = f_co_H2(logNh2);
+            fprintf(output,"%e %e\n",logNh2,pow(10,f_H2));
+        }
+        fclose(output);
     }
 
     return ;
@@ -246,23 +241,26 @@ double H2SelfShieldingFactor(double N2, double b5){
     return 0.965/SQ(1.0+x/b5) + 0.035*exp(-8.5e-4*sqrt1x)/sqrt1x;
 }
 
-static double kdiss(double Nt, double N2, double b5, double Zd){
+double H2PhotoDissociationRateWithDustFactor(double G0, double N2, double b5, double dustFactor){
     // eq.(29,31) of Glover & MacLow (2007)
-    return 3.3e-11*H2SelfShieldingFactor(N2,b5)*DustShieldingFactorFUV(Nt,Zd);
+    return G0*(3.3e-11*H2SelfShieldingFactor(N2,b5)*dustFactor);
 }
 double H2PhotoDissociationRate(double G0, double Nt, double N2, double b5, double Zd){
-    return G0*kdiss(Nt,N2,b5,Zd);
+    return H2PhotoDissociationRateWithDustFactor(G0,N2,b5,DustShieldingFactorFUV(Nt,Zd));
 }
 
-double H2CollisionalDissociationRate(double T, double nH, double nHI, double nH2, double ne){   // [/s]
-    //return 0.e0;
-
+H2CollisionalDissociationCoefficients H2DissociationCoefficients(double T){
     // R8, R9, R10 in Table 1 of Glover & Jappsen (2007)
-    double invT = 1.e0/T;
-    double k08 = 3.73e-9*pow(T,0.1121)*exp(-99430*invT);
-    double k09 = 6.67e-12*sqrt(T)*exp(-(1+63590*invT));
-    double k10 = 5.996e-30*pow(T,4.1881)*exp(-54657.4*invT)*pow(1.0+6.761e-6*T,-5.6881);
-    return ne*k08 + nHI*k09 + nH2*k10;
+    const double invT = 1.e0/T;
+    return (H2CollisionalDissociationCoefficients) {
+        .electron = 3.73e-9*pow(T,0.1121)*exp(-99430*invT),
+        .atomicHydrogen = 6.67e-12*sqrt(T)*exp(-(1+63590*invT)),
+        .molecularHydrogen = 5.996e-30*pow(T,4.1881)*exp(-54657.4*invT)*pow(1.0+6.761e-6*T,-5.6881)
+    };
+}
+
+double H2CollisionalDissociationRate(double T, double nH, double nHI, double nH2, double ne){
+    return H2DissociationFromCoefficients(H2DissociationCoefficients(T),ne,nHI,nH2);
 }
 
 
@@ -342,38 +340,23 @@ static double CoolingH2collisionLowDensityLimitBody(double logT3, double a[]){
 //// Glover & Abel, MNRAS, 388, 1627, (2008)
 double CoolingH2RovibrationalLineLowDensityLimitGloverAbel2008(double T, double nHII, double nHI, double nH2,
         double nHe, double ne){
-    double logT3 = log10(T)-3.0;
-    //double nHII = 0.e0, nHe = 0.e0, ne = 0.e0;
-    // collisions with H
-    double L_H = 0.e0;
-    if(T<=1.e+1)        L_H = 0.e0;
-    else if(T<=1.e+2)   L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_10_T_100   );
-    else if(T<=1.e+3)   L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_100_T_1000 );
-    else if(T<=6.e+3)   L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_1000_T_6000);
-    else                L_H = 0.e0;
-    // collisions with H2
-    double L_H2 = 0.e0;
-    L_H2 = CoolingH2collisionLowDensityLimitBody(logT3,a_wH2_100_T_6000);
-    //if(T<=6.e+3)        L_H2 = CoolingH2collisionLowDensityLimitBody(logT3,a_wH2_100_T_6000);
-    //else                L_H2 = 0.e0;
-    //if(T<=1.e+2)        L_H2 = 0.e0;
-    //else if(T<=6.e+3)   L_H2 = CoolingH2collisionLowDensityLimitBody(logT3,a_wH2_100_T_6000);
-    //else                L_H2 = 0.e0;
-    // collisions with He
-    double L_He = 0.e0;
-    if(T<=1.e+1)        L_He = 0.e0;
-    else if(T<=6.e+3)   L_He = CoolingH2collisionLowDensityLimitBody(logT3,a_wHe_10_T_6000);
-    else                L_He = 0.e0;
-    // collisions with HII
-    double L_Hp = 0.e0;
-    if(T<=1.e+1)        L_Hp = 0.e0;
-    else if(T<=1.e+4)   L_Hp = CoolingH2collisionLowDensityLimitBody(logT3,a_wHp_10_T_10000);
-    // collisions with e
-    double L_el = 0.e0;
-    if(T<=1.e+1)        L_el = 0.e0;
-    else if(T<=2.e+2)   L_el = CoolingH2collisionLowDensityLimitBody(logT3,a_wel_10_T_200   );
-    else if(T<=1.e+4)   L_el = CoolingH2collisionLowDensityLimitBody(logT3,a_wel_200_T_10000);
-    else                L_el = 0.e0;
+    const double logT3 = log10(T)-3.0;
+    // Extend each Table 8 fit continuously with its upper endpoint value.
+    const double neutralLogT3 = T > 6000.0 ? log10(6000.0)-3.0 : logT3;
+    const double chargedLogT3 = T > 10000.0 ? 1.0 : logT3;
+
+    double L_H = 0.0, L_He = 0.0, L_Hp = 0.0, L_el = 0.0;
+    const double L_H2 = CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wH2_100_T_6000);
+    if(T > 10.0){
+        if(T <= 100.0)        L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_10_T_100);
+        else if(T <= 1000.0)  L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_100_T_1000);
+        else                  L_H = CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wH_1000_T_6000);
+        L_He = CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wHe_10_T_6000);
+        L_Hp = CoolingH2collisionLowDensityLimitBody(chargedLogT3,a_wHp_10_T_10000);
+        L_el = T <= 200.0 ?
+               CoolingH2collisionLowDensityLimitBody(logT3,a_wel_10_T_200) :
+               CoolingH2collisionLowDensityLimitBody(chargedLogT3,a_wel_200_T_10000);
+    }
     // total H2 cooling [erg/s/cc]
     return nH2*(nHI*L_H + nH2*L_H2 + nHe*L_He + nHII*L_Hp + ne*L_el);
 }
@@ -699,7 +682,7 @@ double HeatingH2Formation(StructCEQData *PhydroPP){
     //double G0  = PhydroPP->G0;
     double Zd  = PhydroPP->Zd;
     double T   = PhydroPP->T;
-    double Td  = PhydroPP->Td;
+    double Td  = EffectiveDustTemperature(PhydroPP);
     //double b5  = 12.90*sqrt(1.e-4*T);    // eq(6.34) of Draine's textbook
     double b5  = sqrt(SQ(12.90*sqrt(1.e-4*T))+SQ(b_turb));    // eq(6.34) of Draine's textbook
     double yHI  = nHI/nH;
@@ -728,19 +711,26 @@ double HeatingH2Formation(StructCEQData *PhydroPP){
 static double f_co_self(double logNco){
     if(logNco<TableNco[0])                          return 0.e0;
     if(logNco>TableNco[NumberTableShieldingCO-1])   return -7.0;
-    return gsl_spline_eval(logShieldCOAccess,logNco,logNcoAccess);
+    return gsl_spline_eval(logShieldCOAccess,logNco,NULL);
 }
 static double f_co_H2(double logNh2){
     if(logNh2<TableNh2[0])                          return 0.e0;
     if(logNh2>TableNh2[NumberTableShieldingH2-1])   return -7.0;
-    return gsl_spline_eval(logShieldH2Access,logNh2,logNh2Access);
+    return gsl_spline_eval(logShieldH2Access,logNh2,NULL);
+}
+
+int CEQCOShieldingPointCount(void){
+    return NumberTableShieldingCO;
+}
+
+void CEQCOShieldingPoint(int index, double *logColumn, double *logFactor){
+    *logColumn = TableNco[index];
+    *logFactor = TableShieldingCO[index];
 }
 double COShieldingFactor(double Nh2, double Nco, double b5){
     //double f_self = COSelfShieldingFactor(Nco,b5);
     //double f_H2   = H2SelfShieldingFactor(N2,b5);
     //return f_self*f_H2;
-    //double f_self = gsl_spline_eval(logShieldCOAccess,log10(Nco),logNcoAccess);
-    //double f_H2   = gsl_spline_eval(logShieldH2Access,log10(Nh2),logNh2Access);
     double f_self = f_co_self(log10(MAX(Nco,1.e0)));
     double f_H2   = f_co_H2(log10(MAX(Nh2,1.e0)));
     return pow(10.0,f_self+f_H2);
@@ -899,7 +889,7 @@ double CoolingCORovibrationalLine(StructCEQData *PhydroPP){
     double nH2 = PhydroPP->nmol [ipH2];
     double nCO = PhydroPP->nmol [ipCO];
     double T   = PhydroPP->T;
-    if(nCO<=1.e-10) return 0.e0;
+    if(nCO<=0.0) return 0.e0;
     return CoolingCORovibrationalLineHollenbachMcKee(T,nCO,nH,nHI,nH2);
     //return CoolingCORovibrationalLineNeufeldKaufman(T,nCO,nH,nHI,nH2);
 }
