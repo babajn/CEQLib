@@ -11,10 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "Astro.h"
-#include "ChemicalEquilibriumCooling.h"
+#include "MolecularFixture.h"
 #include "CollisionalGasPhaseChemistry.h"
-#include "Constants.h"
 #include "CosmicRay.h"
 #include "EquilibriumAbundance.h"
 #include "GrainSurfaceChemistry.h"
@@ -27,29 +25,10 @@ static const double chemistryAccuracy = 1.0e-9;
 static const double balanceLimit = 1.0e-6;      /* Each balance, relative to its larger flux. */
 static const double consistencyLimit = 1.0e-6;  /* CO change when re-solved from the final H2. */
 
-typedef struct {
-    double nH, T, G0, Nt, logU;   /* logU = -INFINITY for no ionizing flux. */
-} Condition;
-
 static double Relative(double a, double b)
 {
     const double scale = fmax(fabs(a), fabs(b));
     return scale > 0.0 ? fabs(a-b)/scale : 0.0;
-}
-
-static StructCEQData GasState(Condition c)
-{
-    const double nH = c.nH, Z = SOLAR_METALLICITY;
-    StructCEQData s = {
-        .T = c.T, .Nt = c.Nt, .Z = Z, .Zd = Z, .G0 = c.G0, .X0 = 1.0, .nel = 1.0e-3*nH,
-        .NLyn = isfinite(c.logU) ? pow(10.0, c.logU)*nH*LIGHT_C_CGS : 0.0,
-        .n = {nH, 0.1*nH, 3.019952e-4*nH, 4.570882e-4*nH, 3.548134e-6*nH},
-    };
-    for(int i = 0; i < NumberChemicalElement; i++){
-        s.natom[i] = s.n[i];
-        s.Rho += s.n[i]*ChemicalElementMass[i];
-    }
-    return s;
 }
 
 /* Reaction fluxes [cm^-3 s^-1] built from the same rate functions as the solver. */
@@ -234,16 +213,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s PEGASE2_DIRECTORY\n", argv[0]);
         return EXIT_FAILURE;
     }
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(true);
-    CEQLibSetRunParamGrainSurfaceProcesses(true);
-    CEQLibSetRunParamCosmicRayIonization(true);
-    CEQLibSetRunParamSoftXrayIonization(true);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    CEQLibSetRunParamHIIRegion(true);
-    CEQLibSetRunParamH2Formation(true, 1.0);
-    CEQLibSetRunParamCOFormation(true, 1.0);
-    if(CEQLibTryInitialization(0, argv[1]) != CEQ_SUCCESS) return EXIT_FAILURE;
+    if(InitializeMolecularFixture(argv[1]) != CEQ_SUCCESS) return EXIT_FAILURE;
 
     FILE *grid = fopen("equilibrium.csv", "w");
     FILE *scan = fopen("column_scan.csv", "w");

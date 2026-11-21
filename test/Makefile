@@ -40,7 +40,7 @@ HEADS = Astro.h \
 
 ALL:   start
 
-.PHONY: start ceqlib check benchmark hii hii-benchmark hii-plot co co-plot wolfire-plot
+.PHONY: start ceqlib check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot
 ceqlib:
 	$(MAKE) -C $(CEQLIB_DIR) GSL_DIR=$(GSL_DIR) libCEQLib.a
 
@@ -82,7 +82,7 @@ hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h ceqlib
 hii-plot: hii
 	$(PYTHON) ../plot/plot_hii_region.py
 
-co: MolecularTest.c ceqlib
+co: MolecularTest.c MolecularFixture.h ceqlib
 	mkdir -p out/co
 	$(CC) $(CFLAGS) -fno-fast-math MolecularTest.c $(LDFLAGS) -o out/molecular_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/co.XXXXXX"); \
@@ -93,11 +93,22 @@ co: MolecularTest.c ceqlib
 co-plot: co
 	$(PYTHON) ../plot/plot_co_chemistry.py
 
+molecular-settings-benchmark: MolecularSettingsBenchmark.c MolecularFixture.h ceqlib
+	mkdir -p out/co
+	$(CC) $(CFLAGS) -fno-fast-math MolecularSettingsBenchmark.c $(LDFLAGS) -o out/molecular_settings_benchmark.out
+	@set -e; csv=$$(mktemp "$(CURDIR)/out/co/settings.XXXXXX"); \
+	trap 'rm -f "$$csv"' EXIT; \
+	./out/molecular_settings_benchmark.out "$(abspath ../data/PEGASE2)" > "$$csv"; \
+	mv "$$csv" out/co/molecular_settings.csv
+
+molecular-settings-plot: molecular-settings-benchmark
+	$(PYTHON) ../plot/plot_molecular_settings.py
+
 wolfire-plot:
 	$(PYTHON) ../plot/plot_wolfire1995.py
 
 clean:
-	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out
+	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out
 
 tag:
 	ctags *.[c,h]

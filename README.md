@@ -88,6 +88,18 @@ CO 化学を使う場合は、`CEQLibSetRunParamH2Formation(true, 1.0)` と `CEQ
 
 CO を無効にした `make hii-benchmark` と同じ条件で、電荷交換を無効にして化学平衡の許容誤差を `1e-5` にすると、エネルギー更新1回あたりの時間は既定値の 0.6〜0.8 倍になりました。電荷交換を加える前の版と比べても 0.3〜0.6 倍です。測定値は単一スレッドの例で、計算機によって変わります。
 
+### H₂・CO・H–O 電荷交換の設定比較
+
+```sh
+make -C test molecular-settings-plot
+```
+
+「H₂ と CO」「H₂ のみ」「分子なし」のそれぞれを、H–O 電荷交換の有効・無効と組み合わせて比較します。全設定で H II モード、ダスト、宇宙線、軟 X 線、CIE 冷却を有効にします。太陽金属量で、水素核数密度は `10⁻²〜10⁴ cm⁻³`（0.5 dex 刻み）、初期温度は `30, 100, 300, 1000, 3000, 8000, 15000 K`、電離光子束は照射なしと `log10(U) = −5, −3` です。全柱密度は `N_H = 10²⁰ sqrt(n_H / cm⁻³) cm⁻²`、`G0 = 1.7`、`X0 = 1` です。各設定で同じ初期温度の化学平衡を作り、その組成から内部エネルギーを設定してから、10 年・1 万年・100 万年をそれぞれ独立に1ステップ更新します。更新時の許容誤差は化学平衡が `1e-5`、エネルギー方程式が `1e-4` です。
+
+`make -C test molecular-settings-benchmark` は条件別の結果と収束ステータスを `test/out/co/molecular_settings.csv` に保存します。計算時間は単一スレッドの CPU 時間です。全設定で収束した共通条件について、5回の測定の平均時間の中央値と範囲を図に表示します。温度・内部エネルギー変化・化学組成の差は、比較する両設定で収束した条件を対応づけて集計します。データの図と集計表は `plot/out/co/settings/` に保存します。描画済みの時間刻みを変える場合は、リポジトリのルートで `python3 plot/plot_molecular_settings.py --dt 1e6` のように指定します。
+
+Jupyter では [RunMolecularSettingsBenchmark.ipynb](test/RunMolecularSettingsBenchmark.ipynb) で計算を実行し、設定ごとの収束数と失敗した条件を確認できます。[PlotMolecularSettings.ipynb](plot/PlotMolecularSettings.ipynb) は同じ CSV を読み込み、計算時間と結果の差を表示します。結果の図に使う時間刻みは、ノートブックの `dt_years` で切り替えられます。
+
 ## H II 領域の検証計算と描画
 
 ```sh
