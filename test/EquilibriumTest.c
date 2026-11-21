@@ -47,6 +47,26 @@ static void CheckAtomicEquilibrium(void)
     assert(isfinite(state.H_tot) && isfinite(state.L_tot));
 }
 
+static void CheckIonizedGasEquationOfState(void)
+{
+    const double nH = 1.0;
+    StructCEQData state = {
+        .T = 1.0e6,
+        .Rho = nH * ChemicalElementMass[ipHYDROGEN],
+        .n = {[ipHYDROGEN] = nH},
+        .nel = nH,
+    };
+    assert(CEQLibChemicalReactionEquilibrium(&state,1.0e-9) == CEQ_SUCCESS);
+    assert(state.nion[ipHYDROGEN] > 0.999 * nH);
+    assert(fabs(state.DegreeOfFreedom - 1.5) < 1.0e-12);
+    assert(fabs(state.Gamma - 5.0/3.0) < 1.0e-12);
+
+    const double expectedU = 1.5 * (nH + state.nel) * BOLTZMANN_CONSTANT_CGS * state.T / state.Rho;
+    assert(fabs(CEQLibConvertTtoU(&state) - expectedU) < 1.0e-12 * expectedU);
+    state.U = expectedU;
+    assert(fabs(CEQLibConvertUtoT(&state) - state.T) < 1.0e-12 * state.T);
+}
+
 static void CheckFailureStatus(void)
 {
     StructCEQData state = GasState(0.001,13242.50,1.0e18);
@@ -91,6 +111,7 @@ static void CheckLowIonizationXraySearch(void)
 
 static void CheckAtomicThermalNumerics(void)
 {
+    const double accuracy = 1.0e-8;
     const double samples[][2] = {{870963.6,128.5617}, {2.290868,10004.58}};
     for(size_t i = 0; i < sizeof(samples)/sizeof(samples[0]); i++){
         StructCEQData state = GasState(samples[i][0],samples[i][1],1.0e19);
@@ -98,12 +119,54 @@ static void CheckAtomicThermalNumerics(void)
         state.X0 = 1000.0;
         state.nel = 0.9*state.n[ipHYDROGEN];
         state.dt = 1000.0*YEAR_CGS;
-        const double oldU = state.U;
-        assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,1.0e-8,&state.Du) == CEQ_SUCCESS);
-        state.U += state.dt*state.Du;
+        assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,accuracy,&state.Du) == CEQ_SUCCESS);
+        const double change = state.dt*state.Du;
         const double source = state.dt*(state.H_tot-state.L_tot)/state.Rho;
-        assert(fabs(state.U-oldU-source) < 1.0e-11*oldU);
+        assert(fabs(change-source) <= accuracy*fmax(fabs(change),fabs(source)));
+        state.U += change;
         assert(fabs(CEQLibConvertTtoU(&state)-state.U) < 1.0e-12*state.U);
+    }
+}
+
+/* Isochoric cooling over a fixed interval, split into equal implicit steps. */
+static double CoolIsochorically(double nH, double temperature, double duration, int steps)
+{
+    StructCEQData state = GasState(nH,temperature,1.0e20*sqrt(nH));
+    state.nel = 1.0e-3*nH;
+    assert(CEQLibChemicalReactionEquilibrium(&state,1.0e-9) == CEQ_SUCCESS);
+    state.U = CEQLibConvertTtoU(&state);
+    state.dt = duration/steps;
+    for(int step = 0; step < steps; step++){
+        assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,1.0e-4,&state.Du) == CEQ_SUCCESS);
+        state.U += state.dt*state.Du;
+        assert(isfinite(state.U) && state.U > 0.0);
+    }
+    return state.T;
+}
+
+static void CheckHotGasTimeStepConvergence(void)
+{
+    const double duration = 2.0e5*YEAR_CGS;
+
+    /* When the step is shorter than the cooling time, one step matches a fine integration. */
+    const double diffuse[][2] = {{0.1,1.0e6}, {0.1,1.0e7}};
+    for(size_t i = 0; i < sizeof(diffuse)/sizeof(diffuse[0]); i++){
+        const double coarse = CoolIsochorically(diffuse[i][0],diffuse[i][1],duration,1);
+        const double fine = CoolIsochorically(diffuse[i][0],diffuse[i][1],duration,1000);
+        assert(fabs(coarse-fine) <= 0.01*fine);
+    }
+
+    /* A step longer than the cooling time succeeds but is not accurate: at nH = 1-10
+       a single step leaves the gas 1.6-3 times hotter than the fine integration.
+       Refining the step must still converge toward the fine result. */
+    const double dense[] = {1.0, 10.0};
+    for(size_t i = 0; i < sizeof(dense)/sizeof(dense[0]); i++){
+        const double fine = CoolIsochorically(dense[i],1.0e6,duration,1000);
+        const double error10 = fabs(CoolIsochorically(dense[i],1.0e6,duration,10)-fine);
+        const double error100 = fabs(CoolIsochorically(dense[i],1.0e6,duration,100)-fine);
+        assert(fine < 1.0e4);
+        assert(error100 < error10);
+        assert(error100 <= 0.05*fine);
     }
 }
 
@@ -345,10 +408,12 @@ int main(int argc, char **argv)
     const double cosmicRayHeating = TotalCosmicRayHeatingRate(&probe);
     assert(isfinite(cosmicRayHeating) && cosmicRayHeating > 0.0);
     CheckAtomicEquilibrium();
+    CheckIonizedGasEquationOfState();
     CheckFailureStatus();
     CheckZeroElectronSeed();
     CheckLowIonizationXraySearch();
     CheckAtomicThermalNumerics();
+    CheckHotGasTimeStepConvergence();
 
     CEQLibiSetRunParamH2Formation(true,1.0);
     CEQLibiSetRunParamCOFormation(true,1.0);

@@ -44,8 +44,8 @@ struct StructCEQLibParameters_tag CEQLibRunParameters;
 //static double EnergyEquationSolverChemcalEquilibriumCoolingHeatingLSODASubcycle(struct StructPhydroPP_tag *PhydroPP, double Accuracy);
 //#endif
 
-#define NumberOfFreedomForSingleAtoms   (3.0)       // transverse motion
-#define NumberOfFreedomForMolecules     (5.0)       // transverse motion + rotation
+#define NumberOfTranslationalDegreesOfFreedom (3.0)
+#define NumberOfFreedomForMolecules          (5.0) // translation + rotation
 
 
 static bool EnsureDiagnosticDirectory(const char *path){
@@ -418,14 +418,15 @@ double CEQLibGetMeanMolecularWeight(StructCEQData *PhydroPP){
 
 double CEQLibGetMeanDegreeOfFreedom(StructCEQData *PhydroPP){
     double Ntot    = CEQLibGetTotalNumberDensity(PhydroPP);
-    double Freedom = PhydroPP->nHeIII*NumberOfFreedomForSingleAtoms
-                   + PhydroPP->nCIII *NumberOfFreedomForSingleAtoms
-                   + PhydroPP->nOIII *NumberOfFreedomForSingleAtoms
-                   + PhydroPP->nSiIII*NumberOfFreedomForSingleAtoms;
+    double Freedom = PhydroPP->nHeIII*NumberOfTranslationalDegreesOfFreedom
+                   + PhydroPP->nCIII *NumberOfTranslationalDegreesOfFreedom
+                   + PhydroPP->nOIII *NumberOfTranslationalDegreesOfFreedom
+                   + PhydroPP->nSiIII*NumberOfTranslationalDegreesOfFreedom;
     for(int i=0; i<NumberChemicalElement; i++)
-        Freedom += (PhydroPP->nion[i] + PhydroPP->natom[i])*NumberOfFreedomForSingleAtoms;
+        Freedom += (PhydroPP->nion[i] + PhydroPP->natom[i])*NumberOfTranslationalDegreesOfFreedom;
     for(int i=0; i<NumberMoleculeSpeacies; i++)
         Freedom += PhydroPP->nmol[i]*NumberOfFreedomForMolecules;
+    Freedom += PhydroPP->nel*NumberOfTranslationalDegreesOfFreedom;
     return 0.5*Freedom/Ntot;
 }
 
