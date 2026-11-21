@@ -77,7 +77,7 @@ EQCLibStatus EQCLibTryInitialization(int Check, const char *pegaseDirectory){
     InitializeCosmicRayIonization(Check);
     InitializeHyperFineStructureLines(Check);
     InitializeSoftXrayIonization(Check);
-    InitializeCoolingTableCIE(Check);
+    if(!InitializeCoolingTableCIE(Check)) return EQC_INITIALIZATION_FAILED;
     CEQInitializeNonEquilibriumTemperatureTables();
     
     if(Check==1)
@@ -295,12 +295,13 @@ void EQCLibCalulateChemcalAbundanceCoolingHeatingRates(StructEQCData *PhydroPP){
     }
 }
 
+static const double OxygenTaperStart = 1.5e4;
+static const double OxygenTaperEnd = 2.5e4;
+
 static double PhotoionizedOxygenWeight(const StructEQCData *state)
 {
-    const double taperStart = 1.5e4;
-    const double taperEnd = 2.5e4;
     const double nH = state->n[ipHYDROGEN];
-    if(!EQCLibRunParameters.UseHIIRegion || state->NLyn <= 0.0 || state->T >= taperEnd || nH <= 0.0)
+    if(!EQCLibRunParameters.UseHIIRegion || state->NLyn <= 0.0 || state->T >= OxygenTaperEnd || nH <= 0.0)
         return 0.0;
 
     const double photoionization = HIPhotoIonizationRate(state->NLyn);
@@ -309,8 +310,24 @@ static double PhotoionizedOxygenWeight(const StructEQCData *state)
     const double otherIonization = state->nel*HICollisionalIonizationRate(state->T)
                                  + state->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,state->Nt));
     const double ionizedFraction = fmax(0.0,fmin(1.0,state->nion[ipHYDROGEN]/nH));
-    const double warm = fmin(1.0,(taperEnd-state->T)/(taperEnd-taperStart));
+    const double warm = fmin(1.0,(OxygenTaperEnd-state->T)/(OxygenTaperEnd-OxygenTaperStart));
     return ionizedFraction * (photoionization/(photoionization+otherIonization)) * warm*warm*(3.0-2.0*warm);
+}
+
+static double NonEquilibriumOxygenWeight(const StructEQCData *state)
+{
+#ifdef EQC_LEGACY_NONEQUILIBRIUM_OXYGEN_COOLING
+    /* Build the reference cooling model for the comparison test. */
+    (void)state;
+    return 1.0;
+#else
+    if(!EQCLibRunParameters.UseCIEResonanceCooling || state->Z == 0.0) return 1.0;
+    const double temperature = state->T;
+    if(temperature <= OxygenTaperStart) return 1.0;
+    if(temperature >= OxygenTaperEnd) return 0.0;
+    const double warm = (OxygenTaperEnd-temperature)/(OxygenTaperEnd-OxygenTaperStart);
+    return warm*warm*(3.0-2.0*warm);
+#endif
 }
 
 static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilibrium, bool lineDiagnostics,
@@ -318,7 +335,6 @@ static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilib
 
     if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return EQC_INVALID_INPUT;
 
-    /* The aggregate metal CIE table cannot be decomposed by ion. */
     PhydroPP->L_res = nonEquilibrium ? 0.0 : CoolingRateCIE(PhydroPP);
     if(!isfinite(PhydroPP->L_res)) return EQC_INVALID_INPUT;
 
@@ -371,8 +387,21 @@ static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilib
     PhydroPP->L_OIII    = 0.e0;
     PhydroPP->L_OII     = 0.e0;
     if(nonEquilibrium){
-        PhydroPP->L_OII = CEQCoolingLinesOIIWithTemperatureTable(T,PhydroPP->nel,PhydroPP->nion[ipOXYGEN],point);
-        PhydroPP->L_OIII = CEQCoolingLinesOIIIWithTemperatureTable(T,PhydroPP->nel,PhydroPP->nOIII,point);
+        const double oxygenWeight = NonEquilibriumOxygenWeight(PhydroPP);
+        if(oxygenWeight > 0.0){
+            PhydroPP->L_OII = oxygenWeight*CEQCoolingLinesOIIWithTemperatureTable(T,PhydroPP->nel,PhydroPP->nion[ipOXYGEN],point);
+            PhydroPP->L_OIII = oxygenWeight*CEQCoolingLinesOIIIWithTemperatureTable(T,PhydroPP->nel,PhydroPP->nOIII,point);
+        }
+        if(oxygenWeight < 1.0){
+            /* Approximate the hot metal cooling with the aggregate CIE table. */
+#ifdef EQC_LINEAR_NONEQUILIBRIUM_CIE
+            const double cie = CoolingRateCIE(PhydroPP);
+#else
+            const double cie = CEQNonEquilibriumCoolingRateCIE(PhydroPP);
+#endif
+            PhydroPP->L_res = (1.0-oxygenWeight)*cie;
+            if(!isfinite(PhydroPP->L_res)) return EQC_INVALID_INPUT;
+        }
     }else{
         const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP);
         if(!isfinite(oxygenWeight)) return EQC_INVALID_INPUT;

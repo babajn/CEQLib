@@ -40,7 +40,7 @@ HEADS = Astro.h \
 
 ALL:   start
 
-.PHONY: start eqclib check cell-check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-plot
+.PHONY: start eqclib check cell-check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot
 eqclib:
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
@@ -60,6 +60,7 @@ check: EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o eqcli
 
 EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o: override CFLAGS += -fno-fast-math
 HydrogenChemistryTest.o ThermochemistryModeTest.o: $(EQCLIB_DIR)/ChemicalEquilibriumCooling.h
+HydrogenChemistryTest.o: $(EQCLIB_DIR)/CoolingCIE.h $(EQCLIB_DIR)/CoolingHeatingRates.h
 
 cell-check: eqclib
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) eqclib-cell
@@ -133,11 +134,33 @@ noneq-benchmark: NonEquilibriumBenchmark.c eqclib
 	"$(CURDIR)/out/non_equilibrium_benchmark.out" "$(abspath ../data/PEGASE2)"; \
 	mv benchmark.csv "$(CURDIR)/out/noneq/"
 
-noneq-plot: noneq noneq-benchmark
+# Use the production archive for all variants. Override just its cooling
+# module in the reference executables.
+noneq-hot: NonEquilibriumHotCoolingTest.c eqclib
+	mkdir -p out/noneq
+	$(CC) $(CFLAGS) -fno-fast-math -c NonEquilibriumHotCoolingTest.c -o out/noneq_hot_driver.o
+	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) ChemicalEquilibriumCoolingLegacy.o ChemicalEquilibriumCoolingLinearCIE.o
+	$(CC) out/noneq_hot_driver.o $(EQCLIB_DIR)/libEQCLib.a $(filter-out -lEQCLib,$(LDFLAGS)) -o out/noneq_hot_current.out
+	$(CC) out/noneq_hot_driver.o $(EQCLIB_DIR)/ChemicalEquilibriumCoolingLegacy.o $(EQCLIB_DIR)/libEQCLib.a $(filter-out -lEQCLib,$(LDFLAGS)) -o out/noneq_hot_legacy.out
+	$(CC) out/noneq_hot_driver.o $(EQCLIB_DIR)/ChemicalEquilibriumCoolingLinearCIE.o $(EQCLIB_DIR)/libEQCLib.a $(filter-out -lEQCLib,$(LDFLAGS)) -o out/noneq_hot_linear.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq-hot.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	mkdir legacy cie_linear cie_bridge; \
+	(cd legacy && "$(CURDIR)/out/noneq_hot_legacy.out" "$(abspath ../data/PEGASE2)" legacy); \
+	(cd cie_linear && "$(CURDIR)/out/noneq_hot_linear.out" "$(abspath ../data/PEGASE2)" cie_linear); \
+	(cd cie_bridge && "$(CURDIR)/out/noneq_hot_current.out" "$(abspath ../data/PEGASE2)" cie_bridge); \
+	for name in hot_cooling hot_benchmark oxygen_after_switch; do \
+	    cat "legacy/$$name.csv" > "$$name.csv"; \
+	    tail -n +2 "cie_linear/$$name.csv" >> "$$name.csv"; \
+	    tail -n +2 "cie_bridge/$$name.csv" >> "$$name.csv"; \
+	done; \
+	mv hot_cooling.csv hot_benchmark.csv oxygen_after_switch.csv "$(CURDIR)/out/noneq/"
+
+noneq-plot: noneq noneq-benchmark noneq-hot
 	$(PYTHON) ../plot/plot_noneq.py
 
 clean:
-	rm -f $(OBJS) test.out EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o out/equilibrium_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out
+	rm -f $(OBJS) test.out EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o out/equilibrium_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out out/noneq_hot_driver.o out/noneq_hot_current.out out/noneq_hot_legacy.out out/noneq_hot_linear.out
 
 tag:
 	ctags *.[c,h]

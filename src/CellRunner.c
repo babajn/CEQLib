@@ -152,7 +152,12 @@ static EQCLibStatus InitializeCell(const CellSettings *settings, StructEQCData *
     }
     state.Rho = EQCLibGetTotalMassDensity(&state);
     if(!isfinite(state.Rho) || state.Rho <= 0.0) return EQC_INVALID_INPUT;
-    state.Z = (state.n[ipCARBON]*ChemicalElementMass[ipCARBON]+state.n[ipOXYGEN]*ChemicalElementMass[ipOXYGEN])/state.Rho;
+    if(nonequilibrium){
+        /* The aggregate CIE table uses the full solar metal mixture. */
+        state.Z = SOLAR_METALLICITY;
+    }else{
+        state.Z = (state.n[ipCARBON]*ChemicalElementMass[ipCARBON]+state.n[ipOXYGEN]*ChemicalElementMass[ipOXYGEN])/state.Rho;
+    }
     state.invT = 1.0/state.T;
     state.logT = log10(state.T);
     if(nonequilibrium){
@@ -207,6 +212,7 @@ int main(int argc, char *argv[])
     EQCLibSetRunParamDustAttenuation(true);
     EQCLibSetRunParamGrainSurfaceProcesses(true);
     const bool nonequilibrium = settings.chemistryMode == EQC_CHEMISTRY_NONEQUILIBRIUM;
+    EQCLibSetRunParamCIEResonanceCooling(nonequilibrium);
     const bool useH2 = settings.Zd > 0.0 || (nonequilibrium && settings.molecularHydrogen > 0.0);
     EQCLibSetRunParamH2Formation(useH2,1.0);
     if(EQCLibTryInitialization(0,argc == 3 ? argv[2] : NULL) != EQC_SUCCESS) return EXIT_FAILURE;

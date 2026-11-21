@@ -4,7 +4,7 @@
 
 ## ビルドと検証
 
-C99 対応の GCC と GNU Scientific Library（GSL）が必要です。以下の `GSL_DIR` は GSL のインストール先に合わせてください。`make -C test benchmark` は OpenMP を使用します。
+C99 対応の GCC と Steffen 補間（`gsl_interp_steffen`）に対応した GNU Scientific Library（GSL）が必要です。以下の `GSL_DIR` は GSL のインストール先に合わせてください。`make -C test benchmark` は OpenMP を使用します。
 
 ```sh
 make -C src GSL_DIR="$HOME/lib/gsl" libEQCLib.a
@@ -20,7 +20,7 @@ OMP_NUM_THREADS=12 make -C test GSL_DIR="$HOME/lib/gsl" benchmark
 
 ```sh
 make -C test GSL_DIR="$HOME/lib/gsl" co hii noneq
-make -j1 -C test GSL_DIR="$HOME/lib/gsl" molecular-settings-benchmark hii-benchmark noneq-benchmark
+make -j1 -C test GSL_DIR="$HOME/lib/gsl" molecular-settings-benchmark hii-benchmark noneq-benchmark noneq-hot
 ```
 
 Wolfire の検証と Cloudy の比較は個別の手順で実行します。計算後、Jupyter で `plot/` の各ノートブックのセルを先頭から実行し、保存すると図と集計表が更新されます。 [Wolfire の実行手順](#wolfire-et-al-1995-の検証計算と描画)、[Cloudy の実行手順](#cloudy-との比較)
@@ -54,7 +54,7 @@ cp examples/cell.conf cell.conf
 
 `NLyn` が正の場合は、第2引数に PEGASE2 のディレクトリを指定します。リポジトリのルートからなら `./src/eqclib-cell cell.conf data/PEGASE2` です。標準出力の CSV には初期状態と各ステップ後の温度、組成、加熱・冷却率 [erg cm⁻³ s⁻¹] が入ります。
 
-`chemistry_mode` は `eqclib-cell` の起動時に読み込みます。`make -C test cell-check` で両モードの初期組成と極短ステップでの温度を検証できます。この反応網の酸素は O²⁺ までです。さらに電離した酸素が重要な高温ガスでは、冷却率の比較にこの制約が効きます。この実行プログラムでは集約金属 CIE 冷却をオフにしています。
+`chemistry_mode` は `eqclib-cell` の起動時に読み込みます。非平衡モードでは高温側の金属 CIE 冷却を有効にし、CIE 表には全金属の太陽質量分率 `Z = 0.019` を使います。平衡モードでは金属 CIE 冷却を無効にします。`make -C test cell-check` で両モードの初期組成と極短ステップでの温度を検証できます。 [非平衡化学と熱の連成](#固定密度での非平衡化学と熱の連成)
 
 ## シミュレーションコードからの利用
 
@@ -124,7 +124,19 @@ Si を含む場合は `n[ipSILICON]`、`nion[ipSILICON]`、`nSiIII` に Si 核�
 
 非平衡の熱化学更新では CO 生成を無効にして `nmol[ipCO] = 0` とします。CO 生成が有効、または入力の CO 数密度がゼロ以外の状態で正の時間刻みを指定すると、共通 API と熱化学 API は `EQC_INVALID_INPUT` を返し、入力状態を保持します。CO の化学と冷却を扱う場合は平衡モードを使います。
 
-積分中は、その時点の組成で状態方程式と冷却・加熱率を評価し、`dU/dt = (H_tot - L_tot) / Rho` で熱を進めます。He I・He II の光電離加熱と、He の励起・電離・再結合などの冷却には現在の組成と電子密度を使います。H₂ の回転振動冷却で衝突相手になる中性ヘリウムにも He I の現在値を使います。既定で H–O 電荷交換の3反応を含めます。消灯後も、残っている C⁺ から [C II] 158 µm、O⁺・O²⁺ から [O II]・[O III] 冷却をその時点の温度・組成で評価します。金属冷却には個別の輝線を使うため、集約金属 CIE 項 `L_res` はゼロです。
+積分中は、その時点の組成で状態方程式と冷却・加熱率を評価し、`dU/dt = (H_tot - L_tot) / Rho` で熱を進めます。He I・He II の光電離加熱と、He の励起・電離・再結合などの冷却には現在の組成と電子密度を使います。H₂ の回転振動冷却で衝突相手になる中性ヘリウムにも He I の現在値を使います。既定で H–O 電荷交換の3反応を含めます。消灯後も、残っている C⁺ から [C II] 158 µm、O⁺・O²⁺ から [O II]・[O III] 冷却をその時点の温度・組成で評価します。
+
+高温側の金属冷却を補うには `EQCLibSetRunParamCIEResonanceCooling(true)` を呼び、粒子の全金属の質量分率 `Z` に正の値を設定します。ライブラリの CIE 設定の既定値は `false` です。CIE を無効にした場合や `Z = 0` の場合は、すべての温度で [O II] と [O III] の輝線冷却をそのまま使い、`L_res` はゼロです。
+
+CIE が有効で `Z > 0` の場合、酸素輝線冷却の重みは 15,000 K 以下で1、25,000 K 以上で0です。その間は `s = (25,000 K - T) / 10,000 K` として `s²(3 - 2s)` で滑らかに変えます。金属 CIE（衝突電離平衡）冷却表の値に、酸素輝線の重みを1から引いた値を掛けて `L_res` に加えます。消灯直後の温度と組成はそのままなので、輝線冷却も連続し、その後は再結合と温度の変化に応じて変わります。
+
+非平衡モードでは、CIE 表の対数温度方向に各区間で単調な Steffen 補間を使います。表の内部の格子点で冷却係数と温度方向の傾きが連続になり、積分器が細かいステップを取り直す回数を抑えます。格子点間の冷却率は補間方式によって変わります。平衡モードでは対数温度方向の線形補間を使います。非平衡計算を線形補間と Steffen 補間で比較する際は、格子点、金属量の補間、酸素輝線との切り替えの重み、高温側の外挿をそろえます。 [CIE の実装](src/CoolingCIE.c)
+
+温度による重みは切り替え区間内の光電離ガスにも適用します。照射が強い条件で混ざる CIE 項も、衝突電離平衡に基づく集約金属冷却の近似です。CIE 表の外挿上限は 10⁹ K で、酸素の時間発展は O I〜O III を追います。
+
+`make -C test check` は、17,600 K で温度と組成を固定して電離光を切り替えたときに、酸素輝線と CIE の冷却率が連続することと、照射下で熱化学更新が進むことを確認します。 [熱化学のテスト](test/HydrogenChemistryTest.c)
+
+外部照射のない冷却ガスでも、再結合の遅れにより非平衡冷却率が CIE の値より低くなる温度域があります。 [Gnat & Sternberg (2007)](https://arxiv.org/abs/astro-ph/0608181)
 
 C I の光電離には、`NLyn` が有効な場合は恒星スペクトルを使い、それ以外では遠紫外線 `G0` を使います。両方の照射を止める場合は `NLyn` と `G0` をゼロにします。[C II] の正味冷却では、宇宙マイクロ波背景の平均比強度を放射エネルギー密度に換算して吸収・誘導放射を評価します。成功時は API 内で `U`、温度、組成、状態方程式の諸量と、ステップ末の瞬時冷却・加熱率を更新します。`make -C test check` で照射切り替え後の炭素・ヘリウムの電離・再結合、温度、輝線冷却の応答を検証できます。
 
@@ -289,6 +301,24 @@ make -j1 -C test noneq-plot
 Jupyter の [PlotNonEquilibrium.ipynb](plot/PlotNonEquilibrium.ipynb) では、照射への応答、平衡・非平衡の冷却率と計算時間、解析解と時間刻みの検証を図と表で確認できます。再計算時の非平衡モードには既定の温度係数の表引きを使います。既定の出力先で必要なデータが不足していればテスト計算を実行します。再計算するときは最初のコードセルの `rerun` を `True` にし、保存済みの別の結果を描くときは `data_dir` を変更してください。
 
 [plot_noneq.py](plot/plot_noneq.py) は CSV から時間発展図 `ionizing_pulse.png`・`fuv_pulse.png`、数値検証図 `validation.png`、平衡との冷却率比較図 `ionizing_cooling_comparison.png`・`fuv_cooling_comparison.png`、計算時間図 `benchmark.png` を `plot/out/noneq/` に生成します。開発時の表引きの検証には、直接評価との時系列比較図 `ionizing_temperature_lookup.png`・`fuv_temperature_lookup.png` と計算時間図 `temperature_lookup_benchmark.png` を使えます。切り替え時刻や対数軸の表示範囲外の率は CSV に記録します。計算済みのデータを PNG に描き直す場合は `python3 plot/plot_noneq.py --data-dir test/out/noneq` を使います。
+
+### 高温ガスの冷却と消灯後の酸素輝線
+
+```sh
+make -j1 -C test noneq-hot
+```
+
+同じ固定密度のセルで、CIE 切り替えを導入する前の冷却式（`legacy`）、線形補間で CIE 冷却に切り替える実装（`cie_linear`）、Steffen 補間で CIE 冷却に切り替える現行実装（`cie_bridge`）を比較します。CSV は `test/out/noneq/` に出力します。
+
+従来版の高温セルでは [O III] が全冷却の大きな割合を占めていました。CIE を使う更新版ではその寄与を除いたうえで高温の集約金属冷却を補うため、この比較では全冷却率が増え、セルがより早く冷えます。例えば初期温度 10⁶ K のセルでは、初期の全冷却率は約 1.1×10⁻²¹ から 1.3×10⁻²⁰ erg cm⁻³ s⁻¹ に増えます。
+
+- `hot_cooling.csv` は、初期温度 10⁶ K と 10⁷ K、水素核密度 10 cm⁻³、太陽金属量の無照射セルの冷却履歴です。初期組成には H II・He III・C III・O III を使います。
+- `hot_benchmark.csv` は、これらの高温セルと初期温度 20,000 K のセルを、10年・1,000年・10万年の時間刻みで1回更新するときの CPU 時間を記録します。3方式を同じコンパイル設定と積分の許容誤差で比較し、ウォームアップ後、各条件を単一スレッドで5バッチ測ります。
+- `oxygen_after_switch.csv` は、8,000 K のセルを約16年照射し、消灯直前・直後とその後の酸素の電離分率と [O II]・[O III] 冷却率を記録します。
+
+初期温度 20,000 K の3条件では、Steffen 補間で1更新の CPU 時間が線形補間より11〜23%短縮しました。高温の冷却履歴で 25,000 K を下回る時刻の差は0.16%以下でした。同じ時刻の温度を比べると、10⁶ K からの急冷区間では最大約15%の差が出ます。消灯試験の酸素輝線の履歴は3方式で一致しました。
+
+ノートブックでは現行実装の高温冷却履歴と消灯後の酸素輝線を表示します。開発時の実装比較には上記の CSV と、`plot_noneq.py` が出力する `hot_cooling.png`、`hot_benchmark.png`、`oxygen_after_switch.png` を使えます。 [PlotNonEquilibrium.ipynb](plot/PlotNonEquilibrium.ipynb)
 
 ## 参考文献
 

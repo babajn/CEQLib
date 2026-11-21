@@ -104,9 +104,12 @@ void EQCLibSetRunParamDustAttenuation(bool Use);
 void EQCLibSetRunParamGrainSurfaceProcesses(bool Use);
 void EQCLibSetRunParamCosmicRayIonization(bool Use);
 void EQCLibSetRunParamSoftXrayIonization(bool Use);
-/* Extrapolate the CIE metal contribution above the table (10^8.5 K) with
-   sqrt(T) scaling up to 10^9 K. Higher temperatures return EQC_INVALID_INPUT
-   from the checked cooling and heating APIs when CIE is enabled. */
+/* Enable aggregate CIE metal cooling (default off). Non-equilibrium cooling
+   at positive Z mixes it in as [O II] and [O III] fade between 15000 and 25000 K
+   and uses Steffen interpolation in log temperature. Equilibrium uses linear
+   interpolation. Both use the same CIE table.
+   The CIE rate extrapolates above 10^8.5 K with sqrt(T) scaling up to 10^9 K.
+   Higher temperatures are outside the supported range when using CIE. */
 void EQCLibSetRunParamCIEResonanceCooling(bool Use);
 void EQCLibSetRunParamH2Formation(bool Use, double Cp);
 void EQCLibSetRunParamCOFormation(bool Use, double Cp);
@@ -137,7 +140,9 @@ EQCLibStatus EQCLibTryAdvanceHydrogenChemistry(StructEQCData *state, double accu
    returns EQC_INVALID_INPUT.
    Reconstruct T from U and the initial species, and nel from their charge.
    On success, update U, the species, T, the equation of state, and instantaneous
-   thermal rates, including [C II] 158 um, [O II] and [O III].
+   thermal rates, including [C II] 158 um, [O II] and [O III]. The oxygen
+   ion lines taper from 15000 to 25000 K independently of illumination
+   when CIE resonance cooling is enabled and Z is positive.
    A zero dt is a no-op. Errors leave the input state intact. */
 EQCLibStatus EQCLibTryAdvanceHydrogenThermochemistry(StructEQCData *state, double accuracy);
 /* Update U, temperature, composition and thermal rates over state->dt seconds

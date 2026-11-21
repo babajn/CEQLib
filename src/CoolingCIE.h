@@ -1,4 +1,6 @@
+#include <stdbool.h>
 #include "EQCDataStructure.h"
 
-void InitializeCoolingTableCIE(int Check);
+bool InitializeCoolingTableCIE(int Check);
 double CoolingRateCIE(StructEQCData *PhydroPP);
+double CEQNonEquilibriumCoolingRateCIE(const StructEQCData *state);

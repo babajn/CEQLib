@@ -108,8 +108,16 @@ libEQCLib.a: $(OBJS)
 eqclib-cell: CellRunner.o libEQCLib.a
 	$(CC) $(CFLAGS) $^ -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas -lm -o $@
 
+# Use the production object's dependency chain and compile flags for both references.
+ChemicalEquilibriumCooling.o: Makefile
+ChemicalEquilibriumCoolingLegacy.o: ChemicalEquilibriumCooling.c ChemicalEquilibriumCooling.o
+	$(COMPILE.c) -DEQC_LEGACY_NONEQUILIBRIUM_OXYGEN_COOLING $(OUTPUT_OPTION) $<
+ChemicalEquilibriumCoolingLinearCIE.o: ChemicalEquilibriumCooling.c ChemicalEquilibriumCooling.o
+	$(COMPILE.c) -DEQC_LINEAR_NONEQUILIBRIUM_CIE $(OUTPUT_OPTION) $<
+
 # These modules check for non-finite values or return NaN for invalid trials.
-CellRunner.o ChemicalEquilibriumCooling.o ChemicalEquilibriumSolver.o ChemistryMode.o HydrogenChemistry.o TemperatureTable.o ThermalEquilibrium.o \
+CellRunner.o ChemicalEquilibriumCooling.o ChemicalEquilibriumCoolingLegacy.o ChemicalEquilibriumCoolingLinearCIE.o \
+ChemicalEquilibriumSolver.o ChemistryMode.o HydrogenChemistry.o TemperatureTable.o ThermalEquilibrium.o \
 EquilibriumAbundance.o MoleculeChemistry.o GrainSurfaceChemistry.o Xray.o PhotochemicalGasPhaseChemistry.o \
 CoolingCIE.o CosmicRay.o HIIregionLineCooling.o: override CFLAGS += -fno-fast-math
 

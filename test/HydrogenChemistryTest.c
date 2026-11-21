@@ -7,6 +7,8 @@
 #include "ChemicalEquilibriumCooling.h"
 #include "CollisionalGasPhaseChemistry.h"
 #include "Constants.h"
+#include "CoolingCIE.h"
+#include "CoolingHeatingRates.h"
 #include "FineStructureLines.h"
 #include "HIIregionLineCooling.h"
 #include "HyperFineStructureLines.h"
@@ -637,6 +639,98 @@ static void CheckMixedThermochemistry(void)
     EQCLibSetRunParamH2Formation(false,1.0);
 }
 
+static void CheckCIEInterpolation(void)
+{
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    StructEQCData state = HydrogenState(10.0,1.0e4,1.0,0.0);
+    const double metallicities[] = {0.001,0.03,1.0,4.0};
+    for(size_t i=0;i<sizeof metallicities/sizeof metallicities[0];i++){
+        state.Z = metallicities[i]*SOLAR_METALLICITY;
+        for(int j=0;j<=90;j++){
+            state.T = pow(10.0,4.0+0.05*j);
+            /* Converting the grid through T and back to log T can round by one ULP. */
+            CheckRelative(CEQNonEquilibriumCoolingRateCIE(&state),CoolingRateCIE(&state),2.0e-10);
+        }
+        state.T = 1.0e9;
+        CheckRelative(CEQNonEquilibriumCoolingRateCIE(&state),CoolingRateCIE(&state),5.0e-12);
+    }
+
+    /* Compare the one-sided slopes at a knot within the blending interval. */
+    state.Z = SOLAR_METALLICITY;
+    const double step = 1.0e-6;
+    double linear[3], smooth[3];
+    for(int i=0;i<3;i++){
+        state.T = pow(10.0,4.35+(i-1)*step);
+        linear[i] = log10(CoolingRateCIE(&state));
+        smooth[i] = log10(CEQNonEquilibriumCoolingRateCIE(&state));
+    }
+    assert(fabs(linear[0]-2.0*linear[1]+linear[2]) > 0.01*step);
+    assert(fabs(smooth[0]-2.0*smooth[1]+smooth[2]) < 0.001*step);
+    EQCLibSetRunParamCIEResonanceCooling(false);
+}
+
+static void CheckOxygenCoolingTransition(void)
+{
+    const double temperatures[] = {14999.0,15000.0,15001.0,20000.0,24999.0,25000.0,25001.0,1.0e7};
+    const double weights[] = {1.0,1.0,0.999999970002,0.5,0.000000029998,0.0,0.0,0.0};
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    for(size_t i = 0; i < sizeof temperatures/sizeof temperatures[0]; i++){
+        StructEQCData state = HydrogenState(10.0,temperatures[i],0.98,0.0);
+        SetOxygenAbundances(&state,5.0e-3,0.2,0.7);
+        const double oxygenII = CoolingLinesOII(state.T,state.nel,state.nion[ipOXYGEN],NULL);
+        const double oxygenIII = CoolingLinesOIII(state.T,state.nel,state.nOIII,NULL);
+        const double cie = CEQNonEquilibriumCoolingRateCIE(&state);
+        assert(oxygenII > 0.0 && oxygenIII > 0.0 && cie > 0.0);
+        assert(CEQCalculateNonEquilibriumCoolingHeatingRates(&state) == EQC_SUCCESS);
+        CheckRelative(state.L_OII,weights[i]*oxygenII,1.0e-8);
+        CheckRelative(state.L_OIII,weights[i]*oxygenIII,1.0e-8);
+        CheckRelative(state.L_res,(1.0-weights[i])*cie,2.0e-8);
+        const double totalWithCIE = state.L_tot;
+        const double oxygenAndCIE = state.L_OII+state.L_OIII+state.L_res;
+
+        EQCLibSetRunParamCIEResonanceCooling(false);
+        assert(CEQCalculateNonEquilibriumCoolingHeatingRates(&state) == EQC_SUCCESS);
+        assert(state.L_res == 0.0);
+        CheckRelative(state.L_OII,oxygenII,1.0e-8);
+        CheckRelative(state.L_OIII,oxygenIII,1.0e-8);
+        CheckRelative(totalWithCIE,state.L_tot-state.L_OII-state.L_OIII+oxygenAndCIE,1.0e-12);
+        EQCLibSetRunParamCIEResonanceCooling(true);
+
+        state.Z = 0.0;
+        assert(CEQCalculateNonEquilibriumCoolingHeatingRates(&state) == EQC_SUCCESS);
+        assert(state.L_res == 0.0);
+        CheckRelative(state.L_OII,oxygenII,1.0e-8);
+        CheckRelative(state.L_OIII,oxygenIII,1.0e-8);
+    }
+    EQCLibSetRunParamCIEResonanceCooling(false);
+}
+
+static void CheckIlluminatedOxygenCoolingTransition(void)
+{
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    StructEQCData state = HydrogenState(10.0,17600.0,0.98,0.0);
+    SetOxygenAbundances(&state,5.0e-3,0.2,0.7);
+    state.invT = 1.0/state.T;
+    state.logT = log10(state.T);
+    SetInternalEnergy(&state);
+    assert(CEQCalculateNonEquilibriumCoolingHeatingRates(&state) == EQC_SUCCESS);
+    assert(state.H_PI == 0.0 && state.L_res > 0.0 && state.L_OII > 0.0 && state.L_OIII > 0.0);
+    const StructEQCData dark = state;
+
+    /* At fixed composition, changing the flux only switches photoionization heating. */
+    state.NLyn = 1.0e-8/HIPhotoIonizationRate(1.0);
+    assert(CEQCalculateNonEquilibriumCoolingHeatingRates(&state) == EQC_SUCCESS);
+    assert(state.H_PI > 0.0);
+    assert(state.L_res == dark.L_res && state.L_OII == dark.L_OII && state.L_OIII == dark.L_OIII);
+    printf("Illuminated transition at %.0f K: [O II]+[O III]=%.3e, CIE=%.3e erg cm^-3 s^-1\n",
+           state.T,state.L_OII+state.L_OIII,state.L_res);
+    state.dt = YEAR_CGS;
+    assert(EQCLibTryAdvanceHydrogenThermochemistry(&state,accuracy) == EQC_SUCCESS);
+    assert(state.T > 15000.0 && state.T < 25000.0);
+    assert(state.L_res > 0.0 && state.L_OII > 0.0 && state.L_OIII > 0.0);
+    EQCLibSetRunParamCIEResonanceCooling(false);
+}
+
 static void CheckOxygenCoolingAfterTurnOff(void)
 {
     EQCLibSetRunParamCIEResonanceCooling(true);
@@ -808,6 +902,9 @@ int main(int argc, char **argv)
     CheckCarbonFineStructureCooling();
     CheckCarbonCMBExchange();
     CheckMixedThermochemistry();
+    CheckCIEInterpolation();
+    CheckOxygenCoolingTransition();
+    CheckIlluminatedOxygenCoolingTransition();
     CheckOxygenCoolingAfterTurnOff();
     CheckHydrogenOxygenChargeTransfer();
     CheckThermochemistryInputs();

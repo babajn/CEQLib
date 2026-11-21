@@ -9,6 +9,7 @@ if __name__ == "__main__":
     matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, LogLocator
 import numpy as np
 
@@ -53,12 +54,28 @@ BENCHMARK_METHODS = (("equilibrium", "Equilibrium", BLUE),
 LOOKUP_BENCHMARK_METHODS = (("nonequilibrium", "Temperature lookup", BLUE),
                             ("nonequilibrium_direct", "Direct evaluation", ORANGE))
 BENCHMARK_TITLES = {"ionizing": "Ionizing light", "recombining": "Recombining gas", "fuv": "Far-ultraviolet light"}
+HOT_COOLING_FILES = ("hot_cooling.csv", "hot_benchmark.csv", "oxygen_after_switch.csv")
+HOT_COOLING_METHODS = (("legacy", "Before CIE", GRAY), ("cie_linear", "CIE (linear)", ORANGE),
+                       ("cie_bridge", "CIE (Steffen)", BLUE))
+HOT_COOLING_TITLES = {
+    "transition": r"$T_0=2\times10^4$ K",
+    "hot_1e6": r"$T_0=10^6$ K",
+    "hot_1e7": r"$T_0=10^7$ K",
+}
+HOT_TRACK_STYLES = {"legacy": "--", "cie_linear": ":", "cie_bridge": "-"}
 COOLING_TITLES = {"ionizing": "ionizing pulse", "fuv": "far-ultraviolet pulse"}
 ABUNDANCE_FIELDS = ("HI", "HII", "H2", "HeI", "HeII", "HeIII", "CI", "CII", "CIII", "OI", "OII", "OIII", "xe")
 
 
 def read_csv(path):
     return np.genfromtxt(path, names=True, delimiter=",", dtype=None, encoding="utf-8", ndmin=1)
+
+
+def hot_cooling_methods(data):
+    if "cie_linear" in data["method"]:
+        return HOT_COOLING_METHODS
+    # Earlier CSVs used cie_bridge for the linear transition.
+    return (HOT_COOLING_METHODS[0], ("cie_bridge", "CIE (linear)", BLUE))
 
 
 def pulse_phases(evolution, scenario):
@@ -152,7 +169,8 @@ def benchmark_timings(data, methods=BENCHMARK_METHODS):
             rows = [np.sort(gas[(gas["dt_yr"] == step) & (gas["method"] == mode)], order="trial")
                     for mode, _, _ in methods]
             trials = rows[0]["trial"]
-            if not len(trials) or len(np.unique(trials)) != len(trials) or not np.array_equal(trials, rows[1]["trial"]):
+            if (not len(trials) or len(np.unique(trials)) != len(trials)
+                    or not all(np.array_equal(trials, row["trial"]) for row in rows[1:])):
                 raise ValueError(f"Mismatched benchmark trials for {scenario}, dt={step:g} yr")
             stats = []
             for row in rows:
@@ -167,7 +185,9 @@ def benchmark_timings(data, methods=BENCHMARK_METHODS):
 
 
 def plot_benchmark(timings, methods=BENCHMARK_METHODS, *, title="Cost of one fixed-density energy update",
-                   ratio_label="Non-equilibrium / equilibrium", ratio_scale="log"):
+                   ratio_label="Non-equilibrium / equilibrium", ratio_scale="log",
+                   scenario_titles=BENCHMARK_TITLES, timing_label="Wall time per update [μs]",
+                   ratio_methods=(1, 0)):
     scenarios = tuple(dict.fromkeys(scenario for scenario, _ in timings))
     fig, axes = plt.subplots(2, len(scenarios), sharex="col", sharey="row", squeeze=False,
                              figsize=(max(5, 3.55*len(scenarios)), 5.6), layout="constrained")
@@ -176,17 +196,18 @@ def plot_benchmark(timings, methods=BENCHMARK_METHODS, *, title="Cost of one fix
         time, ratio = axes[:, index]
         steps = np.array([step for gas, step in timings if gas == scenario])
         stats = np.array([timings[scenario, step] for step in steps])
-        time.set_title(BENCHMARK_TITLES.get(scenario, scenario.replace("_", " ").capitalize()))
+        time.set_title(scenario_titles.get(scenario, scenario.replace("_", " ").capitalize()))
         for i, (_, label, color) in enumerate(methods):
             median, low, high = stats[:, i, :].T
             time.errorbar(steps, median, yerr=(median-low, high-median), color=color,
                           marker="o", capsize=3, label=label)
         ratio.axhline(1.0, color=GRAY, lw=1.0, alpha=0.5)
-        ratio.plot(steps, stats[:, 1, 0]/stats[:, 0, 0], color=BLACK, marker="o")
+        numerator, denominator = ratio_methods
+        ratio.plot(steps, stats[:, numerator, 0]/stats[:, denominator, 0], color=BLACK, marker="o")
         time.set(yscale="log")
         ratio.set(xscale="log", yscale=ratio_scale, xlabel="Timestep [yr]")
         ratio.set_xticks(steps, [f"{step:,.0f}" for step in steps])
-    axes[0, 0].set_ylabel("Wall time per update [μs]")
+    axes[0, 0].set_ylabel(timing_label)
     axes[1, 0].set_ylabel(ratio_label)
     axes[0, 0].legend(fontsize=8)
     return fig
@@ -196,6 +217,102 @@ def plot_lookup_benchmark(timings):
     return plot_benchmark(timings, LOOKUP_BENCHMARK_METHODS,
                           title="Cost of temperature lookup in non-equilibrium updates",
                           ratio_label="Speedup · direct / lookup", ratio_scale="linear")
+
+
+def plot_hot_benchmark(timings, methods=HOT_COOLING_METHODS):
+    ratio_methods = (2, 1) if len(methods) == 3 else (1, 0)
+    ratio_label = "Steffen / linear" if len(methods) == 3 else "CIE / Before CIE"
+    fig = plot_benchmark(timings, methods,
+                         title="Cost of the high-temperature cooling update",
+                         ratio_label=ratio_label, ratio_scale="linear",
+                         scenario_titles=HOT_COOLING_TITLES, timing_label="CPU time per update [μs]",
+                         ratio_methods=ratio_methods)
+    durations = np.asarray(tuple(timings.values()))
+    fig.axes[0].set_ylim(0.82*durations[:, :, 1].min(), 1.22*durations[:, :, 2].max())
+    return fig
+
+
+def _matched_cooling_tracks(rows, methods):
+    tracks = [np.sort(rows[rows["method"] == method], order="time_yr")
+              for method, _, _ in methods]
+    time = tracks[0]["time_yr"]
+    if (not len(time) or len(np.unique(time)) != len(time)
+            or not all(np.array_equal(time, track["time_yr"]) for track in tracks[1:])):
+        raise ValueError("The cooling tracks require the same output times")
+    return tracks
+
+
+def _track_legend(methods, color_by_method=False):
+    return [Line2D([], [], color=color if color_by_method else BLACK,
+                   ls=HOT_TRACK_STYLES[method], label=label)
+            for method, label, color in methods]
+
+
+def plot_hot_cooling(history, *, compare=True):
+    methods = hot_cooling_methods(history) if compare else HOT_COOLING_METHODS[-1:]
+    scenarios = tuple(dict.fromkeys(history["scenario"]))
+    if not scenarios:
+        raise ValueError("No high-temperature cooling histories")
+    fig, axes = plt.subplots(3, len(scenarios), sharex="col", squeeze=False,
+                             figsize=(5.0*len(scenarios), 7.7), layout="constrained")
+    fig.suptitle("Isochoric cooling after a hot start")
+    components = (("L_OII", "[O II]", BLUE), ("L_OIII", "[O III]", ORANGE), ("L_res", "CIE metals", PURPLE))
+    for index, scenario in enumerate(scenarios):
+        rows = history[(history["scenario"] == scenario) & (history["time_yr"] > 0.0)]
+        tracks = _matched_cooling_tracks(rows, methods)
+        temperature, total, lines = axes[:, index]
+        temperature.set_title(HOT_COOLING_TITLES.get(scenario, scenario), loc="left")
+        temperature.axhspan(1.5e4, 2.5e4, color=GRAY, lw=0.0, alpha=0.13)
+        for track, (method, _, method_color) in zip(tracks, methods):
+            time = track["time_yr"]
+            style = HOT_TRACK_STYLES[method]
+            for ax, field in ((temperature, "T"), (total, "L_tot")):
+                ax.plot(time, np.ma.masked_less_equal(track[field], 0.0), color=method_color, ls=style, lw=1.6)
+            for field, _, color in components:
+                lines.plot(time, np.ma.masked_less_equal(track[field], 0.0), color=color, ls=style, lw=1.6)
+        for ax in (temperature, total, lines):
+            ax.set(xscale="log", yscale="log")
+        peak = max(track[field].max() for track in tracks for field, _, _ in components)
+        if peak > 0:
+            lines.set_ylim(peak*1e-8, peak*2)
+        lines.set_xlabel("Elapsed time [yr]")
+
+    for ax, ylabel in zip(axes[:, 0], ("Temperature [K]", "Total cooling\n" + RATE_LABEL,
+                                       "Component cooling\n" + RATE_LABEL)):
+        ax.set_ylabel(ylabel)
+    if compare:
+        axes[0, 0].legend(handles=_track_legend(methods, color_by_method=True), fontsize=8)
+    handles = [Line2D([], [], color=color, label=label) for _, label, color in components]
+    axes[2, 0].legend(handles=handles, fontsize=8, ncols=3)
+    return fig
+
+
+def plot_oxygen_after_switch(history, *, compare=True):
+    methods = hot_cooling_methods(history) if compare else HOT_COOLING_METHODS[-1:]
+    rows = history[(history["phase"] == "off") & (history["time_yr"] > 0.0)]
+    tracks = _matched_cooling_tracks(rows, methods)
+    fig, (abundance, cooling) = plt.subplots(1, 2, sharex=True, figsize=(10, 3.65), layout="constrained")
+    fig.suptitle("Oxygen after the ionizing source turns off")
+    ions = (("OII", "O II", BLUE), ("OIII", "O III", ORANGE))
+    for index, (track, (method, _, _)) in enumerate(zip(tracks, methods)):
+        style = HOT_TRACK_STYLES[method]
+        width = 1.3 + 0.85*(len(methods)-index-1)
+        for ion, _, color in ions:
+            abundance.plot(track["time_yr"], track[ion], color=color, ls=style, lw=width)
+            cooling.plot(track["time_yr"], np.ma.masked_less_equal(track["L_" + ion], 0.0),
+                         color=color, ls=style, lw=width)
+    for ax in (abundance, cooling):
+        ax.set(xscale="log", xlabel="Time since turn-off [yr]")
+    abundance.set_ylabel("Fraction of oxygen")
+    abundance.legend(handles=[Line2D([], [], color=color, label=label) for _, label, color in ions],
+                     ncols=2, fontsize=8)
+    cooling.set(yscale="log", ylabel="Oxygen line cooling\n" + RATE_LABEL)
+    peak = max(track["L_" + ion].max() for track in tracks for ion, _, _ in ions)
+    if peak > 0:
+        cooling.set_ylim(peak*1e-8, peak*2)
+    if compare:
+        cooling.legend(handles=_track_legend(methods), ncols=len(methods), fontsize=8)
+    return fig
 
 
 def lookup_differences(lookup, direct):
@@ -324,6 +441,13 @@ def main():
                 errors = lookup_differences(evolution, read_csv(direct_path))
                 for scenario in COOLING_COMPONENTS:
                     figures[f"{scenario}_temperature_lookup.png"] = plot_lookup_differences(evolution, errors, scenario)
+            hot_paths = [args.data_dir / name for name in HOT_COOLING_FILES]
+            if all(path.is_file() for path in hot_paths):
+                hot_history, hot_benchmark, oxygen_history = map(read_csv, hot_paths)
+                figures["hot_cooling.png"] = plot_hot_cooling(hot_history)
+                methods = hot_cooling_methods(hot_benchmark)
+                figures["hot_benchmark.png"] = plot_hot_benchmark(benchmark_timings(hot_benchmark, methods), methods)
+                figures["oxygen_after_switch.png"] = plot_oxygen_after_switch(oxygen_history)
             for name, fig in figures.items():
                 fig.savefig(args.output_dir / name, dpi=180)
                 plt.close(fig)
