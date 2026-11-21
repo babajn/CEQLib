@@ -162,7 +162,7 @@ PNG を生成するには `make -C test wolfire-plot` を実行してくださ�
 | 化学反応係数と [C II]・[O I]・[Si II] の衝突率 | [Glover & Jappsen (2007)](https://arxiv.org/abs/0705.0182) |
 | ダストの光電加熱と粒子表面での再結合 | [Bakes & Tielens (1994)](https://ui.adsabs.harvard.edu/abs/1994ApJ...427..822B/abstract)、[Weingartner & Draine (2001)](https://arxiv.org/abs/astro-ph/0105237) |
 | H₂ の自己遮蔽と回転振動冷却 | [Draine & Bertoldi (1996)](https://arxiv.org/abs/astro-ph/9603032)、[Glover & Abel (2008)](https://arxiv.org/abs/0803.1768) |
-| CO の化学反応・簡略化モデル | [Nelson & Langer (1997)](https://doi.org/10.1086/304167)、[Keto & Caselli (2008)](https://lweb.cfa.harvard.edu/~eketo/StarFormation/lowmass/keto_caselli_2008.pdf)、[Glover et al. (2010)](https://arxiv.org/abs/0907.4081)、[Glover & Clark (2012)](https://doi.org/10.1111/j.1365-2966.2011.20260.x) |
+| CO の化学反応・簡略化モデル | [Nelson & Langer (1997)](https://doi.org/10.1086/304167)、[Nelson & Langer (1999)](https://doi.org/10.1086/307823)、[Keto & Caselli (2008)](https://lweb.cfa.harvard.edu/~eketo/StarFormation/lowmass/keto_caselli_2008.pdf)、[Glover et al. (2010)](https://arxiv.org/abs/0907.4081)、[Glover & Clark (2012)](https://doi.org/10.1111/j.1365-2966.2011.20260.x) |
 | CO の遮蔽表と回転振動冷却 | [Lee et al. (1996)](https://ui.adsabs.harvard.edu/abs/1996A%26A...311..690L/abstract)、[Hollenbach & McKee (1989)](https://ui.adsabs.harvard.edu/abs/1989ApJ...342..306H/abstract) |
 | 高温ガスの衝突電離平衡（CIE）冷却表 | [Sutherland & Dopita (1993)](https://doi.org/10.1086/191823) |
 | H II 領域の [O II]・[O III] 輝線 | O II の遷移確率は [Zeippen (1982)](https://adsabs.harvard.edu/abs/1982MNRAS.198..111Z)、有効衝突強度は [Kisielius et al. (2009)](https://doi.org/10.1111/j.1365-2966.2009.14989.x)。O III の遷移確率は [Froese Fischer & Tachiev (2004)](https://doi.org/10.1016/j.adt.2004.02.001) と [Storey & Zeippen (2000)](https://doi.org/10.1046/j.1365-8711.2000.03184.x)、有効衝突強度は [Storey et al. (2014)](https://doi.org/10.1093/mnras/stu777) |
@@ -171,8 +171,6 @@ PNG を生成するには `make -C test wolfire-plot` を実行してくださ�
 | Hα 放射率 | [Peters et al. (2017)](https://doi.org/10.1093/mnras/stw3216) |
 
 上表の原典 PDF、Cloudy の比較用リリース論文、既存モデルの全参考文献は [EQCLib/reference/index.tsv](reference/index.tsv) に取得元とともに整理しています。
-
-Nelson & Langer (1997) は出版社の PDF 直リンクが自動取得時に HTTP 403 を返すため、`reference/Nelson_Langer_1997.pdf` に公開リーダー経由の本文保持版を収録しています。組版画像が必要な場合は、索引に記載した DOI の出版社ページを参照してください。
 
 ### 教科書
 
