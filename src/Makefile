@@ -17,8 +17,6 @@ LDLIBS += -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas -lm
 
 OBJS	= RandomNumberGenerator.o \
           Utilities.o \
-		  nrutil.o \
-		  NewtonRaphson.o \
 		ChemicalEquilibriumCooling.o \
 		ChemicalEquilibriumSolver.o \
 		ChemistryMode.o \
@@ -42,8 +40,6 @@ OBJS	= RandomNumberGenerator.o \
 
 SRCS 	= RandomNumberGenerator.c \
           Utilities.c \
-		  nrutil.c \
-		  NewtonRaphson.c \
 		ChemicalEquilibriumCooling.c \
 		ChemicalEquilibriumSolver.c \
 		ChemistryMode.c \
@@ -69,8 +65,6 @@ HEADS = Astro.h \
         Constants.h \
         RandomNumberGenerator.h \
         Utilities.h \
-		nrutil.h \
-		NewtonRaphson.h \
 		ChemicalEquilibriumCooling.h \
 		ChemicalElements.h \
 		EquilibriumAbundance.h \
@@ -97,9 +91,10 @@ all:	depend libEQCLib.a
 clean:
 	rm *.o *.s *.a *.swp depend.inc libEQCLib.a eqclib-cell -f
 
-libEQCLib.a: $(OBJS)
-	$(AR) -r $@ $^
-	ranlib $@
+libEQCLib.a: $(OBJS) Makefile
+	$(RM) libEQCLib.tmp.a
+	$(AR) rcs libEQCLib.tmp.a $(OBJS)
+	mv -f libEQCLib.tmp.a $@
 
 eqclib-cell: CellRunner.o libEQCLib.a
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@

@@ -11,8 +11,6 @@
 #include <ChemicalEquilibriumCooling.h>
 //#include "ChemicalElements.h"
 #include "GrainSurfaceChemistry.h"
-#include "NewtonRaphson.h"
-#include "nrutil.h"
 
 #define G0_Draine   (1.7)
 #define Zsol        (SOLAR_METALLICITY)
@@ -29,7 +27,6 @@ int main_CoolingFunctionTest(void);
 int main_WolfireTest(void);
 int main_WolfireMilkyWayTest(void);
 int main_HIIregionTest(void);
-int main_test_NonlinerEquationSolver(void);
 int main_dust(void);
 
 static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double Z, double X0, char *fname);
@@ -44,7 +41,6 @@ int main(int argc, char *argv[]){
     }
 
     //return main_dust();
-    //return main_test_NonlinerEquationSolver();
     ////return main_CoolingFunctionTest();
     ////return main_HIIregionTest();
     return main_WolfireTest();
@@ -69,75 +65,6 @@ int main_dust(void){
     fclose(output);
     
     return 0;
-}
-
-static void TestFunction(double *x, int n, double *f, double **df){
-    if(n!=2){
-        fprintf(stderr,"Error Newton-Rapshon Test\n");
-        exit(1);
-    }
-
-#if 1 
-    // f(x)
-    f[1] = 2*x[1] - x[2]*x[2] + log(x[1]);    
-    f[2] = x[1]*x[1] - x[1]*x[2] - x[1] + 1;
-    // df(x)/dx: Jacobi matrix
-    // = df1/dx1 df1/dx2
-    //   df2/dx1 df2/dx2
-    df[1][1] = 2 + 1/x[1];    
-    df[1][2] = -2*x[2];
-    df[2][1] = 2*x[1] - x[2] - 1;
-    df[2][2] = -x[1];
-#else
-    // f(x)
-    f[1] = x[1] + x[2] - 3;
-    f[2] = 2*x[1] + 5*x[2] - 9;
-    // df(x)/dx: Jacobi matrix
-    // = df1/dx1 df1/dx2
-    //   df2/dx1 df2/dx2
-    df[1][1] = 1;    
-    df[1][2] = 1;
-    df[2][1] = 2;
-    df[2][2] = 5;
-    // solution
-    // x1 = 2
-    // x2 = 1
-#endif
-
-    for(int i=1;i<=n;i++){
-        fprintf(stderr,"  i = %d: x = %e f = %e\n",i,x[i],f[i]);
-        for(int j=1;j<=n;j++)
-            fprintf(stderr,"   j = %d: df = %e\n",j,df[i][j]);
-    }
-
-    return ;
-}
-int main_test_NonlinerEquationSolver(void){
-
-    const int ntrial = 10;
-    const int n = 2;
-    double *x  = dvector(1,n);
-    double *f  = dvector(1,n);
-    double **df = dmatrix(1,n,1,n);
-    double tolx = 1.e-7;
-    double tolf = 1.e-7;
-
-    for(int i=1;i<=n;i++){
-        x[i] = 0.1;
-    }
-
-    fprintf(stderr,"start ...\n");
-    mnewt(ntrial,x,n,tolx,tolf,TestFunction);
-    fprintf(stderr,"--> done\n");
-
-    TestFunction(x,n,f,df);
-    for(int i=1;i<=n;i++){
-        fprintf(stderr,"i = %d: x = %f f = %e\n",i,x[i],f[i]);
-    }
-    free_dmatrix(df,1,n,1,n);
-    free_dvector(f,1,n);
-    free_dvector(x,1,n);
-    return EXIT_SUCCESS;
 }
 
 static EQCLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double Zd,  double X0, double Ac, double Ao, StructEQCData *PhydroPP){

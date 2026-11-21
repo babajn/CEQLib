@@ -8,7 +8,6 @@
 #include "Astro.h"
 #include "Constants.h"
 #include "Utilities.h"
-#include "NewtonRaphson.h"
 #include "ChemicalEquilibriumCooling.h"
 #include "ChemicalElements.h"
 #include "EquilibriumAbundance.h"
