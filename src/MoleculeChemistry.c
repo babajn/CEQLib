@@ -163,7 +163,7 @@ double VisualExtinction(double Ntot, double Zd){
     return 0.535e-21*(Zd/Zsol)*Ntot;
 }
 
-#define sigma1000MW     (2.0e-21)   // [cm^-2]
+#define sigma1000MW     (2.0e-21)   // [cm^2 per H nucleus], Glover & Mac Low (2007)
 double DustShieldingFactorFUV(double Ntot, double Zd){
     if(EQCLibRunParameters.UseDustAttenuation==false)   return 1.e0;
 
@@ -228,43 +228,74 @@ double DustShieldingFactorFUV(double Ntot, double Zd){
 //  Note that the clumping factor is expected to approach 1 as the
 //  resosulution does ~100pc.
 //   e.g. Cp = 30 (Krumholz & Gnedin, 2009)
-double H2FormationRate(double T, double Z, double Tdust){
-    double Cp = EQCLibRunParameters.CpForH2;
-    // R60 in Table 3 of Glover & Jappsen (2007) 
-    double St = 1.e0/(1.0 + 4.e-2*sqrt(T+Tdust) + 2.e-3*T + 8.e-6*SQ(T));
-    //return 3.0e-18*Cp*sqrt(T)*(Z/Zsol)*St/(1.0 + 1.e+4*exp(-600.0/Tdust));
-    return 3.0e-17*Cp*sqrt(T)*(Z/Zsol)*St/(1.0 + 1.e+4*exp(-600.0/Tdust));
-    // (A13) of Koyama & Inutsuka 2000
-    //return 3.e-17*sqrt(T/300.0)*St;
+double H2FormationRate(double T, double Zd, double Tdust){
+    /* Glover & Jappsen (2007), Table 3, reaction 60. */
+#ifdef EQC_H2_LEGACY_FORMATION
+    const double coefficient = 3.0e-17;  /* CHIMES comparison reference build */
+#else
+    const double coefficient = 3.0e-18;
+#endif
+    const double Cp = EQCLibRunParameters.CpForH2;
+    const double sticking = 1.0/(1.0 + 4.e-2*sqrt(T+Tdust) + 2.e-3*T + 8.e-6*SQ(T));
+    return coefficient*Cp*sqrt(T)*(Zd/Zsol)*sticking/(1.0 + 1.e+4*exp(-600.0/Tdust));
 }
 
-///// H2 dissociation by FUV 
-// H2 Self-Sheilding factor: Draine & Bertoldi (1996)
-double H2SelfShieldingFactor(double N2, double b5){
-    // simplified formula
-    // eq.(36) of Draine & Bertoldi (1996) 
-    if(N2<1.e+14)   return 1.e0;
-    else {
-        const double sqrtColumn = sqrt(1.e-14*N2);
-        return 1.0/(sqrtColumn*sqrt(sqrtColumn));
+double H2DopplerWidth(double T){
+    /* b_therm^2 = 2 k_B T/m_H2, converted from cm^2/s^2 to (km/s)^2. */
+    const double thermal = (1.0e-10*BOLTZMANN_CONSTANT_CGS/(PROTON_MASS_CGS+ELECTRON_MASS_CGS))*T;
+    return sqrt(SQ(b_turb)+thermal);
+}
+
+static double H2Shielding(double N2, double b5, double *logSlope){
+#ifdef EQC_H2_LEGACY_SHIELDING
+    /* Draine & Bertoldi (1996), eq. (36), for the original comparison. */
+    (void)b5;
+    if(logSlope) *logSlope = N2 < 1.e14 ? 0.0 : -0.75;
+    if(N2 < 1.e14) return 1.0;
+    const double sqrtColumn = sqrt(1.e-14*N2);
+    return 1.0/(sqrtColumn*sqrt(sqrtColumn));
+#else
+    if(N2 <= 0.0){
+        if(logSlope) *logSlope = 0.0;
+        return 1.0;
     }
-
-    //// more accurate formula
-    // eq.(37) of Draine & Bertoldi (1996) 
-    if(N2==0)   return 1.e0;
-    double x  = 2.e-15*N2;
-    double sqrt1x = sqrt(1.0+x);
-    return 0.965/SQ(1.0+x/b5) + 0.035*exp(-8.5e-4*sqrt1x)/sqrt1x;
+    /* Draine & Bertoldi (1996), eq. (37). Normalize at N2 = 0. */
+    const double x = 2.0e-15*N2;
+    const double sqrt1x = sqrt(1.0+x);
+    const double line = 0.965*SQ(b5/(b5+x));
+    const double opticalDepth = 8.5e-4*sqrt1x;
+    const double overlap = 0.035*exp(-opticalDepth)/sqrt1x;
+    const double factor = line+overlap;
+    if(logSlope){
+        *logSlope = factor > 0.0 ?
+            -(line*(2.0*x/(b5+x))+overlap*((0.5*x/(1.0+x))*(1.0+opticalDepth)))/factor : 0.0;
+    }
+    return factor/(0.965+0.035*exp(-8.5e-4));
+#endif
 }
 
-// d ln f / d ln N2 of H2SelfShieldingFactor.
-double H2SelfShieldingLogSlope(double N2){
-    return N2 < 1.e14 ? 0.0 : -0.75;
+double H2SelfShieldingFactor(double N2, double b5){
+    return H2Shielding(N2,b5,NULL);
+}
+
+double CEQH2PhotoRateAndShieldingSlope(double G0, double N2, double b5, double dustFactor,
+                                       double *logSlope){
+    if(G0 == 0.0 || dustFactor == 0.0){
+        if(logSlope) *logSlope = 0.0;
+        return 0.0;
+    }
+#ifdef EQC_H2_B87_PHOTO
+    /* Optically thin LW rate of the benchmark B87 spectrum, per Habing. */
+    const double coefficient = 6.32391e-11;
+#else
+    /* Glover & Mac Low (2007), eqs. (29, 31) for a Draine spectrum. */
+    const double coefficient = 3.3e-11;
+#endif
+    return G0*(coefficient*H2Shielding(N2,b5,logSlope)*dustFactor);
 }
 
 double H2PhotoDissociationRateWithDustFactor(double G0, double N2, double b5, double dustFactor){
-    // eq.(29,31) of Glover & MacLow (2007)
-    return G0*(3.3e-11*H2SelfShieldingFactor(N2,b5)*dustFactor);
+    return CEQH2PhotoRateAndShieldingSlope(G0,N2,b5,dustFactor,NULL);
 }
 double H2PhotoDissociationRate(double G0, double Nt, double N2, double b5, double Zd){
     return H2PhotoDissociationRateWithDustFactor(G0,N2,b5,DustShieldingFactorFUV(Nt,Zd));
@@ -702,7 +733,7 @@ static double HeatingH2(const StructEQCData *state, unsigned int processes, cons
     double photoRate = 0.0;
     if(processes & (H2HeatPhotodissociation | H2HeatPumping)){
         const double N2 = state->Nt*nH2/nH;
-        const double b5 = sqrt(SQ(12.90*sqrt(1.e-4*T))+SQ(b_turb));
+        const double b5 = H2DopplerWidth(T);
         photoRate = H2PhotoDissociationRate(state->G0,state->Nt,N2,b5,state->Zd);
     }
     double criticalDenominator = 1.0;

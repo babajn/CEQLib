@@ -104,13 +104,18 @@ void EQCLibSetRunParamDustAttenuation(bool Use);
 void EQCLibSetRunParamGrainSurfaceProcesses(bool Use);
 void EQCLibSetRunParamCosmicRayIonization(bool Use);
 void EQCLibSetRunParamSoftXrayIonization(bool Use);
-/* Enable aggregate CIE metal cooling (default off). Non-equilibrium cooling
-   at positive Z mixes it in as [O II] and [O III] fade between 15000 and 25000 K
-   and uses Steffen interpolation in log temperature. Equilibrium uses linear
-   interpolation. Both use the same CIE table.
-   The CIE rate extrapolates above 10^8.5 K with sqrt(T) scaling up to 10^9 K.
+/* Enable CIE metal cooling (default off). At positive Z, the C, O and Si
+   coefficients are weighted by n_e and each element's total number density.
+   N, Ne, Mg, S, Ca and Fe, which EQCLib does not track, add the Asplund et al.
+   (2009) solar-mixture coefficient times n_e n_H Z/0.0134 (no depletion); this
+   term is zero at or below 1e4 K, full from 1e5 K, and smoothstepped in log T.
+   Non-equilibrium cooling mixes it in as [O II] and [O III] fade between
+   15000 and 25000 K and uses Steffen interpolation in log temperature.
+   Equilibrium uses log-linear interpolation of the same coefficients.
+   The CIE rate extrapolates above 10^8 K with sqrt(T) scaling up to 10^9 K.
    Higher temperatures are outside the supported range when using CIE. */
 void EQCLibSetRunParamCIEResonanceCooling(bool Use);
+/* Cp multiplies the Glover & Jappsen (2007) grain H2 formation coefficient. */
 void EQCLibSetRunParamH2Formation(bool Use, double Cp);
 void EQCLibSetRunParamCOFormation(bool Use, double Cp);
 

@@ -14,9 +14,11 @@ tags
 # Generated output and local backups
 /bk/
 /out/
+/EQCooling/
 /test/out
+/test/**/__pycache__/
 /plot/out/
-/plot/__pycache__/
+/plot/**/__pycache__/
 .ipynb_checkpoints/
 
 # Reference papers stay local; only the index is tracked

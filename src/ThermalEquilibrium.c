@@ -237,8 +237,16 @@ static EQCLibStatus SolveThermalState(const StructEQCData *initial, double times
     EQCLibStatus status = SearchThermalState(&problem, temperature, trial);
     if(status == EQC_NO_CONVERGENCE && problem.chemistryAccuracy > minimumChemistryAccuracy){
         /* Near thermal balance, small changes in the chemistry can dominate the net rate. */
+        double intermediateAccuracy = 0.1 * problem.chemistryAccuracy;
         problem.chemistryAccuracy = minimumChemistryAccuracy;
         status = SearchThermalState(&problem, temperature, trial);
+        /* An almost machine-precision chemistry solve can itself stall. Try
+           intermediate accuracies while retaining the thermal residual test. */
+        for(; status == EQC_NO_CONVERGENCE && intermediateAccuracy > minimumChemistryAccuracy;
+            intermediateAccuracy *= 0.1){
+            problem.chemistryAccuracy = intermediateAccuracy;
+            status = SearchThermalState(&problem, temperature, trial);
+        }
     }
     return status;
 }

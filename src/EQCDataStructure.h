@@ -24,7 +24,7 @@ typedef struct StructEQCData_tag{
     double invT;
     double logT;
     double Td;          // Positive dust temperature in K, otherwise use the library estimate.
-    double Z;           // Metallicity of gas.
+    double Z;           // Total metal mass fraction. CIE uses 0.0134 as the solar reference.
     double Zd;          // Dust/Gas mass ratio
     double NLyn;        // Lymann photons (>13.6 eV) flux [/s/cm^2]
     double G0;          // FUV

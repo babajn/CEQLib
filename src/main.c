@@ -56,7 +56,8 @@ static EQCLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double 
     double fSiIII = 0.e0, fSiII = 0.99, fSiI = 1.0-fSiII-fSiIII;
     double nH = PhydroPP->n[ipHYDROGEN];
 
-    PhydroPP->Z  = Z;
+    /* The input Z uses the legacy solar scale for gas abundances and dust. */
+    PhydroPP->Z  = ASPLUND_2009_SOLAR_METALLICITY*(Z/Zsol);
     PhydroPP->G0 = G0;
     PhydroPP->Nt = Nt;  // [H/cm2]
     PhydroPP->X0 = X0;
@@ -74,18 +75,18 @@ static EQCLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double 
     PhydroPP->nion[ipHELIUM]    = fHeII *PhydroPP->n[ipHELIUM];
     PhydroPP->natom[ipHELIUM]   = fHeI  *PhydroPP->n[ipHELIUM];
     // carbon
-    PhydroPP->n[ipCARBON]       = (CarbonAbundance )*nH*PhydroPP->Z/Zsol;
+    PhydroPP->n[ipCARBON]       = (CarbonAbundance )*nH*Z/Zsol;
     PhydroPP->nCIII             = fCIII*PhydroPP->n[ipCARBON];
     PhydroPP->nion[ipCARBON]    = fCII *PhydroPP->n[ipCARBON];
     PhydroPP->natom[ipCARBON]   = fCI  *PhydroPP->n[ipCARBON];
     PhydroPP->nmol[ipCO]        = fCO  *PhydroPP->n[ipCARBON];
     // oxygen
-    PhydroPP->n[ipOXYGEN]       = (OxygenAbundance )*nH*PhydroPP->Z/Zsol;
+    PhydroPP->n[ipOXYGEN]       = (OxygenAbundance )*nH*Z/Zsol;
     PhydroPP->nOIII             = fOIII*PhydroPP->n[ipOXYGEN];
     PhydroPP->nion[ipOXYGEN]    = fOII *PhydroPP->n[ipOXYGEN];
     PhydroPP->natom[ipOXYGEN]   = fOI  *PhydroPP->n[ipOXYGEN];
     // silicon 
-    PhydroPP->n[ipSILICON]      = (SiliconAbundance )*nH*PhydroPP->Z/Zsol;
+    PhydroPP->n[ipSILICON]      = (SiliconAbundance )*nH*Z/Zsol;
     PhydroPP->nSiIII            = fSiIII*PhydroPP->n[ipSILICON];
     PhydroPP->nion[ipSILICON]   = fSiII *PhydroPP->n[ipSILICON];
     PhydroPP->natom[ipSILICON]  = fSiI  *PhydroPP->n[ipSILICON];
@@ -139,7 +140,7 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
             fprintf(stderr," T = %e" ,PhydroPP.T);
             fprintf(stderr," nH = %e",PhydroPP.n[ipHYDROGEN]);
             fprintf(stderr," Nt = %e",PhydroPP.Nt);
-            fprintf(stderr," Z = %e" ,PhydroPP.Z);
+            fprintf(stderr," Z = %e" ,Z);
             fprintf(stderr,"\n");
             fprintf(stderr," G0 = %e",PhydroPP.G0);
             fprintf(stderr," X0 = %e",PhydroPP.X0);
@@ -242,7 +243,7 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
         /* #09 */ fprintf(out,"%e ",PhydroPP.T     );   // K
         /* #10 */ fprintf(out,"%e ",PhydroPP.G0    );
         /* #11 */ fprintf(out,"%e ",PhydroPP.Nt    );   // H/cm^2
-        /* #12 */ fprintf(out,"%e ",PhydroPP.Z     );
+        /* #12 */ fprintf(out,"%e ",Z              );
 
         /* #13 */ fprintf(out,"%e ",PhydroPP.n[ipHYDROGEN]    );
         /* #14 */ fprintf(out,"%e ",PhydroPP.n[ipHELIUM  ]    );
@@ -559,7 +560,7 @@ int main_HIIregionTest(void){
         fprintf(stderr," T = %e" ,PhydroPP.T);
         fprintf(stderr," nH = %e",PhydroPP.n[ipHYDROGEN]);
         fprintf(stderr," Nt = %e",PhydroPP.Nt);
-        fprintf(stderr," Z  = %e" ,PhydroPP.Z);
+        fprintf(stderr," Z  = %e" ,Z);
         fprintf(stderr," Zd = %e" ,PhydroPP.Zd);
         fprintf(stderr,"\n");
         fprintf(stderr," G0 = %e",PhydroPP.G0);
@@ -666,7 +667,7 @@ int main_HIIregionTest(void){
         /* #09 */ fprintf(out,"%e ",PhydroPP.T     );   // K
         /* #10 */ fprintf(out,"%e ",PhydroPP.G0    );
         /* #11 */ fprintf(out,"%e ",PhydroPP.Nt    );   // H/cm^2
-        /* #12 */ fprintf(out,"%e ",PhydroPP.Z     );
+        /* #12 */ fprintf(out,"%e ",Z              );
 
         /* #13 */ fprintf(out,"%e ",PhydroPP.n[ipHYDROGEN]    );
         /* #14 */ fprintf(out,"%e ",PhydroPP.n[ipHELIUM  ]    );
@@ -837,7 +838,7 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
         fprintf(stderr," T = %e" ,PhydroPP.T);
         fprintf(stderr," nH = %e",PhydroPP.n[ipHYDROGEN]);
         fprintf(stderr," Nt = %e",PhydroPP.Nt);
-        fprintf(stderr," Z  = %e" ,PhydroPP.Z);
+        fprintf(stderr," Z  = %e" ,Z);
         fprintf(stderr," Zd = %e" ,PhydroPP.Zd);
         fprintf(stderr,"\n");
         fprintf(stderr," G0 = %e",PhydroPP.G0);
@@ -944,7 +945,7 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
         /* #09 */ fprintf(out,"%e ",PhydroPP.T     );   // K
         /* #10 */ fprintf(out,"%e ",PhydroPP.G0    );
         /* #11 */ fprintf(out,"%e ",PhydroPP.Nt    );   // H/cm^2
-        /* #12 */ fprintf(out,"%e ",PhydroPP.Z     );
+        /* #12 */ fprintf(out,"%e ",Z              );
 
         /* #13 */ fprintf(out,"%e ",PhydroPP.n[ipHYDROGEN]    );
         /* #14 */ fprintf(out,"%e ",PhydroPP.n[ipHELIUM  ]    );

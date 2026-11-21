@@ -10,7 +10,7 @@ OPTIMIZE += -Winline -Wundef -Wmissing-noreturn -Wstrict-prototypes
 OPTIMIZE += -g 
 OPTIMIZE += -DDEBUG_LEVEL=0
 
-INCLUDEPATH += -I$(GSL_DIR)/include -I$(EQCLIB_DIR)
+INCLUDEPATH += -Icommon -I$(GSL_DIR)/include -I$(EQCLIB_DIR)
 
 LDFLAGS += -L$(EQCLIB_DIR) -lEQCLib
 LDFLAGS += -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas
@@ -28,61 +28,65 @@ CFLAGS = $(OPTIMIZE) $(OPTIONS) $(INCLUDEPATH)
 
 LDFLAGS += -lm
 
-OBJS	=	main.o \
-        RandomNumberGenerator.o \
-
-SRCS = main.c \
-        RandomNumberGenerator.c \
-        
-HEADS = Astro.h \
-        Constants.h \
-        RandomNumberGenerator.h \
+WOLFIRE_OBJS = out/wolfire1995_main.o out/RandomNumberGenerator.o
+UNIT_OBJS = out/EquilibriumTest.o out/HydrogenChemistryTest.o out/ThermochemistryModeTest.o
+COMMON_HEADERS = common/Astro.h common/Constants.h
+TEST_SOURCES = $(wildcard benchmark/*.[ch] co/*.[ch] common/*.[ch] hii/*.[ch] noneq/*.[ch] unit/*.[ch] wolfire1995/*.[ch])
 
 ALL:   start
 
-.PHONY: start eqclib check cell-check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot
+.PHONY: start eqclib check cell-check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot clean tag pkg
 eqclib:
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
-start: $(OBJS) eqclib
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o test.out
+out:
+	mkdir -p $@
 
-check: EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o eqclib
-	mkdir -p out
-	$(CC) $(CFLAGS) -fno-fast-math EquilibriumTest.o $(LDFLAGS) -o out/equilibrium_test.out
-	$(CC) $(CFLAGS) -fno-fast-math HydrogenChemistryTest.o $(LDFLAGS) -o out/hydrogen_chemistry_test.out
-	$(CC) $(CFLAGS) -fno-fast-math ThermochemistryModeTest.o $(LDFLAGS) -o out/thermochemistry_mode_test.out
+start: $(WOLFIRE_OBJS) eqclib
+	$(CC) $(CFLAGS) $(WOLFIRE_OBJS) $(LDFLAGS) -o test.out
+
+out/wolfire1995_main.o: wolfire1995/main.c $(COMMON_HEADERS) Makefile | out
+	$(CC) $(CFLAGS) -c $< -o $@
+
+out/RandomNumberGenerator.o: wolfire1995/RandomNumberGenerator.c wolfire1995/RandomNumberGenerator.h Makefile | out
+	$(CC) $(CFLAGS) -c $< -o $@
+
+check: $(UNIT_OBJS) eqclib
+	$(CC) $(CFLAGS) -fno-fast-math out/EquilibriumTest.o $(LDFLAGS) -o out/equilibrium_test.out
+	$(CC) $(CFLAGS) -fno-fast-math out/HydrogenChemistryTest.o $(LDFLAGS) -o out/hydrogen_chemistry_test.out
+	$(CC) $(CFLAGS) -fno-fast-math out/ThermochemistryModeTest.o $(LDFLAGS) -o out/thermochemistry_mode_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/check.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/equilibrium_test.out" "$(abspath ../data/PEGASE2)"; \
 	"$(CURDIR)/out/hydrogen_chemistry_test.out" "$(abspath ../data/PEGASE2)"; \
 	"$(CURDIR)/out/thermochemistry_mode_test.out" "$(abspath ../data/PEGASE2)"
 
-EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o: override CFLAGS += -fno-fast-math
-HydrogenChemistryTest.o ThermochemistryModeTest.o: $(EQCLIB_DIR)/ChemicalEquilibriumCooling.h
-HydrogenChemistryTest.o: $(EQCLIB_DIR)/CoolingCIE.h $(EQCLIB_DIR)/CoolingHeatingRates.h
+$(UNIT_OBJS): out/%.o: unit/%.c $(COMMON_HEADERS) $(EQCLIB_DIR)/ChemicalEquilibriumCooling.h Makefile | out
+	$(CC) $(CFLAGS) -fno-fast-math -c $< -o $@
+
+out/HydrogenChemistryTest.o: $(EQCLIB_DIR)/CoolingCIE.h $(EQCLIB_DIR)/CoolingHeatingRates.h
 
 cell-check: eqclib
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) eqclib-cell
-	$(PYTHON) CellRunnerTest.py "$(EQCLIB_DIR)/eqclib-cell"
+	$(PYTHON) unit/CellRunnerTest.py "$(EQCLIB_DIR)/eqclib-cell"
 
-benchmark: ThermalBenchmark.c eqclib
+benchmark: benchmark/ThermalBenchmark.c eqclib
 	mkdir -p out
-	$(CC) $(CFLAGS) -fno-fast-math -fopenmp ThermalBenchmark.c $(LDFLAGS) -o out/thermal_benchmark.out
+	$(CC) $(CFLAGS) -fno-fast-math -fopenmp $< $(LDFLAGS) -o out/thermal_benchmark.out
 	./out/thermal_benchmark.out atomic
 	./out/thermal_benchmark.out molecular
 
-hii: HIIRegionTest.c HIIRegionFixture.h eqclib
+hii: hii/HIIRegionTest.c hii/HIIRegionFixture.h eqclib
 	mkdir -p out/hii
-	$(CC) $(CFLAGS) -fno-fast-math HIIRegionTest.c $(LDFLAGS) -o out/hii_region_test.out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/hii_region_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/hii.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/hii_region_test.out" "$(abspath ../data/PEGASE2)"; \
 	mv equilibrium.csv thermal_curve.csv reactions.csv "$(CURDIR)/out/hii/"
 
-hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h eqclib
+hii-benchmark: hii/HIIRegionBenchmark.c hii/HIIRegionFixture.h eqclib
 	mkdir -p out/hii
-	$(CC) $(CFLAGS) -fno-fast-math HIIRegionBenchmark.c $(LDFLAGS) -o out/hii_region_benchmark.out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/hii_region_benchmark.out
 	@set -e; csv=$$(mktemp "$(CURDIR)/out/hii/benchmark.XXXXXX"); \
 	trap 'rm -f "$$csv"' EXIT; \
 	./out/hii_region_benchmark.out "$(abspath ../data/PEGASE2)" > "$$csv"; \
@@ -92,9 +96,9 @@ hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h eqclib
 hii-plot: hii
 	$(PYTHON) ../plot/plot_hii_region.py
 
-co: MolecularTest.c MolecularFixture.h eqclib
+co: co/MolecularTest.c co/MolecularFixture.h eqclib
 	mkdir -p out/co
-	$(CC) $(CFLAGS) -fno-fast-math MolecularTest.c $(LDFLAGS) -o out/molecular_test.out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/molecular_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/co.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/molecular_test.out" "$(abspath ../data/PEGASE2)"; \
@@ -103,9 +107,9 @@ co: MolecularTest.c MolecularFixture.h eqclib
 co-plot: co
 	$(PYTHON) ../plot/plot_co_chemistry.py
 
-molecular-settings-benchmark: MolecularSettingsBenchmark.c MolecularFixture.h eqclib
+molecular-settings-benchmark: co/MolecularSettingsBenchmark.c co/MolecularFixture.h eqclib
 	mkdir -p out/co
-	$(CC) $(CFLAGS) -fno-fast-math MolecularSettingsBenchmark.c $(LDFLAGS) -o out/molecular_settings_benchmark.out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/molecular_settings_benchmark.out
 	@set -e; csv=$$(mktemp "$(CURDIR)/out/co/settings.XXXXXX"); \
 	trap 'rm -f "$$csv"' EXIT; \
 	./out/molecular_settings_benchmark.out "$(abspath ../data/PEGASE2)" > "$$csv"; \
@@ -117,18 +121,18 @@ molecular-settings-plot: molecular-settings-benchmark
 wolfire-plot:
 	$(PYTHON) ../plot/plot_wolfire1995.py
 
-noneq: NonEquilibriumTest.c eqclib
+noneq: noneq/NonEquilibriumTest.c eqclib
 	mkdir -p out/noneq
-	$(CC) $(CFLAGS) -fno-fast-math NonEquilibriumTest.c $(LDFLAGS) -o out/non_equilibrium_test.out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/non_equilibrium_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/non_equilibrium_test.out" "$(abspath ../data/PEGASE2)"; \
 	mv evolution.csv evolution_direct.csv recombination.csv recombination_direct.csv \
 	   convergence.csv convergence_direct.csv "$(CURDIR)/out/noneq/"
 
-noneq-benchmark: NonEquilibriumBenchmark.c eqclib
+noneq-benchmark: noneq/NonEquilibriumBenchmark.c eqclib
 	mkdir -p out/noneq
-	$(CC) $(CFLAGS) -fno-fast-math NonEquilibriumBenchmark.c $(LDFLAGS) -o out/non_equilibrium_benchmark.out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/non_equilibrium_benchmark.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq-bench.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/non_equilibrium_benchmark.out" "$(abspath ../data/PEGASE2)"; \
@@ -136,9 +140,9 @@ noneq-benchmark: NonEquilibriumBenchmark.c eqclib
 
 # Use the production archive for all variants. Override just its cooling
 # module in the reference executables.
-noneq-hot: NonEquilibriumHotCoolingTest.c eqclib
+noneq-hot: noneq/NonEquilibriumHotCoolingTest.c eqclib
 	mkdir -p out/noneq
-	$(CC) $(CFLAGS) -fno-fast-math -c NonEquilibriumHotCoolingTest.c -o out/noneq_hot_driver.o
+	$(CC) $(CFLAGS) -fno-fast-math -c $< -o out/noneq_hot_driver.o
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) ChemicalEquilibriumCoolingLegacy.o ChemicalEquilibriumCoolingLinearCIE.o
 	$(CC) out/noneq_hot_driver.o $(EQCLIB_DIR)/libEQCLib.a $(filter-out -lEQCLib,$(LDFLAGS)) -o out/noneq_hot_current.out
 	$(CC) out/noneq_hot_driver.o $(EQCLIB_DIR)/ChemicalEquilibriumCoolingLegacy.o $(EQCLIB_DIR)/libEQCLib.a $(filter-out -lEQCLib,$(LDFLAGS)) -o out/noneq_hot_legacy.out
@@ -160,14 +164,11 @@ noneq-plot: noneq noneq-benchmark noneq-hot
 	$(PYTHON) ../plot/plot_noneq.py
 
 clean:
-	rm -f $(OBJS) test.out EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o out/equilibrium_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out out/noneq_hot_driver.o out/noneq_hot_current.out out/noneq_hot_legacy.out out/noneq_hot_linear.out
+	rm -f $(WOLFIRE_OBJS) $(UNIT_OBJS) test.out out/equilibrium_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out out/noneq_hot_driver.o out/noneq_hot_current.out out/noneq_hot_legacy.out out/noneq_hot_linear.out
 
 tag:
-	ctags *.[c,h]
+	ctags $(TEST_SOURCES)
 
-pkg: 
-	tar cvf plot_anime.tar ./*.[ch] ./*.rb Makefile tags
+pkg:
+	tar cvf plot_anime.tar $(TEST_SOURCES) Makefile tags
 	gzip plot_anime.tar
-
-
-main.o: main.c Makefile $(HEADS) 

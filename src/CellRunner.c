@@ -152,12 +152,9 @@ static EQCLibStatus InitializeCell(const CellSettings *settings, StructEQCData *
     }
     state.Rho = EQCLibGetTotalMassDensity(&state);
     if(!isfinite(state.Rho) || state.Rho <= 0.0) return EQC_INVALID_INPUT;
-    if(nonequilibrium){
-        /* The aggregate CIE table uses the full solar metal mixture. */
-        state.Z = SOLAR_METALLICITY;
-    }else{
-        state.Z = (state.n[ipCARBON]*ChemicalElementMass[ipCARBON]+state.n[ipOXYGEN]*ChemicalElementMass[ipOXYGEN])/state.Rho;
-    }
+    /* Scale the total metallicity with O/H against the Asplund et al. (2009) solar
+       values (O/H = 10^-3.31, Z = 0.0134); Z sets the untracked-element CIE term. */
+    state.Z = ASPLUND_2009_SOLAR_METALLICITY*(state.n[ipOXYGEN]/state.n[ipHYDROGEN])/pow(10.0,8.69-12.0);
     state.invT = 1.0/state.T;
     state.logT = log10(state.T);
     if(nonequilibrium){

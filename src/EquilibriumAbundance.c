@@ -240,12 +240,30 @@ static double HydrogenFluxResidual(double fraction, const void *parameters){
     return MolecularHydrogenResidual(balance->state,balance->h2,balance->neutralFraction,atomic,molecular);
 }
 
+#ifndef EQC_H2_LEGACY_SHIELDING
+/* Stability of a balanced state against changes in the H2 fraction.
+   The derivative is with respect to ln(molecular/atomic). */
+static bool StableMolecularHydrogen(const HydrogenBalance *balance, double atomic, double molecular){
+    if(atomic == 0.0 || molecular == 0.0) return true;
+    const StructEQCData *state = balance->state;
+    const CEQMolecularHydrogenCoefficients *h2 = balance->h2;
+    const double nH = state->n[ipHYDROGEN];
+    const double byAtom = nH*balance->neutralFraction*h2->collision.atomicHydrogen;
+    const double byMolecule = 0.5*nH*h2->collision.molecularHydrogen;
+    double shieldSlope;
+    const double photo = CEQH2PhotoRateAndShieldingSlope(state->G0,(0.5*molecular)*state->Nt,
+                                                         h2->doppler,h2->dustShielding,&shieldSlope);
+    const double destruction = photo+state->nel*h2->collision.electron+byAtom*atomic+byMolecule*molecular;
+    return destruction+atomic*(photo*shieldSlope+molecular*(byMolecule-byAtom)) >= 0.0;
+}
+#endif
+
 static void RefreshMolecularHydrogenCoefficients(const StructEQCData *state,
                                                  CEQMolecularHydrogenCoefficients *h2,
                                                  const CEQTemperaturePoint *point){
     const double dustTemperature = EffectiveDustTemperature(state);
     h2->formation = state->n[ipHYDROGEN]*H2FormationRate(state->T,state->Zd,dustTemperature);
-    h2->doppler = sqrt(SQ(12.90*sqrt(1.e-4*state->T))+SQ(b_turb));
+    h2->doppler = H2DopplerWidth(state->T);
     h2->collision = CEQH2DissociationCoefficientsWithTemperatureTable(state->T,point);
 }
 
@@ -257,10 +275,28 @@ static CEQMolecularHydrogenCoefficients MolecularHydrogenCoefficients(const Stru
     return h2;
 }
 
-/* Search outward from a previous fraction for a sign change, then refine it.
-   The residual increases with the H2 fraction and decreases with the atomic
-   fraction, so the step direction follows the sign. Returns EQC_NO_EQUILIBRIUM
-   when no bracket is found, leaving the caller's full-range search. */
+#ifndef EQC_H2_LEGACY_SHIELDING
+/* Below this H2 column the line shielding changes the photodissociation rate
+   by less than 0.2%, so the balance has a single root there. */
+static const double TraceShieldingColumn = 1.e12;
+
+/* Searched fraction at which the H2 column reaches TraceShieldingColumn,
+   or a negative value when the whole range stays below it. */
+static double TraceShieldingFraction(const HydrogenBalance *balance){
+    const double Nt = balance->state->Nt;
+    if(!(0.5*Nt > TraceShieldingColumn)) return -1.0;
+    const double molecular = 2.0*TraceShieldingColumn/Nt;
+    return balance->useAtomicFraction ? 1.0-molecular : molecular;
+}
+
+static bool BelowTraceShielding(const HydrogenBalance *balance, double boundary, double fraction){
+    if(boundary < 0.0) return true;
+    return balance->useAtomicFraction ? fraction > boundary : fraction < boundary;
+}
+#endif
+
+/* Follow the sign of net H2 production away from the incoming fraction.
+   Returns EQC_NO_EQUILIBRIUM when there is no bracket in this half of the range. */
 static int SolveMolecularHydrogenNear(const HydrogenBalance *balance, double start, double half,
                                       double accuracy, double *root){
     FluxPoint near = {start,HydrogenFluxResidual(start,balance)};
@@ -268,13 +304,26 @@ static int SolveMolecularHydrogenNear(const HydrogenBalance *balance, double sta
     if(fabs(near.residual) <= accuracy){ *root = start; return EQC_SUCCESS; }
     const bool upward = balance->useAtomicFraction ? near.residual > 0.0 : near.residual < 0.0;
     double step = fmax(2.0*fabs(near.residual),1.e-12);
+#ifndef EQC_H2_LEGACY_SHIELDING
+    /* Trace H2 may sit many decades from the incoming fraction. Grow the step
+       freely below the shielding column and keep it local above. */
+    const double boundary = TraceShieldingFraction(balance);
+    if(!BelowTraceShielding(balance,boundary,near.fraction)) step = fmin(step,0.25);
+#endif
     for(int i=0;i<64;i++){
         FluxPoint far;
         if(upward){
-            const double fraction = near.fraction*(1.0+step);
+            double fraction = near.fraction*(1.0+step);
+#ifndef EQC_H2_LEGACY_SHIELDING
+            /* Stop at the shielding column so that no pair of shielded roots is skipped. */
+            if(boundary > near.fraction && fraction > boundary) fraction = boundary;
+#endif
             far = fraction >= 0.5 ? (FluxPoint){0.5,half} : (FluxPoint){fraction,HydrogenFluxResidual(fraction,balance)};
         }else{
-            const double fraction = near.fraction/(1.0+step);
+            double fraction = near.fraction/(1.0+step);
+#ifndef EQC_H2_LEGACY_SHIELDING
+            if(boundary > 0.0 && boundary < near.fraction && fraction < boundary) fraction = boundary;
+#endif
             if(!(fraction > 0.0)) return EQC_NO_EQUILIBRIUM;
             far = (FluxPoint){fraction,HydrogenFluxResidual(fraction,balance)};
         }
@@ -311,9 +360,27 @@ static int SolveMolecularHydrogenNear(const HydrogenBalance *balance, double sta
         }
         if(far.fraction >= 0.5) return EQC_NO_EQUILIBRIUM;
         near = far;
+#ifdef EQC_H2_LEGACY_SHIELDING
         step *= 4.0;
+#else
+        /* The line-shielding fit can support multiple equilibria. Keep the
+           bracket search local as the step grows. */
+        step = BelowTraceShielding(balance,boundary,near.fraction) ? 4.0*step : fmin(4.0*step,0.25);
+#endif
     }
     return EQC_NO_EQUILIBRIUM;
+}
+
+/* Unshielded balance 0.5 y (A + B a + C y) = F a, quadratic in y. */
+static double UnshieldedMolecularFraction(const StructEQCData *state, const CEQMolecularHydrogenCoefficients *h2,
+                                          double neutral, double byElectron, double byAtom, double byMolecule){
+    const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,0.0,h2->doppler,h2->dustShielding);
+    const double formation = h2->formation*neutral;
+    const double q2 = 0.5*(byMolecule-byAtom);
+    const double q1 = 0.5*(photo+byElectron+byAtom) + formation;
+    const double discriminant = q1*q1 + 4.0*q2*formation;
+    const double guess = discriminant >= 0.0 ? (2.0*formation)/(q1+sqrt(discriminant)) : 0.5;
+    return guess > 0.0 && guess < 1.0 ? guess : 0.5;
 }
 
 /* Newton iteration on r = ln(destroyed/formed) in the logit z = ln(y/a) of
@@ -325,7 +392,6 @@ static int SolveMolecularHydrogenNewton(const StructEQCData *state, const CEQMol
                                         double neutral, double previousH2, double accuracy,
                                         double *atomic, double *molecular){
     const double nH = state->n[ipHYDROGEN];
-    const double photoUnshielded = state->G0*(3.3e-11*h2->dustShielding);
     const double byElectron = state->nel*h2->collision.electron;
     const double byAtom = (nH*neutral)*h2->collision.atomicHydrogen;     /* times a */
     const double byMolecule = (0.5*nH)*h2->collision.molecularHydrogen;  /* times y */
@@ -333,22 +399,17 @@ static int SolveMolecularHydrogenNewton(const StructEQCData *state, const CEQMol
     if(!(formation > 0.0) || !isfinite(formation)) return EQC_NO_CONVERGENCE;
 
     double y = 2.0*(previousH2/nH);
-    if(!(y > 0.0 && y < 1.0)){
-        /* Unshielded balance 0.5 y (A + B a + C y) = F a, quadratic in y. */
-        const double formationPerHydrogen = h2->formation*neutral;
-        const double q2 = 0.5*(byMolecule-byAtom);
-        const double q1 = 0.5*(photoUnshielded+byElectron+byAtom) + formationPerHydrogen;
-        const double discriminant = q1*q1 + 4.0*q2*formationPerHydrogen;
-        y = discriminant >= 0.0 ? (2.0*formationPerHydrogen)/(q1+sqrt(discriminant)) : 0.5;
-        if(!(y > 0.0 && y < 1.0)) y = 0.5;
-    }
+    if(!(y > 0.0 && y < 1.0))
+        y = UnshieldedMolecularFraction(state,h2,neutral,byElectron,byAtom,byMolecule);
     double a = 1.0-y;
     for(int iteration=0; iteration<16; iteration++){
         const double column = (0.5*y)*state->Nt;
         /* Match the bracket residual's evaluation order. */
         const double nHI = (nH*a)*neutral;
         const double nH2 = (0.5*nH)*y;
-        const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,column,h2->doppler,h2->dustShielding);
+        double shieldSlope;
+        const double photo = CEQH2PhotoRateAndShieldingSlope(state->G0,column,h2->doppler,h2->dustShielding,
+                                                             &shieldSlope);
         const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,nH2);
         const double destruction = photo+collision;
         const double destroyed = destruction*nH2;
@@ -356,15 +417,15 @@ static int SolveMolecularHydrogenNewton(const StructEQCData *state, const CEQMol
         if(!(destroyed >= DBL_MIN && formed >= DBL_MIN)) return EQC_NO_CONVERGENCE;
         const double residual = FluxResidual(destroyed,formed);
         if(!isfinite(residual)) return EQC_NO_CONVERGENCE;
+        /* dr/dz = 1 + y a (d destruction/dy)/destruction.
+           The positive derivative selects a stable chemical balance. */
+        const double slope = 1.0 + (a*photo*shieldSlope + (y*a)*(byMolecule-byAtom))/destruction;
+        if(!(slope > 0.0)) return EQC_NO_CONVERGENCE;
         if(fabs(residual) <= accuracy){
             *atomic = a;
             *molecular = y;
             return EQC_SUCCESS;
         }
-        /* dr/dz = 1 + y a (d destruction/dy)/destruction. */
-        const double slope = 1.0 + (a*photo*H2SelfShieldingLogSlope(column)
-                                    + (y*a)*(byMolecule-byAtom))/destruction;
-        if(!(slope > 0.0)) return EQC_NO_CONVERGENCE;
         const double step = fmax(-8.0,fmin(8.0,-log(destroyed/formed)/slope));
         const double grown = y*exp(step);
         const double total = a+grown;
@@ -399,15 +460,41 @@ static int SolveMolecularHydrogen(const StructEQCData *state, const CEQMolecular
         status = EQC_SUCCESS;
     }else{
         // Use the smaller fraction so that nearly molecular gas retains its trace H I.
-        balance.useAtomicFraction = half < 0.0;
-        double initialFraction = 0.0;
-        if(previousH2 > 0.0 && previousH2 < nH){
-            const double molecularGuess = 2.0*(previousH2/nH);
-            initialFraction = balance.useAtomicFraction ? 1.0-molecularGuess : molecularGuess;
+        const bool bracketAtomic = half < 0.0;
+        double molecularGuess = 2.0*(previousH2/nH);
+        balance.useAtomicFraction = bracketAtomic;
+#ifndef EQC_H2_LEGACY_SHIELDING
+        /* A branch can lie in either half, irrespective of the sign at 0.5.
+           Search the incoming branch before bracketing from the endpoints. */
+        if(molecularGuess == 0.0){
+            molecularGuess = UnshieldedMolecularFraction(state,h2,neutral,state->nel*h2->collision.electron,
+                (nH*neutral)*h2->collision.atomicHydrogen,(0.5*nH)*h2->collision.molecularHydrogen);
         }
+        if(molecularGuess > 0.0 && molecularGuess < 1.0)
+            balance.useAtomicFraction = molecularGuess > 0.5;
+#endif
+        double initialFraction = 0.0;
+#ifdef EQC_H2_LEGACY_SHIELDING
+        if(previousH2 > 0.0 && previousH2 < nH)
+#else
+        if(molecularGuess > 0.0 && molecularGuess < 1.0)
+#endif
+            initialFraction = balance.useAtomicFraction ? 1.0-molecularGuess : molecularGuess;
         status = EQC_NO_EQUILIBRIUM;
         if(initialFraction > 0.0 && initialFraction < 0.5)
             status = SolveMolecularHydrogenNear(&balance,initialFraction,half,accuracy,&fraction);
+#ifndef EQC_H2_LEGACY_SHIELDING
+        if(status == EQC_SUCCESS &&
+           !StableMolecularHydrogen(&balance,balance.useAtomicFraction ? fraction : 1.0-fraction,
+                                    balance.useAtomicFraction ? 1.0-fraction : fraction)){
+            status = EQC_NO_EQUILIBRIUM;
+            initialFraction = 0.0;
+        }
+        if(balance.useAtomicFraction != bracketAtomic && status != EQC_SUCCESS){
+            balance.useAtomicFraction = bracketAtomic;
+            initialFraction = 0.0;
+        }
+#endif
         if(status != EQC_SUCCESS){
             const FluxPoint lower = {0.0,HydrogenFluxResidual(0.0,&balance)};
             const FluxPoint upper = {0.5,half};
@@ -417,6 +504,9 @@ static int SolveMolecularHydrogen(const StructEQCData *state, const CEQMolecular
     if(status != EQC_SUCCESS) return status;
     *atomic = balance.useAtomicFraction ? fraction : 1.0-fraction;
     *molecular = balance.useAtomicFraction ? 1.0-fraction : fraction;
+#ifndef EQC_H2_LEGACY_SHIELDING
+    if(!StableMolecularHydrogen(&balance,*atomic,*molecular)) return EQC_NO_CONVERGENCE;
+#endif
     return EQC_SUCCESS;
 }
 
@@ -764,7 +854,7 @@ void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP){
     double xe     = ne/nH;
     double Tdust  = EffectiveDustTemperature(PhydroPP);
     //double b_turb = TURBULENCE_VELOCITY;    // km/s
-    double b5     = sqrt(SQ(12.90*sqrt(1.e-4*T))+SQ(b_turb));    // eq(6.34) of Draine's textbook
+    double b5     = H2DopplerWidth(T);
 
     double dnHI_phot  = HIPhotoIonizationRate(NLyn);
     double dnHI_coli  = ne*HICollisionalIonizationRate(T);

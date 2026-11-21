@@ -92,7 +92,7 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
 {
     StructEQCData state = *search->initial;
     state.nel = electronDensity;
-    /* The H2 root is unique, so the previous trial only shortens its search. */
+    /* Continue the H2 branch from the latest successful charge trial. */
     state.nmol[ipH2] = search->seedH2;
     const CEQHydrogenRates hydrogen = CEQHydrogenIonizationRatesWithCoefficients(&state,search->coefficients);
     int status = CEQSolveHydrogenEquilibriumWithRates(&state,&hydrogen,search->coefficients,search->accuracy);

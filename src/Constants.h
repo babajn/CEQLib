@@ -98,6 +98,7 @@
 // astrophysical constants
 #define MSUN_CGS    (1.98892e+33)       // [g]
 #define SOLAR_METALLICITY       (0.019)             //
+#define ASPLUND_2009_SOLAR_METALLICITY (0.0134)     // Gas metallicity for supplemental CIE cooling
 #define SOLAR_LUMINOSITY_CGS    (3.86e+33)          // [erg/s]
 #define AU_CGS      (1.49597870e+13)    // [cm]
 #define PC_CGS      (3.08568025e+18)    // [cm]

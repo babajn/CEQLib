@@ -8,9 +8,21 @@
 #include "ChemicalEquilibriumCooling.h"
 
 static double Zsol = SOLAR_METALLICITY;
+static const double DustThermalFitTemperature = 1.e4;
+static const double DustThermalCutoffTemperature = 1.e5;
 
 extern double DustShieldingFactor(double Ntot, double Zd, double gamma);
 static double PhotoelectricHeatingEfficiency(double T, double k);
+
+/* Taper the Bakes & Tielens (1994) thermal fits above their low-temperature
+   range. Zero slope of the weight at both ends keeps the rates differentiable. */
+static double DustThermalRateWeight(double T){
+    if(T <= DustThermalFitTemperature) return 1.0;
+    if(T >= DustThermalCutoffTemperature) return 0.0;
+    const double s = log10(DustThermalCutoffTemperature/T)
+                    /log10(DustThermalCutoffTemperature/DustThermalFitTemperature);
+    return s*s*(3.0-2.0*s);
+}
 
 void InitializeGrainSurfaceChemistry(int Check){
 
@@ -127,18 +139,24 @@ double CoolingDustRecombination(StructEQCData *PhydroPP){
     double G0   = PhydroPP->G0;
     double Ntot = PhydroPP->Nt;
     if(EQCLibRunParameters.UseGrainSurfaceProcesses==false || ne==0.0 || Zd==0.0) return 0.0;
+    const double weight = DustThermalRateWeight(T);
+    if(weight == 0.0) return 0.0;
     if(EQCLibRunParameters.UseDustAttenuation==true)
         G0 *= DustShieldingFactor(Ntot,Zd,2.5);
     double k = G0*sqrt(T)/(ne*phiPAH);
     double beta = bt*pow(T,-0.068); 
     //return (4.65e-30)*phiPAH*pow(T,al)*pow(k,beta)*(Z/Zsol)*ne*nH; // eq.(9) of W+95
-    return (3.49e-30)*phiPAH*pow(T,al)*pow(k,beta)*(Zd/Zsol)*ne*nH;  // eq.(44) of BT94
+    return (3.49e-30)*phiPAH*pow(T,al)*pow(k,beta)*(Zd/Zsol)*ne*nH*weight;  // eq.(44) of BT94
 }
 
 //// Dust Photoelectric Heating [erg/cc/s]
 // eq.(42)(43) of Bakes & Tielens (1994)
 static double PhotoelectricHeatingEfficiency(double T, double k){
-    return (4.87e-2)/(1.0+(4.0e-3)*pow(k,0.73)) + (3.65e-2)*pow(1.e-4*T,0.7)/(1.0+(2.0e-4)*k);
+    const double weight = DustThermalRateWeight(T);
+    if(weight == 0.0) return 0.0;
+    const double efficiency = (4.87e-2)/(1.0+(4.0e-3)*pow(k,0.73))
+                            + (3.65e-2)*pow(1.e-4*T,0.7)/(1.0+(2.0e-4)*k);
+    return efficiency*weight;
 }
 double HeatingDustPhotoelectic(StructEQCData *PhydroPP){
     double nH    = PhydroPP->n[ipHYDROGEN]; 
@@ -147,7 +165,7 @@ double HeatingDustPhotoelectic(StructEQCData *PhydroPP){
     double Zd    = PhydroPP->Zd;
     double G0    = PhydroPP->G0;
     double Ntot  = PhydroPP->Nt;
-    if(ne==0.0 || G0==0.0 || Zd==0.0) return 0.0;
+    if(ne==0.0 || G0==0.0 || Zd==0.0 || T>=DustThermalCutoffTemperature) return 0.0;
     if(EQCLibRunParameters.UseDustAttenuation==true)
         G0 *= DustShieldingFactor(Ntot,Zd,2.5);
     double k = G0*sqrt(T)/(ne*phiPAH);

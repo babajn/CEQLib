@@ -16,6 +16,8 @@ from plot_style import GRAY, PLOT_STYLE, SERIES_COLORS
 
 
 PLOT_DIR = Path(__file__).resolve().parent
+DEFAULT_RUN_DIR = PLOT_DIR.parent / "test" / "out" / "wolfire"
+REFERENCE_DIR = PLOT_DIR.parent / "test" / "wolfire1995" / "reference"
 DENSITY_LABEL = r"$\log_{10}[n_{\rm H}/(\mathrm{cm}^{-3})]$"
 PRESSURE_LABEL = r"$\log_{10}[n_{\rm H}T/(\mathrm{K\,cm}^{-3})]$"
 # Zero-based column indices in the headerless PostProcessMap files.
@@ -71,13 +73,15 @@ X0_VALUES = (1, 0.1, 10, 100, 1000)
 
 
 class WolfireResults:
-    """Reads PostProcessMap files from out/, results/ or the run directory itself."""
+    """Read PostProcessMap files, with a saved reference for the default run."""
 
     def __init__(self, run_dir):
         self.run_dir = Path(run_dir)
+        candidates = (self.run_dir / "out", self.run_dir / "results", self.run_dir)
+        if self.run_dir.resolve() == DEFAULT_RUN_DIR.resolve():
+            candidates += (REFERENCE_DIR,)
         self.data_dir = next(
-            (directory for directory in (self.run_dir / "out", self.run_dir / "results", self.run_dir)
-             if (directory / REFERENCE).is_file()),
+            (directory for directory in candidates if (directory / REFERENCE).is_file()),
             None,
         )
         if self.data_dir is None:
@@ -249,7 +253,7 @@ def plot_mean_molecular_weight(results):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-dir", type=Path, default=PLOT_DIR.parent / "test" / "out" / "wolfire")
+    parser.add_argument("--run-dir", type=Path, default=DEFAULT_RUN_DIR)
     parser.add_argument("--output-dir", type=Path, default=PLOT_DIR / "out" / "wolfire")
     args = parser.parse_args()
     try:
