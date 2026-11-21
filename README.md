@@ -109,9 +109,9 @@ mkdir -p test/out/wolfire
 
 出力ファイルは `test/out/wolfire/out/` に作成されます。求解に失敗した点の詳細は `wolfire.log` に記録され、失敗点があるとコマンドは非ゼロで終了します。
 
-Jupyter で [PlotWolfire1995.ipynb](plot/PlotWolfire1995.ipynb) を実行すると、求解できたデータ点が表示されます。保存済みの実行を描く場合は、最初のコードセルの `run_dir` を変更してください。描画には Python 3、NumPy、Matplotlib 3.7 以降が必要です。
+Jupyter で [PlotWolfire1995.ipynb](plot/PlotWolfire1995.ipynb) を実行すると、求解できたデータ点が表示されます。冷却・加熱率の図は水素核数密度に対する体積あたりの各成分と合計を表示します。既定は基準条件で、`rate_case` で計算条件を切り替えられます。保存済みの実行を描く場合は、最初のコードセルの `run_dir` を変更してください。旧形式のデータでは記録済みの成分が表示され、追加成分を得るには上の手順で再計算します。描画には Python 3、NumPy、Matplotlib 3.7 以降が必要です。
 
-PNG を生成するには `make -C test wolfire-plot` を実行してください。[plot_wolfire1995.py](plot/plot_wolfire1995.py) が `test/out/wolfire` の結果を描画し、PNG を `plot/out/wolfire/` に保存します。2つのノートブックとスクリプトは、[plot_style.py](plot/plot_style.py) の共通の図のスタイルを使います。
+PNG を生成するには `make -C test wolfire-plot` を実行してください。[plot_wolfire1995.py](plot/plot_wolfire1995.py) が `test/out/wolfire` の結果を描画し、`thermal_rates.png` などを `plot/out/wolfire/` に保存します。2つのノートブックとスクリプトは、[plot_style.py](plot/plot_style.py) の共通の図のスタイルを使います。
 
 ## 参考文献
 

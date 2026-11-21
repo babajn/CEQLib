@@ -387,6 +387,15 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, doub
             // emissivity (4*pi*j) & aborpsion coefficiencies of HI 21cm
         /* #45 */ fprintf(out,"%e ",PhydroPP.L_HI21cm );
         /* #46 */ fprintf(out,"%e ",PhydroPP.k_HI21cm );
+
+            // additional thermal budget terms [erg/s/cc]
+        /* #47 */ fprintf(out,"%e ",PhydroPP.L_res    );
+        /* #48 */ fprintf(out,"%e ",PhydroPP.L_CI370  );
+        /* #49 */ fprintf(out,"%e ",PhydroPP.L_OIII   );
+        /* #50 */ fprintf(out,"%e ",PhydroPP.L_OII    );
+        /* #51 */ fprintf(out,"%e ",PhydroPP.L_OI146  );
+        /* #52 */ fprintf(out,"%e ",PhydroPP.L_SiII35 );
+        /* #53 */ fprintf(out,"%e ",PhydroPP.H_PI     );
         
         fprintf(out,"\n");
         fflush(NULL);

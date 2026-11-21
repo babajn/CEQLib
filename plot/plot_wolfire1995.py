@@ -20,6 +20,17 @@ DENSITY_LABEL = r"$\log_{10}[n_{\rm H}/(\mathrm{cm}^{-3})]$"
 PRESSURE_LABEL = r"$\log_{10}[n_{\rm H}T/(\mathrm{K\,cm}^{-3})]$"
 # Zero-based column indices in the headerless PostProcessMap files.
 RESULT_COLUMNS = {8: "T", 12: "n_H", 16: "n_e", 17: "n_HII", 18: "n_HI"}
+COOLING_COLUMNS = {
+    42: "Total", 28: "Free–free", 29: "H I processes", 30: "He I processes",
+    31: "He II processes", 32: "[C II] 158 μm", 33: "[C I] 610 μm",
+    34: "[O I] 63 μm", 35: "Grain recombination", 36: "H₂", 37: "CO",
+    46: "CIE metals", 47: "[C I] 370 μm", 48: "[O III]", 49: "[O II]",
+    50: "[O I] 146 μm", 51: "[Si II] 35 μm",
+}
+HEATING_COLUMNS = {
+    43: "Total", 38: "Photoelectric", 39: "Cosmic rays", 40: "Soft X-rays",
+    41: "H₂", 52: "Photoionization",
+}
 Y_HE = 0.1  # n_He / n_H used for the mean molecular weight
 
 
@@ -89,6 +100,13 @@ class WolfireResults:
                              encoding="utf-8", ndmin=1, deletechars="")
         return np.sort(data, order=["case", "sample"])
 
+    def rate_data(self, filename):
+        """Read thermal budget columns, including those appended after column 46."""
+        data = np.loadtxt(self.data_dir / filename, ndmin=2)
+        if data.shape[1] < 44:
+            raise ValueError(f"No thermal budget columns in {filename}")
+        return data
+
 
 def log10_positive(values):
     values = np.asarray(values, dtype=float)
@@ -134,6 +152,50 @@ def plot_hi_fraction(results):
         results, lambda data: data["n_HI"] / data["n_H"],
         r"$n_{\rm HI}/n_{\rm H}$", xlim=(-3, 3), ylim=(0, 1.02), title="Neutral hydrogen fraction",
     )
+
+
+def plot_thermal_rates(results, filename=REFERENCE, *, xlim=None,
+                       cooling_ylim=None, heating_ylim=None):
+    """Plot thermal rates with optional axis limits in log10 units."""
+    data = results.rate_data(filename)
+    density = log10_positive(data[:, 12])
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=True, layout="constrained")
+    colors = [plt.get_cmap("tab20")(i) for i in (*range(0, 20, 2), *range(1, 20, 2))]
+    panels = (
+        (COOLING_COLUMNS, "Cooling", cooling_ylim),
+        (HEATING_COLUMNS, "Heating", heating_ylim),
+    )
+    for ax, (columns, title, ylim) in zip(axes, panels):
+        peaks = []
+        total_min = np.inf
+        for index, (column, label) in enumerate(columns.items()):
+            if column >= data.shape[1]:
+                continue
+            rate = log10_positive(data[:, column])
+            finite = np.isfinite(rate)
+            if not finite.any():
+                continue
+            peaks.append(rate[finite].max())
+            if index == 0:
+                total_min = rate[finite].min()
+            style = series_style(0) if index == 0 else {"color": colors[index - 1], "lw": 1.3}
+            ax.plot(density, rate, label=label, **style)
+        ax.set_title(title, loc="left")
+        ax.set_xlabel(DENSITY_LABEL)
+        if peaks:
+            if ylim is None:
+                # Keep every active component visible without scaling to underflow tails.
+                lower = min(min(peaks) - 1, total_min - 2)
+                ax.set_ylim(bottom=max(ax.get_ylim()[0], lower), top=max(peaks) + 0.5)
+            ax.legend(fontsize=8, ncols=2)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+    if data.shape[1] < 53:
+        fig.suptitle("Thermal rates (components available in this saved run)")
+    if xlim is not None:
+        axes[-1].set_xlim(xlim)
+    fig.supylabel(r"$\log_{10}[\mathrm{rate}/(\mathrm{erg\,s^{-1}\,cm^{-3}})]$")
+    return fig
 
 
 def plot_x0_scaling(results):
@@ -200,6 +262,7 @@ def main():
                 ("hii_fraction.png", plot_hii_fraction),
                 ("hi_fraction.png", plot_hi_fraction),
                 ("mean_molecular_weight.png", plot_mean_molecular_weight),
+                ("thermal_rates.png", plot_thermal_rates),
             ):
                 fig = plot(results)
                 fig.savefig(args.output_dir / name, dpi=180)
