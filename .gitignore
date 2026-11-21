@@ -37,5 +37,9 @@ tags
 /data/Nahar1999/*.dat
 /data/NaharPradhan1997/*.dat
 
+# Local Gnat & Ferland (2012) tables outside the CIE generator inputs
+/data/GnatFerland2012/H.dat
+/data/GnatFerland2012/He.dat
+
 # Local gnuplot scripts
 /plot/**/*.gp
