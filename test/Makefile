@@ -1,11 +1,11 @@
 #CC = mpicc
 CC = gcc
 EQCLIB_DIR ?= ../src
-GSL_DIR ?= /home/babajn/lib/gsl
+GSL_DIR ?= $(or $(shell gsl-config --prefix 2>/dev/null),$(wildcard $(HOME)/lib/gsl),/usr)
 PYTHON ?= python3
 
 OPTIMIZE += -O3 -std=c99
-OPTIMIZE += -finline-functions -ffast-math -funroll-loops -frerun-cse-after-loop -fexpensive-optimizations -fomit-frame-pointer -msse3 -mfpmath=sse
+OPTIMIZE += -finline-functions -ffast-math -funroll-loops -frerun-cse-after-loop -fexpensive-optimizations -fomit-frame-pointer
 OPTIMIZE += -Winline -Wundef -Wmissing-noreturn -Wstrict-prototypes 
 OPTIMIZE += -g 
 OPTIMIZE += -DDEBUG_LEVEL=0
@@ -17,11 +17,14 @@ LDFLAGS += -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas
 
 #include makeflags
 
+ifneq ($(filter x86_64% i386% i486% i586% i686%,$(shell $(CC) -dumpmachine)),)
+OPTIMIZE += -msse3 -mfpmath=sse
 ifeq ($(COMPILER),"craycc")
 OPTIMIZE += -msse3 -m3dnow -m64 -mcpu=opteron -march=opteron 
 endif
 ifeq ($(COMPILER),"gcc")
 OPTIMIZE += -msse3 -m3dnow -m64 -mcpu=opteron -march=opteron 
+endif
 endif
 
 CFLAGS = $(OPTIMIZE) $(OPTIONS) $(INCLUDEPATH) 
@@ -35,7 +38,7 @@ TEST_SOURCES = $(wildcard benchmark/*.[ch] co/*.[ch] common/*.[ch] hii/*.[ch] no
 
 ALL:   start
 
-.PHONY: start eqclib check cell-check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot clean tag pkg
+.PHONY: start eqclib check cell-check notebook-data benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot clean tag pkg
 eqclib:
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
@@ -69,6 +72,11 @@ out/HydrogenChemistryTest.o: $(EQCLIB_DIR)/CoolingCIE.h $(EQCLIB_DIR)/CoolingHea
 cell-check: eqclib
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) eqclib-cell
 	$(PYTHON) unit/CellRunnerTest.py "$(EQCLIB_DIR)/eqclib-cell"
+
+# Keep timing runs sequential even when the outer make uses -j.
+notebook-data:
+	$(MAKE) -j1 check cell-check hii co noneq hii-benchmark molecular-settings-benchmark noneq-benchmark noneq-hot
+	$(MAKE) -j1 -C wolfire2003 EQCLIB_DIR="$(abspath $(EQCLIB_DIR))" GSL_DIR="$(GSL_DIR)" run
 
 benchmark: benchmark/ThermalBenchmark.c eqclib
 	mkdir -p out

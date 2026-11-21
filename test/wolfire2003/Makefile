@@ -1,5 +1,5 @@
 CC ?= cc
-GSL_DIR ?= /home/babajn/lib/gsl
+GSL_DIR ?= $(or $(shell gsl-config --prefix 2>/dev/null),$(wildcard $(HOME)/lib/gsl),/usr)
 EQCLIB_DIR := ../../src
 OUT_DIR := ../out/wolfire2003
 WRAPPED_RATES := SoftXrayIonizationRateHI SoftXrayIonizationRateHeI \

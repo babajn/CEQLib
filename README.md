@@ -17,33 +17,37 @@ EQCLib は化学平衡モードを既定とします。その時点の温度・�
 
 ## ビルドと検証
 
-C99 対応の GCC と Steffen 補間（`gsl_interp_steffen`）に対応した GNU Scientific Library（GSL）が必要です。以下の `GSL_DIR` は GSL のインストール先に合わせてください。`make -C test benchmark` は OpenMP を使用します。
+ビルドには GNU Make、C99 対応の GCC、Steffen 補間（`gsl_interp_steffen`）に対応した GNU Scientific Library（GSL）の開発ファイルが必要です。テストと作図には Python 3 を使います。GSL のパスは `gsl-config` があれば自動で取得します。別の場所にインストールした GSL を指定する場合は、ビルドの前に `export GSL_DIR=/path/to/gsl` を実行してください。
+
+ソースを取得し、EQCLib のリポジトリルートで次を実行すると、静的ライブラリをビルドして基本テストを実行できます。
 
 ```sh
-make -C src GSL_DIR="$HOME/lib/gsl" libEQCLib.a
-make -C test GSL_DIR="$HOME/lib/gsl" check
-OMP_NUM_THREADS=12 make -C test GSL_DIR="$HOME/lib/gsl" benchmark
+make -C src libEQCLib.a
+make -C test check cell-check
 ```
 
-ベンチマークは、原子ガスと分子ガスそれぞれの325点を、10年・1万年・100万年の時間刻みで3ステップずつ進めます。各ステップの収束数、実行時間、逐次と並列の比較を表示します。
+熱化学更新の並列性能は `OMP_NUM_THREADS=12 make -C test benchmark` で測定できます。このベンチマークは OpenMP を使い、原子ガスと分子ガスそれぞれの325点を、10年・1万年・100万年の時間刻みで3ステップずつ進めます。各ステップの収束数、実行時間、逐次と並列の比較を表示します。
 
-### 検証ノートブックの再計算
+### テスト結果を Jupyter で確認する
 
-リポジトリのルートで次を実行すると、H₂・CO、H II 領域、非平衡化学の検証データと計算時間を `test/out/` に出力します。計算時間はターゲットを順番に実行して測ります。
+リポジトリのルートで次を実行します。`notebook-data` はライブラリのビルドと基本テストも行い、H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に出力します。計算時間はターゲットを順番に実行して測ります。
 
 ```sh
-make -C test GSL_DIR="$HOME/lib/gsl" co hii noneq
-make -j1 -C test GSL_DIR="$HOME/lib/gsl" molecular-settings-benchmark hii-benchmark noneq-benchmark noneq-hot
+make -C test notebook-data
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r plot/requirements.txt
+jupyter lab
 ```
 
-Wolfire の検証と Cloudy の比較は個別の手順で実行します。計算後、Jupyter で各ノートブックのセルを先頭から実行し、保存すると図と集計表が更新されます。 [Wolfire (1995) の実行手順](#wolfire-et-al-1995-の検証計算と描画)、[Wolfire (2003) の実行手順](#wolfire-et-al-2003-との熱平衡曲線の比較)、[Cloudy の実行手順](#cloudy-との比較)
+JupyterLab で `plot/PlotHIIRegion.ipynb` などを開き、仮想環境の Python 3 カーネルで **Run → Run All Cells** を選ぶと、保存済みの計算結果から図と集計表を更新できます。Wolfire (1995) と Cloudy の比較図には同梱の参照データも使えます。各比較を再計算するときは実行手順を参照してください。CHIMES の再計算には外部の CHIMES ライブラリと反応データが必要です。 [テストとノートブックの一覧](test/README.md) · [Wolfire (1995) の実行手順](#wolfire-et-al-1995-の検証計算と描画) · [Cloudy の実行手順](#cloudy-との比較) · [CHIMES の実行手順](test/chimes/README.md)
 
 ## 設定ファイルで平衡・非平衡を切り替える
 
 固定密度・固定照射の単一セルは、付属の `eqclib-cell` で実行できます。リポジトリのルートで次を実行してください。
 
 ```sh
-make -C src GSL_DIR="$HOME/lib/gsl" eqclib-cell
+make -C src eqclib-cell
 cp examples/cell.conf cell.conf
 ./src/eqclib-cell cell.conf > cell.csv
 ```
@@ -228,7 +232,7 @@ Jupyter で計算を実行して設定ごとの収束数と失敗した条件を
 ## H II 領域の検証計算と描画
 
 ```sh
-make -C test GSL_DIR="$HOME/lib/gsl" hii
+make -C test hii
 ```
 
 [HIIRegionTest.c](test/hii/HIIRegionTest.c) は、ダストと分子を含まない単一セルを、太陽金属量の PEGASE2 電離スペクトルと case B 再結合で計算します。入射電離光の減衰、非電離 FUV、宇宙線、X 線は含めません。水素核密度 `n_H = 1, 10, 100, 1000 cm⁻³`、ガス金属量 `Z/Z☉ = 0, 0.1, 1`、電離パラメータ `U = NLyn/(n_H c)` の `log10(U) = −4〜−2` の108条件で、等積の熱平衡温度と各元素の電離分率を求めます。さらに `n_H = 100 cm⁻³`、`Z/Z☉ = 1`、`log10(U) = −3` で約3,160〜31,600 K の温度範囲を走査します。
@@ -237,12 +241,12 @@ make -C test GSL_DIR="$HOME/lib/gsl" hii
 - `test/out/hii/reactions.csv` に H、He、C、O、Si の光電離、電子衝突電離、電子再結合の反応率（cm⁻³ s⁻¹）を出力します。各点で電離と再結合の釣り合いを確認します。
 - Jupyter で [PlotHIIRegion.ipynb](plot/PlotHIIRegion.ipynb) を実行すると、平衡温度・電離分率、冷却・加熱の内訳、反応率を表示します。保存済みの計算結果を描く場合は、最初のコードセルの `run_dir` を変更してください。描画には Python 3、NumPy、Matplotlib 3.7 以降が必要です。
 
-PNG を生成するには `make -C test GSL_DIR="$HOME/lib/gsl" hii-plot` を実行してください。計算済みの CSV は [plot_hii_region.py](plot/plot_hii_region.py) でも描画できます。PNG は `plot/out/hii/` に保存されます。
+PNG を生成するには `make -C test hii-plot` を実行してください。計算済みの CSV は [plot_hii_region.py](plot/plot_hii_region.py) でも描画できます。PNG は `plot/out/hii/` に保存されます。
 
 ### H II 領域の計算時間
 
 ```sh
-make -C test GSL_DIR="$HOME/lib/gsl" hii-benchmark
+make -C test hii-benchmark
 ```
 
 [HIIRegionBenchmark.c](test/hii/HIIRegionBenchmark.c) は、電離光なし、照射継続中、照射開始直後を同じ密度・元素組成・初期温度で比較します。照射開始直後の粒子には、照射前の化学組成と内部エネルギーを保持したまま、照射継続中と同じ `NLyn` を与えます。ダストと分子なしの108条件で、固定温度の化学平衡・冷却加熱率と、時間刻み10年・1万年・100万年の陰的エネルギー更新を測ります。
@@ -254,7 +258,7 @@ make -C test GSL_DIR="$HOME/lib/gsl" hii-benchmark
 [Cloudy C23.01](https://data.nublado.org/cloudy_releases/c23/) をビルドし、EQCLib のルートで次を実行します。
 
 ```sh
-make -C test GSL_DIR="$HOME/lib/gsl" hii
+make -C test hii
 python3 test/hii/cloudy/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe
 ```
 
@@ -265,7 +269,7 @@ python3 test/hii/cloudy/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy
 ## H₂・CO 化学の検証計算と描画
 
 ```sh
-make -C test GSL_DIR="$HOME/lib/gsl" co
+make -C test co
 ```
 
 [MolecularTest.c](test/co/MolecularTest.c) は、H II 領域・H₂・CO・ダスト・宇宙線・軟X線・H–O 電荷交換をすべて有効にした設定で化学平衡を解き、反応収支を確かめます。次の2種類の条件を計算します。
@@ -275,7 +279,7 @@ make -C test GSL_DIR="$HOME/lib/gsl" co
 
 各平衡状態について、H₂ と CO の生成・消滅、電荷交換を含む H と O の電離・再結合の反応量を、公開されている反応率関数から独立に計算し直します。どれかの相対差が `10⁻⁶` を超えるか、最終的な H₂ 量で CO を解き直したときに CO が `10⁻⁶` 以上変わると、試験は失敗します。CSV には存在比、各反応量（cm⁻³ s⁻¹）、相対差を出力します。
 
-Jupyter で [PlotCOChemistry.ipynb](plot/PlotCOChemistry.ipynb) を実行すると、反応収支、密度に対する分子の割合、柱密度に対する H/H₂ と C⁺/C/CO の遷移、生成と消滅の反応量を表示します。PNG を生成するには `make -C test GSL_DIR="$HOME/lib/gsl" co-plot` を実行してください。[plot_co_chemistry.py](plot/plot_co_chemistry.py) が PNG を `plot/out/co/` に保存します。
+Jupyter で [PlotCOChemistry.ipynb](plot/PlotCOChemistry.ipynb) を実行すると、反応収支、密度に対する分子の割合、柱密度に対する H/H₂ と C⁺/C/CO の遷移、生成と消滅の反応量を表示します。PNG を生成するには `make -C test co-plot` を実行してください。[plot_co_chemistry.py](plot/plot_co_chemistry.py) が PNG を `plot/out/co/` に保存します。
 
 ### CO モデルの適用範囲
 
@@ -292,7 +296,7 @@ Glover & Clark (2012) は、銀河規模の計算では KC08e のような簡単
 ## Wolfire et al. (1995) の検証計算と描画
 
 ```sh
-make -C test GSL_DIR="$HOME/lib/gsl" start
+make -C test start
 mkdir -p test/out/wolfire
 (cd test/out/wolfire && ../../test.out >wolfire.stdout 2>wolfire.log)
 ```
@@ -308,7 +312,7 @@ PNG を生成するには `make -C test wolfire-plot` を実行してくださ�
 ## Wolfire et al. (2003) との熱平衡曲線の比較
 
 ```sh
-make -C test/wolfire2003 GSL_DIR="$HOME/lib/gsl" run
+make -C test/wolfire2003 run
 ```
 
 太陽円の基準条件で化学・熱平衡を求め、冷相と暖相の安定枝および二相共存圧力を論文の Figure 8 と Table 3 に照合します。比較用の実行ファイルは GNU リンカの `--wrap` で論文の電離・加熱率に近似的にそろえたモデルと、EQCLib の既定の処方で計算した対照を出力します。計算結果は `test/out/wolfire2003/equilibrium.csv` に保存されます。ノートブックの実行には Jupyter、NumPy、pandas、SciPy、Matplotlib が必要です。 [PlotWolfire2003.ipynb](plot/PlotWolfire2003.ipynb) · [Wolfire et al. (2003)](https://doi.org/10.1086/368016)

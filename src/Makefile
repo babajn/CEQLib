@@ -3,7 +3,7 @@
 
 CC = gcc
 #CC = cc
-GSL_DIR ?= /home/babajn/lib/gsl
+GSL_DIR ?= $(or $(shell gsl-config --prefix 2>/dev/null),$(wildcard $(HOME)/lib/gsl),/usr)
 
 CFLAGS = -std=c99 -O3 -g -Wall -ffast-math  #-fPIC
 #CFLAGS += -I/home/babajn/lib/gsl-1.9/include 
@@ -13,11 +13,7 @@ CPPFLAGS += -I$(GSL_DIR)/include
 #GIT_VERSION = $(shell git log -1 --format="%H")
 #CFLAGS += -DGITVERSION=\"$(GIT_VERSION)\"
 
-LDFLAGS += -lm
-LDFLAGS += -L/usr/lib64 -lX11 -lgfortran -lm
-#LDFLAGS += -L/home/babajn/lib/gsl-1.9/lib -lgsl -lgslcblas 
-#LDFLAGS += -L/home/babajn/lib/dbg_malloc -ldbg_malloc
-LDFLAGS += -L/home/babajn/lib/gsl/lib -lgsl -lgslcblas 
+LDLIBS += -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas -lm
 
 OBJS	= RandomNumberGenerator.o \
           Utilities.o \
@@ -106,7 +102,7 @@ libEQCLib.a: $(OBJS)
 	ranlib $@
 
 eqclib-cell: CellRunner.o libEQCLib.a
-	$(CC) $(CFLAGS) $^ -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas -lm -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 # Use the production object's dependency chain and compile flags for both references.
 ChemicalEquilibriumCooling.o: Makefile

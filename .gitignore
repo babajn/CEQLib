@@ -12,6 +12,7 @@ tags
 /test/test.out
 
 # Generated output and local backups
+/.venv/
 /bk/
 /out/
 /EQCooling/

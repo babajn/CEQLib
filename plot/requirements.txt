@@ -1,0 +1,6 @@
+ipykernel
+jupyterlab
+matplotlib>=3.7
+numpy
+pandas
+scipy
