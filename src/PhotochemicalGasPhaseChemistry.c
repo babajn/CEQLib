@@ -18,7 +18,7 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_roots.h>
 
-static enum{
+enum{
     ipHI,
     ipHeI,
     ipHeII,

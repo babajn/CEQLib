@@ -19,7 +19,6 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_roots.h>
 
-static double Zsol = SOLAR_METALLICITY;
 //#define RATES_GLOVER_JAPPSEN_2007
 
 #define T_HI    (157807.0) // [K]
@@ -577,7 +576,6 @@ double CoolingHeIIRecombination(StructCEQData *PhydroPP){
     double nHeII = PhydroPP->nion[ipHELIUM];
     double ne    = PhydroPP->nel; 
     double T     = PhydroPP->T;
-    double lamb = 2.0*(T_HeI)/T;
     double eta = 0.e0;
     if(CEQLibRunParameters.UseRecombinationCaseB==true)
         eta = (BOLTZMANN_CONSTANT_CGS)*T*HeIIRecombinationRateCaseB(T);

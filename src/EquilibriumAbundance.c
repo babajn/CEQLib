@@ -495,7 +495,6 @@ void EquilibriumHydrogenFractionalAbundance(StructCEQData *PhydroPP){
 
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
-	double nHII   = PhydroPP->nion [ipHYDROGEN];
     double nHI    = PhydroPP->natom[ipHYDROGEN];
     double nH2    = PhydroPP->nmol [ipH2];
     double T      = PhydroPP->T;
@@ -530,7 +529,6 @@ void EquilibriumHydrogenFractionalAbundance(StructCEQData *PhydroPP){
         fH2  = 0.5*MAX(0.0,1.e0 - fHII - fHI);
     }else{
         double HIItoHt    = MIN(1.0,HIItoHI/(HIItoHI+1.0));
-        double HItoHt     = MIN(1.0,1.0    /(HIItoHI+1.0));
         fHII = HIItoHt;
         fHI  = MAX(0.0,1.e0 - fHII);
         fH2  = 0.0;
@@ -571,9 +569,6 @@ void EquilibriumHeliumFractionalAbundance(StructCEQData *PhydroPP){
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
     double nHe    = PhydroPP->n[ipHELIUM];
-	double nHeIII = PhydroPP->nHeIII;
-	double nHeII  = PhydroPP->nion [ipHELIUM];
-    double nHeI   = PhydroPP->natom[ipHELIUM];
     double T      = PhydroPP->T;
     double NLyn   = PhydroPP->NLyn; 
     double G0     = PhydroPP->G0;
@@ -648,18 +643,12 @@ void EquilibriumOxygenFractionalAbundance(StructCEQData *PhydroPP){
 
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
-    double nHI    = PhydroPP->nion [ipHYDROGEN];
-    double nHII   = PhydroPP->natom[ipHYDROGEN];
-    double nH2    = PhydroPP->nmol [ipH2];
     double nO     = PhydroPP->n[ipOXYGEN];
-    double nOII   = PhydroPP->nion [ipOXYGEN];
-    double nOI    = PhydroPP->natom[ipOXYGEN];
     double nCO    = PhydroPP->nmol [ipCO];
     double T      = PhydroPP->T;
     double NLyn   = PhydroPP->NLyn;
     double G0     = PhydroPP->G0;
     double X0     = PhydroPP->X0;
-    double Ntot   = PhydroPP->Nt;
     double Zd     = PhydroPP->Zd;
     double xe     = ne/nH;
     
@@ -1022,14 +1011,11 @@ void EquilibriumCarbonFractionalAbundance(StructCEQData *PhydroPP){
     double nH   = PhydroPP->n[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
     double nC   = PhydroPP->n[ipCARBON];
-    double nCII = PhydroPP->nion [ipCARBON];
-    double nCI  = PhydroPP->natom[ipCARBON];
     double T    = PhydroPP->T;
     double G0   = PhydroPP->G0;
     double X0   = PhydroPP->X0;
     double Ntot = PhydroPP->Nt;
     double Zd   = PhydroPP->Zd;
-    double xe   = ne/nH;
     double fCIII = 0.e0, fCII = 0.e0, fCI = 0.e0, fCO = 0.e0;
     if(CEQLibRunParameters.UseCOFormation==true){
         double nCO = PhydroPP->nmol [ipCO];
@@ -1103,8 +1089,6 @@ void EquilibriumSiliconFractionalAbundance(StructCEQData *PhydroPP){
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
     double nSi    = PhydroPP->n[ipSILICON];
-    double nSiII  = PhydroPP->nion [ipSILICON];
-    double nSiI   = PhydroPP->natom[ipSILICON];
     double T      = PhydroPP->T;
     double NLyn   = PhydroPP->NLyn;
     double G0     = PhydroPP->G0;

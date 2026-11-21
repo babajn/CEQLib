@@ -76,9 +76,6 @@ void InitializeCoolingTableCIE(int Check){
 //// normalized cooling rate for CIE gas [erg cm^3/s] 
 // ref. Sutherland & Dopita, ApJS, (1993)
 //      http://www.mso.anu.edu.au/~ralph/data/cool/
-#define logTmin  3.5
-#define logTmax  4.0
-const static double iBaseSh = 1.0/(logTmax-logTmin);
 double CoolingRateCIE(StructCEQData *PhydroPP){
     
     if(CEQLibRunParameters.UseCIEResonanceCooling==false)   return 0.e0;

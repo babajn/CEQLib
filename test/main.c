@@ -12,6 +12,7 @@
 //#include "ChemicalElements.h"
 #include "GrainSurfaceChemistry.h"
 #include "NewtonRaphson.h"
+#include "nrutil.h"
 
 #define G0_Draine   (1.7)
 #define Zsol        (SOLAR_METALLICITY)
@@ -29,8 +30,8 @@ int main_WolfireTest(void);
 int main_WolfireMilkyWayTest(void);
 int main_HIIregionTest(void);
 int main_test_NonlinerEquationSolver(void);
+int main_dust(void);
 
-static int main_dust(void);
 static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double Z, double X0, char *fname);
 static unsigned wolfireFailures;
 static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, double X0, double Ac, double Ao, char *fname);
@@ -47,12 +48,11 @@ int main(int argc, char *argv[]){
     ////return main_CoolingFunctionTest();
     ////return main_HIIregionTest();
     return main_WolfireTest();
-    return main_WolfireMilkyWayTest();
+    //return main_WolfireMilkyWayTest();
 
-    return ;
 }
 
-static int main_dust(void){
+int main_dust(void){
 
     FILE *output = fopen("out/Dust.dat","w");
     for(double logNt=17.0; logNt<=22.0; logNt+=0.01){
@@ -118,7 +118,7 @@ int main_test_NonlinerEquationSolver(void){
     const int n = 2;
     double *x  = dvector(1,n);
     double *f  = dvector(1,n);
-    double *df = dmatrix(1,n,1,n);
+    double **df = dmatrix(1,n,1,n);
     double tolx = 1.e-7;
     double tolf = 1.e-7;
 
@@ -134,7 +134,10 @@ int main_test_NonlinerEquationSolver(void){
     for(int i=1;i<=n;i++){
         fprintf(stderr,"i = %d: x = %f f = %e\n",i,x[i],f[i]);
     }
-    return ;
+    free_dmatrix(df,1,n,1,n);
+    free_dvector(f,1,n);
+    free_dvector(x,1,n);
+    return EXIT_SUCCESS;
 }
 
 static CEQLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double Zd,  double X0, double Ac, double Ao, StructCEQData *PhydroPP){
@@ -198,9 +201,7 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double Zd, doub
    
     int Nsample = 100;
     double dt = 1.e+3*YEAR_CGS; // [sec] 
-    double distance = 10.0*PC_CGS; // [cm]
     double NLyn = 0.e0;
-    //double NLyn = 1.e+49/(4.0*PI*SQ(distance)); // [1/s/cm^2]
     //double lognHmin = -2 + log10(X0), lognHmax = 3 + log10(X0);
     double lognHmin = -3 + log10(X0), lognHmax = 3 + log10(X0);
     //double lognHmin = -2 + log10(X0), lognHmax = 2 + log10(X0);
@@ -441,7 +442,7 @@ int main_WolfireTest(void){
     Ac = Ao = 1.0;
     Z  = Zsol; 
     Zd = Z;
-    sprintf(fname,"./out/PostProcessMap.dat",Nt,G0/G0_Draine,Z/Zsol);
+    strcpy(fname,"./out/PostProcessMap.dat");
     main_WolfireTestBody(G0,Nt,Z,Zd,X0,Ac,Ao,fname);
 #endif
 
@@ -782,7 +783,7 @@ int main_HIIregionTest(void){
     double Ac = 1.0;
     double Ao = 1.0;
     
-    sprintf(fname,"./out/PostProcessMap.dat",Nt,G0/G0_Draine,Z/Zsol);
+    strcpy(fname,"./out/PostProcessMap.dat");
    
     //int Nsample_nH  = 5;
     //double lognHmin = -2, lognHmax = 3;
@@ -795,7 +796,6 @@ int main_HIIregionTest(void){
     int Nsample_tmp = 100;
     double logTmin = 2.0, logTmax = 6.0;
     double dlogT  = (logTmax-logTmin)/Nsample_tmp; 
-    int Nsample = Nsample_nH * Nsample_tmp;
     
     double distance = 10.0*PC_CGS; // [cm]
     //double NLyn = 0.e0;
@@ -992,7 +992,7 @@ int main_HIIregionTest(void){
     }
     fclose(out);
 
-    return ; 
+    return EXIT_SUCCESS;
 
 }
 
@@ -1093,7 +1093,7 @@ int main_CoolingFunctionTest(void){
     }
 
 
-    return ;
+    return EXIT_SUCCESS;
 } 
 
 static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double Z, double X0, char *fname){
@@ -1105,18 +1105,14 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
     //double lognHmin = -2, lognHmax = 3;
     //int Nsample_nH  = 3;
     //double lognHmin = -2, lognHmax = 2;
-    int Nsample_nH  = 1;
     //double lognHmin = 1, lognHmax = 1;
     //double lognHmin = 2, lognHmax = 2;
     //double dlognH = (lognHmax-lognHmin)/Nsample_nH; 
     int Nsample_tmp = 100;
     double logTmin = 1.0, logTmax = 8.0;
     double dlogT  = (logTmax-logTmin)/Nsample_tmp; 
-    int Nsample = Nsample_nH * Nsample_tmp;
     
-    double distance = 10.0*PC_CGS; // [cm]
     double NLyn = 0.e0;
-    //double NLyn = 1.e+49/(4.0*PI*SQ(distance)); // [1/s/cm^2]
 
     double dt = 1.e+3*YEAR_CGS; // [sec] 
     StructCEQData PhydroPP;

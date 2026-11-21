@@ -44,7 +44,6 @@ int main(int argc, char *argv[]){
     return main_WolfireTest();
     //return main_WolfireMilkyWayTest();
 
-    return ;
 }
 
 static CEQLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double X0, StructCEQData *PhydroPP){
@@ -106,9 +105,7 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
    
     int Nsample = 100;
     double dt = 1.e+3*YEAR_CGS; // [sec] 
-    double distance = 10.0*PC_CGS; // [cm]
     double NLyn = 0.e0;
-    //double NLyn = 1.e+49/(4.0*PI*SQ(distance)); // [1/s/cm^2]
     double lognHmin = -2 + log10(X0), lognHmax = 3 + log10(X0);
     //double lognHmin = -2 + log10(X0), lognHmax = 2 + log10(X0);
     double dlognH = (lognHmax-lognHmin)/Nsample; 
@@ -326,7 +323,7 @@ int main_WolfireTest(void){
     G0 = G0_Draine;
     Nt = 1.e+19;
     Z  = Zsol; 
-    sprintf(fname,"./out/PostProcessMap.dat",Nt,G0/G0_Draine,Z/Zsol);
+    strcpy(fname,"./out/PostProcessMap.dat");
     main_WolfireTestBody(G0,Nt,Z,X0,fname);
 #endif
 
@@ -516,7 +513,7 @@ int main_HIIregionTest(void){
     double Z  = Zsol; 
     double X0 = 1.0;
     
-    sprintf(fname,"./out/PostProcessMap.dat",Nt,G0/G0_Draine,Z/Zsol);
+    strcpy(fname,"./out/PostProcessMap.dat");
    
     //int Nsample_nH  = 5;
     //double lognHmin = -2, lognHmax = 3;
@@ -529,7 +526,6 @@ int main_HIIregionTest(void){
     int Nsample_tmp = 100;
     double logTmin = 2.0, logTmax = 6.0;
     double dlogT  = (logTmax-logTmin)/Nsample_tmp; 
-    int Nsample = Nsample_nH * Nsample_tmp;
     
     double distance = 10.0*PC_CGS; // [cm]
     //double NLyn = 0.e0;
@@ -726,7 +722,7 @@ int main_HIIregionTest(void){
     }
     fclose(out);
 
-    return ; 
+    return EXIT_SUCCESS;
 
 }
 
@@ -795,7 +791,7 @@ int main_CoolingFunctionTest(void){
         }
     }
 
-    return ;
+    return EXIT_SUCCESS;
 } 
 
 static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double Z, double X0, char *fname){
@@ -804,18 +800,14 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
     //double lognHmin = -2, lognHmax = 3;
     //int Nsample_nH  = 3;
     //double lognHmin = -2, lognHmax = 2;
-    int Nsample_nH  = 1;
     //double lognHmin = 1, lognHmax = 1;
     //double lognHmin = 2, lognHmax = 2;
     //double dlognH = (lognHmax-lognHmin)/Nsample_nH; 
     int Nsample_tmp = 100;
     double logTmin = 1.0, logTmax = 8.0;
     double dlogT  = (logTmax-logTmin)/Nsample_tmp; 
-    int Nsample = Nsample_nH * Nsample_tmp;
     
-    double distance = 10.0*PC_CGS; // [cm]
     double NLyn = 0.e0;
-    //double NLyn = 1.e+49/(4.0*PI*SQ(distance)); // [1/s/cm^2]
 
     double dt = 1.e+3*YEAR_CGS; // [sec] 
     StructCEQData PhydroPP;

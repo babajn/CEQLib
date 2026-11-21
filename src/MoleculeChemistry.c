@@ -381,7 +381,6 @@ double CoolingH2RovibrationalLineLowDensityLimitGloverAbel2008(double T, double 
 //      -Hollenbach & McKee (1979)
 //      -Galli & Palla (1998)
 static double Ev10_H2 =  5860.0; // [K]
-static double Ev21_H2 =  5860.0; // [K] 
 static double Ev20_H2 = 11720.0; // [K] 
 static double Er20_H2 =   510.0; // [K]: 0-0S(0), 28.2um 
 static double Er31_H2 =   850.0; // [K]: 0-0S(1), 17.0um
@@ -462,15 +461,13 @@ double CoolingH2RovibrationalLineHollenbachMcKee1979(double T, double nHI, doubl
     // gamma_vv'(T) [cm^3/s]
     //  eq.(6.29) in Hollenbach & McKee (1979)
     //  eq.(2.8) in Hollenbach & McKee (1989)
-    double gam10[2], gam20[2], gam21[2];
+    double gam10[2], gam20[2];
     // w/ H
     gam10[0] = 1.0e-12*sqrtT*exp(-1000.0*invT); 
     gam20[0] = 1.6e-12*sqrtT*exp(-SQ(400.0*invT));
-    gam21[0] = 4.5e-12*sqrtT*exp(-SQ(500.0*invT));
     // w/ H2
     gam10[1] = 1.4e-12*sqrtT*exp(-18100.0/(T+1200.0));
     gam20[1] = 0.e0;
-    gam21[1] = gam10[1];
 
     // sum
     double n[] = {nHI,nH2};
@@ -521,41 +518,6 @@ double CoolingH2RovibrationalLineHollenbachMcKee1979(double T, double nHI, doubl
 #if 1
 //// Neufeld & Kaufman (1993) and Neufeld et al. (1995)
 // ref. C.4 of Meijerink & Spaans (2005)
-static double TmpH2r[] = { // Table 4 in Neufeld & Kaufman (1993)   
-    2.0,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,
-    3.0,3.1,3.2,3.3,3.4,3.5,3.6
-};
-static double L_0_H2[] = { // Table 4 in Neufeld & Kaufman (1993)   
-    // [erg cm3/s]
-    -26.97,-26.51,-26.11,-25.75,-25.42,-25.12,-24.87,-24.64,-24.43,-24.24,
-    -20.06,-23.87,-23.52,-23.28,-23.01,-22.70,-22.35
-};
-static double L_LTE_H2[] = { // Table 4 in Neufeld & Kaufman (1993)   
-    // [erg/s]
-    -25.39,-24.79,-24.25,-23.77,-23.34,-22.93,-22.53,-22.13,-21.75,-21.38,
-    -21.03,-20.68,-20.35,-20.03,-19.72,-19.43,-19.16
-};
-static double n12_H2[] = { // Table 4 in Neufeld & Kaufman (1993)   
-    // [1/cm3]
-    1.38,1.30,1.23,1.16,1.12,1.08,1.08,1.14,1.24,1.32,
-    1.75,2.27,2.21,2.28,2.34,2.35,2.30
-};
-static double a_H2[] = { // Table 4 in Neufeld & Kaufman (1993)   
-    0.75,0.67,0.58,0.48,0.42,0.39,0.40,0.42,0.43,0.44,
-    0.44,0.55,0.61,0.59,0.56,0.57,0.59
-};
-static double n12_rot_NK93(double T){
-    return 0.;
-}
-static double alpha_rot_NK93(double T){
-    return 0.;
-}
-static double L0_rot_NK93(double T){
-    return 0.; // L_0_H2[]
-}
-static double LLTE_rot_NK93(double T){
-    return 0.; // L_LTE_H2[]
-}
 static double L0_vib_NK93(double T){
     // Table 5 of Neufeld & Kaufman 1993
     // [erg cm3/s]
@@ -569,15 +531,6 @@ static double LLTE_vid_NK93(double T){
 double CoolingH2RovibrationalLineNeufeldKaufman1993(double T, double nHI, double nH2){
     // 100 < T < 4000 K; ~N <= 10^19 /cm2/(km/s)
 
-    // rotational line cooling (Neufeld & Kaufman 1993)
-    // eq.(5)
-    double n12         = n12_rot_NK93(T);
-    double alpha       = alpha_rot_NK93(T);
-    double L0_rot      = L0_rot_NK93(T);
-    double invL0_rot   = 1.e0/L0_rot;
-    double invLLTE_rot = 1.e0/LLTE_rot_NK93(T);
-    double invL_rot    = 1.e0; //invL0_rot + nH2*invLLTE_rot + invL0_rot*pow(nH2/n12,alpha)*(1.e0-n12*L0_rot*invLLTE_rot); 
-
     // vibrational line cooling (Neufeld & Kaufman 1993)
     // only first two terms of eq.(5)
     double invL0_vir   = 1.e0/L0_vib_NK93(T);
@@ -585,7 +538,8 @@ double CoolingH2RovibrationalLineNeufeldKaufman1993(double T, double nHI, double
     double invL_vir    = invL0_vir + nH2*invLLTE_vir;
    
     // [erg/cc/s]
-    return SQ(nH2)*(1.e0/invL_vir + 1.e0/invL_rot); //L_rot + L_vir;
+    // TODO: Replace the placeholder 1.e0 with a rotational cooling coefficient in matching units.
+    return SQ(nH2)*(1.e0/invL_vir + 1.e0);
 }
 #endif
 
@@ -696,8 +650,6 @@ double HeatingH2Formation(StructCEQData *PhydroPP){
     double Zd  = PhydroPP->Zd;
     double T   = PhydroPP->T;
     double Td  = EffectiveDustTemperature(PhydroPP);
-    //double b5  = 12.90*sqrt(1.e-4*T);    // eq(6.34) of Draine's textbook
-    double b5  = sqrt(SQ(12.90*sqrt(1.e-4*T))+SQ(b_turb));    // eq(6.34) of Draine's textbook
     double yHI  = nHI/nH;
     double yH2  = nH2/nH;
     // see eq.(45) in Glover & MacLow, ApJ, 169, 239, (2007)
@@ -895,11 +847,6 @@ static double CoolingCORovibrationalLineHollenbachMcKee(double T, double nCO, do
     return Lrot + Lvib;
 }
 
-// see eq.(11)(16) of Glover et al., MNRAS, 404, 2, (2010)
-static double CoolingCORovibrationalLineNeufeldKaufman(double T, double nCO, double nH, double nHI, double nH2){
-    return 0.0;
-}
-
 //// CO cooling [erg/cc/s]
 double CoolingCORovibrationalLine(StructCEQData *PhydroPP){
     double nH  = PhydroPP->n[ipHYDROGEN];
@@ -909,7 +856,6 @@ double CoolingCORovibrationalLine(StructCEQData *PhydroPP){
     double T   = PhydroPP->T;
     if(nCO<=0.0) return 0.e0;
     return CoolingCORovibrationalLineHollenbachMcKee(T,nCO,nH,nHI,nH2);
-    //return CoolingCORovibrationalLineNeufeldKaufman(T,nCO,nH,nHI,nH2);
 }
 
 

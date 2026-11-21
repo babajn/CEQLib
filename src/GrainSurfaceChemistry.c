@@ -123,7 +123,6 @@ double CoolingDustRecombination(StructCEQData *PhydroPP){
     double T    = PhydroPP->T;
     double nH   = PhydroPP->n[ipHYDROGEN]; 
     double ne   = PhydroPP->nel; 
-    double xe   = ne/nH;
     double Zd   = PhydroPP->Zd;
     double G0   = PhydroPP->G0;
     double Ntot = PhydroPP->Nt;

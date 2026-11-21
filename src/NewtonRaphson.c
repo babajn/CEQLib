@@ -1,4 +1,6 @@
 #include <math.h>
+#include <stdbool.h>
+#include "NewtonRaphson.h"
 #include "nrutil.h"
 
 #define TINY (1.0e-20)
@@ -23,8 +25,7 @@
 // permutation effected by the partial pivoting; d is output as ±1 depending on 
 // whether the number of row interchanges was even or odd, respectively. 
 // This routine is used in combination with lubksb to solve linear equations or invert a matrix.
-void ludcmp(double **a, int n, int *indx, double *d){
-    int imax;
+static bool DecomposeLU(double **a, int n, int *indx, double *d){
     double big, dum, sum, temp;
     double *vv = dvector(1,n);
 
@@ -34,8 +35,8 @@ void ludcmp(double **a, int n, int *indx, double *d){
         for(int j=1;j<=n;j++)
             if((temp = fabs(a[i][j])) > big) big=temp;
         if(big==0.e0){
-           /* nrerror("Singular matrix in routine LUDCMP"); caused EUPDATE event failure in strain preview */
-            return ;
+            free_dvector(vv,1,n);
+            return false;
         }
         vv[i] = 1.0/big;
     }
@@ -47,6 +48,7 @@ void ludcmp(double **a, int n, int *indx, double *d){
             a[i][j] = sum;
         }
         big = 0.e0;
+        int imax = j;
         for(int i=j; i<=n; i++) {
             sum = a[i][j];
             for(int k=1; k<j; k++)
@@ -75,8 +77,12 @@ void ludcmp(double **a, int n, int *indx, double *d){
                 a[i][j] *= dum;
         }
     }
-    free_vector(vv,1,n);
-    return(1);
+    free_dvector(vv,1,n);
+    return true;
+}
+
+void ludcmp(double **a, int n, int *indx, double *d){
+    DecomposeLU(a,n,indx,d);
 }
 
 /************************************************************************
@@ -136,7 +142,7 @@ void mnewt(int ntrial, double x[], int n, double tolx, double tolf,
     int *indx    = ivector(1,n);
     double *p    = dvector(1,n);
     double *dvec = dvector(1,n);
-    double *djac = dmatrix(1,n,1,n);
+    double **djac = dmatrix(1,n,1,n);
     double d;
 
     for(int k=1; k<=ntrial; k++){
@@ -147,21 +153,14 @@ void mnewt(int ntrial, double x[], int n, double tolx, double tolf,
         double errf = 0.0;
         for(int i=1;i<=n;i++)
             errf += fabs(dvec[i]);
-        if(errf<=tolf){
-            //FREERETURN
-            free_dmatrix(djac,1,n,1,n);
-            free_dvector(dvec,1,n);
-            free_dvector(p,1,n);
-            free_ivector(indx,1,n);
-            return ;
-        }
+        if(errf<=tolf) break;
 
         // Right-hand side of linear equations.
         for(int i=1;i<=n;i++)
             p[i] = -dvec[i];
 
         // Solve linear equations using LU decomposition.
-        ludcmp(djac,n,indx,&d);
+        if(!DecomposeLU(djac,n,indx,&d)) break;
         lubksb(djac,n,indx,p);
 
         // Check root convergence.
@@ -171,17 +170,9 @@ void mnewt(int ntrial, double x[], int n, double tolx, double tolf,
             errx += fabs(p[i]);
             x[i] += p[i];
         }
-        if(errx<=tolx){
-            //FREERETURN
-            free_dmatrix(djac,1,n,1,n);
-            free_dvector(dvec,1,n);
-            free_dvector(p,1,n);
-            free_ivector(indx,1,n);
-            return ;
-        }
+        if(errx<=tolx) break;
     }
 
-    //FREERETURN
     free_dmatrix(djac,1,n,1,n);
     free_dvector(dvec,1,n);
     free_dvector(p,1,n);

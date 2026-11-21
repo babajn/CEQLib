@@ -25,11 +25,11 @@
 #define OrthH2Frac  (0.75)
 #define ParaH2Frac  (0.25) 
 
-static const double Zsol = SOLAR_METALLICITY;
 //static void InitializeCIIH2CollisionCoolingCoefficient(void);
 
 //////// De-excitation Rates [cm^3/s]
 // ref.) Table 6 of Glover & Jappsen (2007)
+#ifdef FINE_STRUCUTRE_COOLING_CI
 static double q10_CI_oH2(double T);
 static double q20_CI_oH2(double T);
 static double q21_CI_oH2(double T);
@@ -45,6 +45,7 @@ static double q21_CI_HII(double T);
 static double q10_CI_e(double T);
 static double q20_CI_e(double T);
 static double q21_CI_e(double T);
+#endif
 
 static double q10_CII_oH2(double T);
 static double q10_CII_pH2(double T);
@@ -63,16 +64,7 @@ static double q21_OI_HI(double T);
 static double q10_OI_HII(double T);
 static double q20_OI_HII(double T);
 static double q21_OI_HII(double T);
-static double q10_OI_e(double T);
-static double q20_OI_e(double T);
-static double q21_OI_e(double T);
 
-static double q10_SiI_HI(double T);
-static double q20_SiI_HI(double T);
-static double q21_SiI_HI(double T);
-static double q10_SiI_HII(double T);
-static double q20_SiI_HII(double T);
-static double q21_SiI_HII(double T);
 
 static double q10_SiII_HI(double T);
 static double q10_SiII_e(double T);
@@ -130,6 +122,7 @@ static double q10_SiII_e(double T);
 //#define gluSiII035um   (0.5000)    // g(^2P1/2)/g(^2P3/2)
 
 
+#ifdef FINE_STRUCUTRE_COOLING_CI
 static double Energy_CI610um;     
 static double IntensityCMB_CI610um;
 static double EinsteinA10_CI610um; 
@@ -147,6 +140,7 @@ static double IntensityCMB_CI370um;
 static double EinsteinA10_CI370um; 
 static double EinsteinB10_CI370um;
 static double EinsteinB01_CI370um;
+#endif
 
 static double Energy_CII158um;     
 static double IntensityCMB_CII158um;
@@ -179,8 +173,10 @@ static double EinsteinB10_SiII035um;
 static double EinsteinB01_SiII035um;
 
 
+#ifdef FINE_STRUCUTRE_COOLING_CI
 static double CoolingCIDetail(double nCI, double T, double nel, double nHII, double nHI, double nH2, 
         double *nCI0, double *nCI1, double *nCI2, double *CoolingCI610um, double *CoolingCI230um, double *CoolingCI370um);
+#endif
 static double CoolingCII158umDetail(double nCII, double T, double nel, double nHI, double nH2, double *nCII0, double *nCII1, double *ncrit);
 static double CoolingOIDetail(double nOI, double T, double nel, double nHII, double nHI, double nH2,
         double *nOI0, double *nOI1, double *nOI2, double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um);
@@ -391,7 +387,7 @@ void InitializeFineStructureLines(int Check){
         double xe   = 1.e-3;
         double nH2  = 0.e0, nHII = 0.e0, nHI;
         double nCII = 1.0, nCII0, nCII1, nCIIcrit;
-        double nOI = 1.0, nOI0, nOI1, nOI2, nOIcrit;
+        double nOI = 1.0, nOI0, nOI1, nOI2;
         double nSiII = 1.0, nSiII0, nSiII1, nSiIIcrit;
         double CoolingOI063um, CoolingOI044um, CoolingOI146um;
         FILE *outCII  = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestCII.dat","w");
@@ -407,17 +403,14 @@ void InitializeFineStructureLines(int Check){
             fprintf(outSiII,"%e ",nHI);
             for(int it=0;it<nTmp;it++){
                 double T      = CalcTmp[it]; //20.0*(1+it);
-                double L_CII  = CoolingCII158umDetail(nCII,T,nel,nHI,nH2,&nCII0,&nCII1,&nCIIcrit);
-                double L_OI   = CoolingOIDetail(nOI,T,nel,nHII,nHI,nH2,&nOI0,&nOI1,&nOI2,&CoolingOI063um,&CoolingOI044um,&CoolingOI146um);
-                double L_SiII = CoolingSiII35umDetail(nSiII,T,nel,nHI,&nSiII0,&nSiII1,&nSiIIcrit);
-                //fprintf(outCII ,"%e ",L_CII );
-                //fprintf(outOI  ,"%e ",L_OI  );
-                //fprintf(outSiII,"%e ",L_SiII);
+                CoolingCII158umDetail(nCII,T,nel,nHI,nH2,&nCII0,&nCII1,&nCIIcrit);
+                CoolingOIDetail(nOI,T,nel,nHII,nHI,nH2,&nOI0,&nOI1,&nOI2,&CoolingOI063um,&CoolingOI044um,&CoolingOI146um);
+                CoolingSiII35umDetail(nSiII,T,nel,nHI,&nSiII0,&nSiII1,&nSiIIcrit);
                 fprintf(outCII ,"%e ",nCII1/nCII0);
                 fprintf(outOI  ,"%e ",nOI1/nOI0);
                 fprintf(outSiII,"%e ",nSiII1/nSiII0);
                 //fprintf(outOI ,"%e %e ",nOI1/nOI0,nOI2/nOI1);
-                if(i==0)    fprintf(stderr," T=%f nCIIcrit=%e nOIcrit=%e nSiIIcrit=%e\n",T,nCIIcrit,nOIcrit,nSiIIcrit);
+                if(i==0)    fprintf(stderr," T=%f nCIIcrit=%e nSiIIcrit=%e\n",T,nCIIcrit,nSiIIcrit);
             }
             fprintf(outCII,"\n");
             fprintf(outOI ,"\n");
@@ -513,6 +506,7 @@ double CoolingCI(double nCI, double T, double nel, double nHII, double nHI, doub
     return 0.e0;
 #endif
 }
+#ifdef FINE_STRUCUTRE_COOLING_CI
 static double CoolingCIDetail(double nCI, double T, double nel, double nHII, double nHI, double nH2, 
         double *nCI0, double *nCI1, double *nCI2, double *CoolingCI610um, double *CoolingCI230um, double *CoolingCI370um){
 
@@ -578,6 +572,7 @@ static double CoolingCIDetail(double nCI, double T, double nel, double nHII, dou
     *CoolingCI370um = net370um;
     return net610um + net230um + net370um;
 }
+#endif
 
 double CoolingCI610um(double nCI, double T, double nel, double nHII, double nHI, double nH2){
     double CoolingCI610um, CoolingCI230um, CoolingCI370um;
@@ -851,6 +846,7 @@ static double CoolingSiII35umDetail(double nSiII, double T, double nel, double n
 }
 
 
+#ifdef FINE_STRUCUTRE_COOLING_CI
 //////// De-excitation Rates [cm^3/s] for CI
 // ref.) Table 6 of Glover & Jappsen (2007)
 static double q10_CI_oH2(double T){
@@ -926,6 +922,7 @@ static double q21_CI_e(double T){
         return 1.73e-6*pow(T,-0.5)*exp(3.86186e+2 - 2.02192e+2*lnT + 3.85049e+1*lnT2
                 - 3.19268e+0*lnT3 + 9.78573e-2*lnT4);
 }
+#endif
 
 
 //////// De-excitation Rates [cm^3/s] for [CII] 157.7um
@@ -999,39 +996,6 @@ static double q20_OI_HII(double T){
 static double q21_OI_HII(double T){
     if(T<=2090.0)   return 2.03e-11*pow(T,0.56);
     else            return 3.43e-10*pow(T,0.19);
-}
-
-static double q10_OI_e(double T){
-    return 5.12e-10*pow(T,-0.075);
-}
-static double q20_OI_e(double T){
-    return 4.86e-10*pow(T,-0.026);
-}
-static double q21_OI_e(double T){
-    return 1.08e-14*pow(T,0.926);
-}
-
-
-//////// De-excitation Rates [cm^3/s] for [SiI] 130um, 45um, 68um
-// ref.) Table 6 of Glover & Jappsen (2007)
-static double q10_SiI_HI(double T){
-    return 3.5e-10*pow(0.01*T,-0.03);
-}
-static double q20_SiI_HI(double T){
-    return 1.7e-11*pow(0.01*T,0.17);
-}
-static double q21_SiI_HI(double T){
-    return 5.0e-10*pow(0.01*T,0.17);
-}
-
-static double q10_SiI_HII(double T){
-    return 7.2e-9;
-}
-static double q20_SiI_HII(double T){
-    return 7.2e-9;
-}
-static double q21_SiI_HII(double T){
-    return 2.2e-8;
 }
 
 //////// De-excitation Rates [cm^3/s] for [SiII] 35um

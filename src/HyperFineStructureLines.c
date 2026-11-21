@@ -5,8 +5,6 @@
 #include "Astro.h"
 #include "HyperFineStructureLines.h"
 
-static const double Zsol = SOLAR_METALLICITY;
-
 #define A10HI21cm   (2.8843e-15)    // [1/s]
 #define THI21cm     (6.81e-2)       // [K]
 #define nyuHI21cm   (1.4204e+9)     // [Hz]
@@ -20,11 +18,6 @@ void InitializeHyperFineStructureLines(int Check){
     EinsteinA10_HI21cm = A10HI21cm;
 
     return ;
-}
-
-static double NormalizedLineProfileHI21cm(double v_ch, double T, double vlos){
-    return 1.0;
-    //double dv = sqrt(2.0*BOLTZMANN_CONSTANT_CGS*T/PROTON_MASS_CGS);
 }
 
 static double k10H(double T){
@@ -67,7 +60,6 @@ double CoolingHI21cm(double nHI, double T){
 double SourceFunctionHI21cm(double nHI, double T, double vlos, double v_ch, double *j_nyu, double *k_nyu){
     double j = EmisivityCoefficientHI21cm(nHI,T);
     double k = AbsorptionCoefficientHI21cm(nHI,T);
-    //double phi = NormalizedLineProfileHI21cm(v_ch,T,vlos);
     *j_nyu = j;
     *k_nyu = k;
     return j/k;
