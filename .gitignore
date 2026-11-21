@@ -14,7 +14,12 @@ tags
 /bk/
 /out/
 /test/out
+/plot/out/
+/plot/__pycache__/
 .ipynb_checkpoints/
+
+# Reference papers stay local; only the index is tracked
+/reference/*.pdf
 
 # Local gnuplot scripts
 /plot/**/*.gp

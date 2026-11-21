@@ -81,6 +81,7 @@ HEADS = Astro.h \
 		Bremsstrahlung.h \
 		CoolingCIE.h \
 		HIIregionLineCooling.h \
+		HIIregionOxygenData.h \
 		FineStructureLines.h \
 		HyperFineStructureLines.h \
 		StatisticalEquilibrium.h \
@@ -100,7 +101,9 @@ libCEQLib.a: $(OBJS)
 # These modules check for non-finite values or return NaN for invalid trials.
 ChemicalEquilibriumCooling.o ChemicalEquilibriumSolver.o ThermalEquilibrium.o \
 EquilibriumAbundance.o MoleculeChemistry.o GrainSurfaceChemistry.o Xray.o PhotochemicalGasPhaseChemistry.o \
-CoolingCIE.o CosmicRay.o: override CFLAGS += -fno-fast-math
+CoolingCIE.o CosmicRay.o HIIregionLineCooling.o: override CFLAGS += -fno-fast-math
+
+HIIregionLineCooling.o: HIIregionLineCooling.h HIIregionOxygenData.h
 
 tag:
 	ctags *.[c,h]

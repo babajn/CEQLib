@@ -430,8 +430,7 @@ static double CItoCIIratio(double nH2, double T, double G0, double Ntot, double 
     return COFormationRateCH2(nH2,T)/r_C;
 }
 
-static int SolveAtomicCarbon(StructCEQData *state){
-    const double nC = state->n[ipCARBON];
+static int SolveAtomicCarbon(StructCEQData *state, double nC){
     const double T = state->T;
     const double ne = state->nel;
     const double G0 = state->G0;
@@ -635,7 +634,7 @@ int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double 
         return CEQ_SUCCESS;
     }
     if(!CEQLibRunParameters.UseCOFormation || state->T > 1.e4){
-        const int status = SolveAtomicCarbon(state);
+        const int status = SolveAtomicCarbon(state,nC);
         if(status == CEQ_SUCCESS) state->nmol[ipCO] = 0.0;
         return status;
     }
@@ -694,6 +693,10 @@ int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double 
     }
 
     state->nmol[ipCO] = fmin(nO,nC*root.molecularFraction);
+    /* Ionizing radiation also acts on the carbon outside CO. The molecular
+       model's C I/C II ratio only accounts for FUV and molecular reactions. */
+    if(CEQLibRunParameters.UseHIIRegion && state->NLyn > 0.0)
+        return SolveAtomicCarbon(state,nC*root.freeFraction);
     state->nion[ipCARBON] = (nC*root.freeFraction)*carbonIon;
     state->natom[ipCARBON] = (nC*root.freeFraction)*neutralCarbon;
     state->nCIII = 0.0;

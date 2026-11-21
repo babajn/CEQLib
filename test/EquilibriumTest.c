@@ -9,6 +9,7 @@
 #include "CosmicRay.h"
 #include "EquilibriumAbundance.h"
 #include "FineStructureLines.h"
+#include "HIIregionLineCooling.h"
 #include "MoleculeChemistry.h"
 #include "PhotochemicalGasPhaseChemistry.h"
 
@@ -142,6 +143,63 @@ static double CoolIsochorically(double nH, double temperature, double duration, 
         assert(isfinite(state.U) && state.U > 0.0);
     }
     return state.T;
+}
+
+static void CheckHighTemperatureCIEExtrapolation(void)
+{
+    const double tableMaximum = pow(10.0,8.5);
+    const double maximumTemperature = 1.0e9;
+    const double nH = 0.1;
+    const double justAboveTable = tableMaximum*(1.0 + 1.0e-6);
+    StructCEQData endpoint = GasState(nH,tableMaximum,1.0e19);
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&endpoint,1.0e-8) == CEQ_SUCCESS);
+    const double endpointCoefficient = endpoint.L_res/(endpoint.nel*nH);
+    assert(endpointCoefficient > 0.0);
+
+    const double temperatures[] = {justAboveTable, maximumTemperature};
+    for(size_t i = 0; i < sizeof(temperatures)/sizeof(temperatures[0]); i++){
+        StructCEQData state = endpoint;
+        state.T = temperatures[i];
+        assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == CEQ_SUCCESS);
+        const double expected = endpointCoefficient*sqrt(state.T/tableMaximum);
+        const double coefficient = state.L_res/(state.nel*nH);
+        assert(fabs(coefficient-expected) <= 1.0e-12*expected);
+    }
+
+    const double duration = 1.0e5*YEAR_CGS;
+    const double cooled = CoolIsochorically(nH,maximumTemperature,duration,1);
+    assert(cooled > tableMaximum && cooled < maximumTemperature);
+    assert(CoolIsochorically(nH,justAboveTable,duration,1) < tableMaximum);
+
+    StructCEQData outside = endpoint;
+    outside.T = nextafter(maximumTemperature,INFINITY);
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&outside,1.0e-8) == CEQ_INVALID_INPUT);
+}
+
+static void CheckLowMetallicityCIECooling(void)
+{
+    const double minimumTableMetallicity = 1.0e-3*SOLAR_METALLICITY;
+    const double metallicityRatio = 1.0e-3;
+    const double temperatures[] = {9999.99,1.0e4,1.0e5};
+    double coefficients[3];
+    for(size_t i = 0; i < sizeof(temperatures)/sizeof(temperatures[0]); i++){
+        StructCEQData state = {.T = temperatures[i], .Z = minimumTableMetallicity, .n = {1.0,0.1}, .nel = 1.0};
+        assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == CEQ_SUCCESS);
+        const double coefficient = state.L_res/(state.nel*state.n[ipHYDROGEN]);
+        assert(coefficient > 0.0);
+        coefficients[i] = coefficient;
+
+        state.Z *= metallicityRatio;
+        assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == CEQ_SUCCESS);
+        const double traceCoefficient = state.L_res/(state.nel*state.n[ipHYDROGEN]);
+        const double expected = metallicityRatio*coefficient;
+        assert(fabs(traceCoefficient-expected) <= 1.0e-12*expected);
+
+        state.Z = 0.0;
+        assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == CEQ_SUCCESS);
+        assert(state.L_res == 0.0);
+    }
+    assert(fabs(coefficients[0]-coefficients[1]) <= 1.0e-4*coefficients[1]);
 }
 
 static void CheckHotGasTimeStepConvergence(void)
@@ -359,6 +417,121 @@ static void CheckTraceHydrogen(void)
     CheckHydrogenFlux(&molecular,accuracy);
 }
 
+static void CheckOxygenLineEmissivities(void)
+{
+    const double tolerance = 2.0e-4;
+    /* Independent five-level solve using PyNeb's Z82-WFD96/Kal09 and FFT04-SZ00/SSB14 data. */
+    const struct {
+        double ne;
+        double oxygenII;
+        double oxygenIII;
+        double opticalDoublet;
+        double infraredDoublet;
+    } reference[] = {
+        {1.0,   3.5638632548e-21, 7.0532399529e-21, 1.4991843, 0.5530553},
+        {100.0, 3.4963065702e-21, 6.7333964675e-21, 1.3493476, 0.7989521},
+        {1.0e4, 1.7171530434e-21, 4.9690089747e-21, 0.4172276, 7.6530238},
+    };
+    double oII[OxygenLevelCount][OxygenLevelCount], oIII[OxygenLevelCount][OxygenLevelCount];
+    for(size_t i = 0; i < sizeof(reference)/sizeof(reference[0]); i++){
+        const double ne = reference[i].ne;
+        const double coolingII = CoolingLinesOII(1.0e4,ne,1.0,oII)/ne;
+        const double coolingIII = CoolingLinesOIII(1.0e4,ne,1.0,oIII)/ne;
+        assert(fabs(coolingII/reference[i].oxygenII-1.0) < tolerance);
+        assert(fabs(coolingIII/reference[i].oxygenIII-1.0) < tolerance);
+        assert(fabs((oII[1][0]/oII[2][0])/reference[i].opticalDoublet-1.0) < tolerance);    /* 3729/3726 Å */
+        assert(fabs((oIII[2][1]/oIII[1][0])/reference[i].infraredDoublet-1.0) < tolerance); /* 52/88 µm */
+        assert(fabs(oIII[3][2]/oIII[3][1]-2.983969) < tolerance);                         /* 5007/4959 Å */
+    }
+
+    const double lowT = pow(10.0,3.7);
+    const double highT = pow(10.0,4.3);
+    assert(fabs(CoolingLinesOII(lowT,100.0,1.0,NULL)/9.9799349321e-21-1.0) < tolerance);
+    assert(fabs(CoolingLinesOIII(highT,100.0,1.0,NULL)/1.8028688374e-18-1.0) < tolerance);
+    assert(CoolingLinesOII(1.0e4,0.0,1.0,oII) == 0.0 && oII[1][0] == 0.0);
+    assert(CoolingLinesOIII(1.0e4,100.0,0.0,oIII) == 0.0 && oIII[3][2] == 0.0);
+    assert(isnan(CoolingLinesOII(1.0e4,-1.0,1.0,NULL)));
+}
+
+static void CheckPhotoionizedOxygenCooling(void)
+{
+    StructCEQData state = GasState(100.0,1.1e4,1.0e19);
+    state.NLyn = 3.0e9;
+    state.X0 = state.G0 = state.Zd = 0.0;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == CEQ_SUCCESS);
+    assert(state.L_OII > 0.0 && state.L_OIII > 0.0);
+
+    StructCEQData cie = state;
+    CEQLibiSetRunParamHIIRegion(false);
+    assert(CEQLibCalculateCoolingHeatingRates(&cie) == CEQ_SUCCESS);
+    CEQLibiSetRunParamHIIRegion(true);
+    assert(cie.L_OII == 0.0 && cie.L_OIII == 0.0 && cie.L_res > 0.0);
+
+    double lines = CoolingLinesHIIregionOxygen(state.T,state.nel,state.nion[ipOXYGEN],state.nOIII);
+    const double weight = (state.L_OII+state.L_OIII)/lines;
+    assert(weight > 0.99 && weight <= 1.0);
+    assert(fabs(state.L_res-(1.0-weight)*cie.L_res) < 1.0e-12*cie.L_res);
+    const double expected = cie.L_tot - cie.L_res + state.L_res + state.L_OII + state.L_OIII;
+    assert(fabs(state.L_tot-expected) < 1.0e-12*expected);
+
+    StructCEQData transition = state;
+    transition.T = 2.0e4;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&transition,1.0e-8) == CEQ_SUCCESS);
+    lines = CoolingLinesHIIregionOxygen(transition.T,transition.nel,transition.nion[ipOXYGEN],transition.nOIII);
+    const double transitionWeight = (transition.L_OII+transition.L_OIII)/lines;
+    assert(transitionWeight > 0.0 && transitionWeight < weight);
+
+    StructCEQData hot = state;
+    hot.T = 1.0e6;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&hot,1.0e-8) == CEQ_SUCCESS);
+    assert(hot.L_OII == 0.0 && hot.L_OIII == 0.0 && hot.L_res > 0.0);
+
+    StructCEQData unilluminated = state;
+    unilluminated.NLyn = 0.0;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&unilluminated,1.0e-8) == CEQ_SUCCESS);
+    assert(unilluminated.L_OII == 0.0 && unilluminated.L_OIII == 0.0 && unilluminated.L_res > 0.0);
+
+    state.U = CEQLibConvertTtoU(&state);
+    state.dt = 1000.0*YEAR_CGS;
+    assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,1.0e-8,&state.Du) == CEQ_SUCCESS);
+    assert(state.Du < 0.0 && state.T < 1.0e4 && state.L_OII > 0.0 && state.L_OIII > 0.0);
+    assert(state.nCIII > 0.0); /* Free carbon stays photoionized below the CO temperature threshold. */
+}
+
+static void CheckPhotoionizationTurnOn(void)
+{
+    CEQLibiSetRunParamH2Formation(false,1.0);
+    CEQLibiSetRunParamCOFormation(false,1.0);
+    const double nH = 100.0;
+    StructCEQData initial = GasState(nH,1.0e4,1.0e19);
+    initial.G0 = initial.X0 = initial.Zd = 0.0;
+    initial.nel = nH;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&initial,1.0e-10) == CEQ_SUCCESS);
+    assert(initial.nel < 0.1*nH);
+    initial.U = CEQLibConvertTtoU(&initial);
+    initial.NLyn = 1.0e-3*nH*LIGHT_C_CGS;
+
+    StructCEQData illuminated = initial, reference = initial;
+    reference.nel = nH;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&reference,1.0e-12) == CEQ_SUCCESS);
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&illuminated,1.0e-8) == CEQ_SUCCESS);
+    assert(illuminated.nion[ipHYDROGEN] > 0.99*nH);
+    assert(fabs(CEQLibGetElectronNumberDensity(&illuminated)-illuminated.nel) <= 1.0e-8*illuminated.nel);
+    assert(fabs(illuminated.nel-reference.nel) <= 1.0e-8*reference.nel);
+    assert(fabs(illuminated.nOIII-reference.nOIII) <= 1.0e-8*reference.n[ipOXYGEN]);
+
+    initial.dt = 1.0e4*YEAR_CGS;
+    StructCEQData updated = initial, tightUpdate = initial;
+    tightUpdate.nel = reference.nel;
+    const double accuracy = 1.0e-8;
+    assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&updated,accuracy,&updated.Du) == CEQ_SUCCESS);
+    assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&tightUpdate,1.0e-9,&tightUpdate.Du) == CEQ_SUCCESS);
+    const double change = updated.dt*updated.Du;
+    const double source = updated.dt*(updated.H_tot-updated.L_tot)/updated.Rho;
+    assert(fabs(change-source) <= accuracy*fmax(fabs(change),fabs(source)));
+    assert(fabs(updated.T-tightUpdate.T) <= 1.0e-8*tightUpdate.T);
+}
+
 static void CheckPhotoionization(const char *pegaseDirectory)
 {
     const double unattenuated = CIFUVPhotoionizationRate(1.7,0.0);
@@ -373,6 +546,11 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     const double rate = HIPhotoIonizationRate(1.0);
     const double referenceRate = 0x1.36bcd33264bbp-58;  /* Solar PEGASE2 spectrum. */
     assert(fabs(rate-referenceRate) <= 1.0e-12*referenceRate);
+    /* Solar PEGASE2 coefficients normalized by the H-ionizing flux before age averaging. */
+    const double referenceHeIIRate = 5.928733248e-21;
+    const double referenceHeIIHeating = 1.043341218e-31;
+    assert(fabs(HeIIPhotoIonizationRate(1.0)-referenceHeIIRate) <= 1.0e-8*referenceHeIIRate);
+    assert(fabs(HeatingHeIIPhotoionization(1.0)-referenceHeIIHeating) <= 1.0e-8*referenceHeIIHeating);
 
     struct stat info;
     assert(stat("out",&info) != 0 && stat("CEQCooling",&info) != 0);
@@ -385,6 +563,8 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     assert(fclose(input) == 0);
     assert(CEQLibTryInitialization(0,"malformed") == CEQ_INITIALIZATION_FAILED);
     assert(HIPhotoIonizationRate(1.0) == rate);
+    CheckPhotoionizedOxygenCooling();
+    CheckPhotoionizationTurnOn();
 }
 
 int main(int argc, char **argv)
@@ -413,6 +593,8 @@ int main(int argc, char **argv)
     CheckZeroElectronSeed();
     CheckLowIonizationXraySearch();
     CheckAtomicThermalNumerics();
+    CheckHighTemperatureCIEExtrapolation();
+    CheckLowMetallicityCIECooling();
     CheckHotGasTimeStepConvergence();
 
     CEQLibiSetRunParamH2Formation(true,1.0);
@@ -432,6 +614,7 @@ int main(int argc, char **argv)
     CheckMolecularFlux(0.0);
     CheckMolecularFlux(100.0);
     CheckTraceHydrogen();
+    CheckOxygenLineEmissivities();
     CheckPhotoionization(argv[1]);
     puts("Chemical equilibrium and thermal update checks passed.");
     return 0;

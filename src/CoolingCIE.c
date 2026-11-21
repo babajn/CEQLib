@@ -82,11 +82,12 @@ const static double iBaseSh = 1.0/(logTmax-logTmin);
 double CoolingRateCIE(StructCEQData *PhydroPP){
     
     if(CEQLibRunParameters.UseCIEResonanceCooling==false)   return 0.e0;
-    if(FlagCoolingTable == OFF || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0
+    if(FlagCoolingTable == OFF || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0 || PhydroPP->T > 1.0e9
        || !isfinite(PhydroPP->Z) || PhydroPP->Z < 0.0) return NAN;
+    if(PhydroPP->Z == 0.0) return 0.0;
 
-    double logT = log10(PhydroPP->T); 
-    if(logT > CoolingTableCIELogT[COOLING_TABLE_CIE_SIZE_T-1]) return NAN;
+    const double inputLogT = log10(PhydroPP->T);
+    const double logT = fmin(inputLogT,CoolingTableCIELogT[COOLING_TABLE_CIE_SIZE_T-1]);
     double Z    = PhydroPP->Z; 
     double ne   = PhydroPP->nel;
     double nH   = PhydroPP->n[ipHYDROGEN];
@@ -97,10 +98,9 @@ double CoolingRateCIE(StructCEQData *PhydroPP){
     //exit(1);
     double val = 1.e-100;
     if(FeH <= CoolingTableCIELogZ[1]){
-        if(logT<CoolingTableCIELogT[0])
-            val = CoolingTableCIELogLambda[0][0];
-        else
-            val = gsl_spline_eval(SplineAccessLogT[1],logT,NULL);
+        /* Scale the lowest-metallicity contribution linearly toward zero. */
+        const double tableLogT = fmax(logT,CoolingTableCIELogT[0]);
+        val = gsl_spline_eval(SplineAccessLogT[1],tableLogT,NULL) + (FeH-CoolingTableCIELogZ[1]);
     } else if(FeH >= CoolingTableCIELogZ[COOLING_TABLE_CIE_SIZE_Z-1]){
         if(logT<CoolingTableCIELogT[0])
             val = CoolingTableCIELogLambda[COOLING_TABLE_CIE_SIZE_Z-1][0];
@@ -126,5 +126,6 @@ double CoolingRateCIE(StructCEQData *PhydroPP){
     double reduce = MIN(1.0,exp(100*(logT-4.0)));
     //double reduce = 1.e0;
     //if(logT<4.0)    reduce = MIN(1.0,exp(100*(logT-4.01)));
-    return pow(10.0,val)*reduce*ne*nH; ///ne/nH;
+    /* Continue the metal contribution above the table with the free-free T^0.5 scaling. */
+    return pow(10.0,val + 0.5*(inputLogT-logT))*reduce*ne*nH;
 }

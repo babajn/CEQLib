@@ -72,7 +72,6 @@ CEQLibStatus CEQLibTryInitialization(int Check, const char *pegaseDirectory){
     InitializeCosmicRayIonization(Check);
     InitializeHyperFineStructureLines(Check);
     InitializeSoftXrayIonization(Check);
-    InitializeCoolingLinesHIIregion(Check);
     InitializeCoolingTableCIE(Check);
     
     if(Check==1)
@@ -276,6 +275,24 @@ void CEQLibCalulateChemcalAbundanceCoolingHeatingRates(StructCEQData *PhydroPP){
     }
 }
 
+static double PhotoionizedOxygenWeight(const StructCEQData *state)
+{
+    const double taperStart = 1.5e4;
+    const double taperEnd = 2.5e4;
+    const double nH = state->n[ipHYDROGEN];
+    if(!CEQLibRunParameters.UseHIIRegion || state->NLyn <= 0.0 || state->T >= taperEnd || nH <= 0.0)
+        return 0.0;
+
+    const double photoionization = HIPhotoIonizationRate(state->NLyn);
+    if(photoionization == 0.0) return 0.0;
+    const double xe = state->nel/nH;
+    const double otherIonization = state->nel*HICollisionalIonizationRate(state->T)
+                                 + state->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,state->Nt));
+    const double ionizedFraction = fmax(0.0,fmin(1.0,state->nion[ipHYDROGEN]/nH));
+    const double warm = fmin(1.0,(taperEnd-state->T)/(taperEnd-taperStart));
+    return ionizedFraction * (photoionization/(photoionization+otherIonization)) * warm*warm*(3.0-2.0*warm);
+}
+
 int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
 
     if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return CEQ_INVALID_INPUT;
@@ -325,6 +342,14 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     PhydroPP->L_CI370   = 0.0; //CoolingCI370um(nCI,T,ne,nHII,nHI,nH2);
     PhydroPP->L_OIII    = 0.e0;
     PhydroPP->L_OII     = 0.e0;
+    const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP);
+    if(!isfinite(oxygenWeight)) return CEQ_INVALID_INPUT;
+    if(oxygenWeight > 0.0){
+        /* Replace the CIE metal contribution in photoionized gas without counting oxygen twice. */
+        PhydroPP->L_res *= 1.0-oxygenWeight;
+        PhydroPP->L_OII = oxygenWeight*CoolingLinesOII(T,PhydroPP->nel,PhydroPP->nion[ipOXYGEN],NULL);
+        PhydroPP->L_OIII = oxygenWeight*CoolingLinesOIII(T,PhydroPP->nel,PhydroPP->nOIII,NULL);
+    }
     double coolingOI44;
     CoolingOI(PhydroPP->natom[ipOXYGEN],T,PhydroPP->nel,PhydroPP->nion[ipHYDROGEN],
               nHI,PhydroPP->nmol[ipH2],&PhydroPP->L_OI63,&coolingOI44,&PhydroPP->L_OI146);
@@ -373,8 +398,6 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     double Hphot     = HeatingCarbonPhotoinozation(T,nCI,G0,Av,Nc,N2);
     // CIE plasma cooling : Resonance lines (C,O,Fe ...)
     double Lres     = ne*nH*CoolingRateCIE(logT,Metal);
-    // HII region line cooling [erg/cc/s]
-    double Lce      = 0.e0;  //CoolingLinesHIIregionOxygen(T,ne,nOII,nOIII);
 #endif
 
     if(!isfinite(PhydroPP->H_tot) || !isfinite(PhydroPP->L_tot)

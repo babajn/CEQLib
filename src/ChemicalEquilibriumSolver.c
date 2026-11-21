@@ -18,6 +18,7 @@ static const double XrayFitMinimumElectronFraction = 1.0e-4;
 typedef struct {
     double density;
     double residual;
+    double charge;
     int status;
 } ChargePoint;
 
@@ -95,12 +96,13 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
         return point;
     }
 
-    double charge = CEQLibGetElectronNumberDensity(&state);
+    const double charge = CEQLibGetElectronNumberDensity(&state);
     if(!isfinite(charge) || charge < 0.0){
         point.status = search->failure = CEQ_NO_CONVERGENCE;
         return point;
     }
     double scale = fmax(charge,electronDensity);
+    point.charge = charge;
     point.residual = scale == 0.0 ? 0.0 : (charge-electronDensity)/scale;
 
     /* The soft X-ray fit tends to zero as xe approaches zero in the neutral
@@ -122,6 +124,31 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
         search->solutions++;
     }
     return point;
+}
+
+static void SearchPhotoionizedCharge(ChargeSearch *search, ChargePoint hint, double maximumCharge)
+{
+    /* The ion charge at a nearly neutral seed gives a much closer first
+       estimate than expanding the search by small factors around that seed. */
+    const int failure = search->failure;
+    double density = hint.charge;
+    ChargePoint previous = hint;
+    for(int i = 0; i < 6 && density > 0.0 && density <= maximumCharge && density != previous.density; i++){
+        const ChargePoint next = EvaluateCharge(search,density);
+        if(search->found) return;
+        if(next.status != CEQ_SUCCESS) break;
+
+        /* Use a constant scale for the secant so it sees the slope of q-ne.
+           The convergence check still uses the relative charge residual. */
+        const double imbalance = (next.charge-next.density)/maximumCharge;
+        const double previousImbalance = (previous.charge-previous.density)/maximumCharge;
+        const double difference = imbalance-previousImbalance;
+        const double estimate = difference == 0.0 ? next.charge :
+            next.density - (imbalance/difference)*(next.density-previous.density);
+        density = estimate > 0.0 && estimate <= maximumCharge ? estimate : next.charge;
+        previous = next;
+    }
+    search->failure = failure;
 }
 
 typedef enum {
@@ -372,6 +399,16 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
         .failure = CEQ_NO_EQUILIBRIUM
     };
     ChargePoint hint = EvaluateCharge(&search,search.previousElectronDensity);
+    /* With only photoionization, electron collisions and electron
+       recombination, every ionization/recombination ratio is of the form
+       A + B/ne at fixed T. The ion charge is nonincreasing, giving a unique
+       positive root. Leave branch selection to the original search when
+       molecular coupling, grain recombination, cosmic rays or X-rays apply. */
+    if(!search.found && hint.status == CEQ_SUCCESS && hint.residual > 0.5 &&
+            CEQLibRunParameters.UseHIIRegion && state->NLyn > 0.0 &&
+            !search.hasMolecularChargeCoupling && state->X0 == 0.0 &&
+            (!CEQLibRunParameters.UseGrainSurfaceProcesses || state->Zd == 0.0))
+        SearchPhotoionizedCharge(&search,hint,maximumCharge);
     if(!search.found){
         if(search.hasXrayIonization){
             double boundary = 0.5*nH;

@@ -522,8 +522,9 @@ static bool ReadPEGASESpectrum(const char *directory, const char *name, bool che
             if(N_Lyn[ip] == 0.0) continue;
             if(N_LynHI <= 0.0 || !isfinite(N_LynHI)) goto done;
             table->photonRatio[ip] += N_Lyn[ip]/N_LynHI;
-            table->ionization[ip] += xi[ip]/N_Lyn[ip];
-            table->heating[ip] += gamma[ip]/N_Lyn[ip];
+            /* Every species uses the incident H-ionizing photon flux. */
+            table->ionization[ip] += xi[ip]/N_LynHI;
+            table->heating[ip] += gamma[ip]/N_LynHI;
         }
         youngSpectra++;
     }

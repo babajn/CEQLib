@@ -2,6 +2,7 @@
 CC = gcc
 CEQLIB_DIR ?= ../src
 GSL_DIR ?= /home/babajn/lib/gsl
+PYTHON ?= python3
 
 OPTIMIZE += -O3 -std=c99
 OPTIMIZE += -finline-functions -ffast-math -funroll-loops -frerun-cse-after-loop -fexpensive-optimizations -fomit-frame-pointer -msse3 -mfpmath=sse
@@ -39,7 +40,7 @@ HEADS = Astro.h \
 
 ALL:   start
 
-.PHONY: start ceqlib check benchmark
+.PHONY: start ceqlib check benchmark hii hii-benchmark hii-plot wolfire-plot
 ceqlib:
 	$(MAKE) -C $(CEQLIB_DIR) GSL_DIR=$(GSL_DIR) libCEQLib.a
 
@@ -61,8 +62,31 @@ benchmark: ThermalBenchmark.c ceqlib
 	./out/thermal_benchmark.out atomic
 	./out/thermal_benchmark.out molecular
 
+hii: HIIRegionTest.c HIIRegionFixture.h ceqlib
+	mkdir -p out/hii
+	$(CC) $(CFLAGS) -fno-fast-math HIIRegionTest.c $(LDFLAGS) -o out/hii_region_test.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/hii.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/hii_region_test.out" "$(abspath ../data/PEGASE2)"; \
+	mv equilibrium.csv thermal_curve.csv reactions.csv "$(CURDIR)/out/hii/"
+
+hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h ceqlib
+	mkdir -p out/hii
+	$(CC) $(CFLAGS) -fno-fast-math HIIRegionBenchmark.c $(LDFLAGS) -o out/hii_region_benchmark.out
+	@set -e; csv=$$(mktemp "$(CURDIR)/out/hii/benchmark.XXXXXX"); \
+	trap 'rm -f "$$csv"' EXIT; \
+	./out/hii_region_benchmark.out "$(abspath ../data/PEGASE2)" > "$$csv"; \
+	mv "$$csv" out/hii/hii_benchmark.csv
+	@echo "H II region timings saved in out/hii/hii_benchmark.csv"
+
+hii-plot: hii
+	$(PYTHON) ../plot/plot_hii_region.py
+
+wolfire-plot:
+	$(PYTHON) ../plot/plot_wolfire1995.py
+
 clean:
-	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out
+	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out
 
 tag:
 	ctags *.[c,h]

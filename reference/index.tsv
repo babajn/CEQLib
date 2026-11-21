@@ -1,0 +1,102 @@
+区分	文献	保存ファイル	取得元・書誌	状況	備考
+現行	Wolfire_1995	Wolfire_1995.pdf	https://public.websites.umich.edu/~monnier/Courses/2003Fall_AY403_Pages/wolfire95.pdf	保存済み	
+現行	Shull_van_Steenberg_1985	Shull_van_Steenberg_1985.pdf	https://adsabs.harvard.edu/pdf/1985ApJ...298..268S	保存済み	
+現行	Le_Teuff_2000	Le_Teuff_2000.pdf	https://star.pst.qub.ac.uk/~tjm/papers/rate99.ps.gz	保存済み（著者公開の PostScript から変換）	
+現行	Verner_1996	Verner_1996.pdf	https://arxiv.org/pdf/astro-ph/9601009	保存済み	
+現行	Tielens_Hollenbach_1985	Tielens_Hollenbach_1985.pdf	https://adsabs.harvard.edu/pdf/1985ApJ...291..722T	保存済み	
+現行	Bakes_Tielens_1994	Bakes_Tielens_1994.pdf	https://adsabs.harvard.edu/pdf/1994ApJ...427..822B	保存済み	
+現行	Weingartner_Draine_2001	Weingartner_Draine_2001.pdf	https://arxiv.org/pdf/astro-ph/0105237	保存済み	
+現行	Cen_1992	Cen_1992.pdf	https://adsabs.harvard.edu/pdf/1992ApJS...78..341C	保存済み	
+現行	Voronov_1997		https://doi.org/10.1006/adnd.1997.0732 https://www.pa.uky.edu/~verner/col.html	取得失敗 (403, 404)	ケンタッキー大学のページで係数表・Fortran を公開。
+現行	Hui_Gnedin_1997	Hui_Gnedin_1997.pdf	https://arxiv.org/pdf/astro-ph/9612232	保存済み	
+現行	Ferland_1992	Ferland_1992.pdf	https://adsabs.harvard.edu/pdf/1992ApJ...387...95F	保存済み	
+現行	Burgess_Seaton_1960	Burgess_Seaton_1960.pdf	https://adsabs.harvard.edu/pdf/1960MNRAS.121..471B	保存済み	
+現行	Millar_1997	Millar_1997.pdf	https://star.pst.qub.ac.uk/~tjm/papers/rate95.ps.gz	保存済み（著者公開の PostScript から変換）	
+現行	Nahar_Pradhan_1997	Nahar_Pradhan_1997.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-pirc-cn.pdf	保存済み	炭素・窒素の論文。同梱の炭素データは ../data/NaharPradhan1997/NaharPradhan1997_C.dat。
+現行	Nahar_1999	Nahar_1999.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-pirc-oions.pdf	保存済み	酸素イオンの論文。コードの C III の係数については Nahar & Pradhan (1997) が出典候補。
+現行	Nahar_2000	Nahar_2000.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-rrc-siseq.pdf	保存済み	
+現行	Nahar_1995	Nahar_1995.pdf	https://adsabs.harvard.edu/pdf/1995ApJS..101..423N	保存済み	
+現行	Nahar_1996_erratum	Nahar_1996_erratum.pdf	https://adsabs.harvard.edu/pdf/1996ApJS..106..213N	保存済み	Nahar (1995) の訂正。集計では原論文と合わせて1件。
+現行	Mazzotta_1998	Mazzotta_1998.pdf	https://arxiv.org/pdf/astro-ph/9806391	保存済み	
+現行	Glover_Jappsen_2007	Glover_Jappsen_2007.pdf	https://arxiv.org/pdf/0705.0182	保存済み	
+現行	Flower_Launay_1977		https://ui.adsabs.harvard.edu/abs/1977JPhB...10.3673F/abstract https://iopscience.iop.org/article/10.1088/0022-3700/10/18/024/pdf	取得失敗 (403, 404)	
+現行	Sutherland_Dopita_1993	Sutherland_Dopita_1993.pdf	https://adsabs.harvard.edu/pdf/1993ApJS...88..253S	保存済み	
+現行	Hollenbach_McKee_1979	Hollenbach_McKee_1979.pdf	https://adsabs.harvard.edu/pdf/1979ApJS...41..555H	保存済み	
+現行	Hollenbach_McKee_1989	Hollenbach_McKee_1989.pdf	https://adsabs.harvard.edu/pdf/1989ApJ...342..306H	保存済み	
+現行	Draine_Bertoldi_1996	Draine_Bertoldi_1996.pdf	https://arxiv.org/pdf/astro-ph/9603032	保存済み	
+現行	Glover_Mac_Low_2007	Glover_Mac_Low_2007.pdf	https://arxiv.org/pdf/astro-ph/0605120	保存済み	
+現行	Lepp_Shull_1983	Lepp_Shull_1983.pdf	https://adsabs.harvard.edu/pdf/1983ApJ...270..578L	保存済み	
+現行	Shapiro_Kang_1987	Shapiro_Kang_1987.pdf	https://adsabs.harvard.edu/pdf/1987ApJ...318...32S	保存済み	
+現行	Black_Dalgarno_1977	Black_Dalgarno_1977.pdf	https://adsabs.harvard.edu/pdf/1977ApJS...34..405B	保存済み	
+現行	Burton_1990	Burton_1990.pdf	https://adsabs.harvard.edu/pdf/1990ApJ...365..620B	保存済み	
+現行	Glover_Abel_2008	Glover_Abel_2008.pdf	https://arxiv.org/pdf/0803.1768	保存済み	
+現行	Glover_2010	Glover_2010.pdf	https://arxiv.org/pdf/0907.4081	保存済み	
+現行	Glover_Clark_2012	Glover_Clark_2012.pdf	https://arxiv.org/pdf/1102.0670	保存済み	コードの引用に合わせて MNRAS 421, 116 の CO 化学比較論文を採録。
+現行	Keto_Caselli_2008	Keto_Caselli_2008.pdf	https://lweb.cfa.harvard.edu/~eketo/StarFormation/lowmass/keto_caselli_2008.pdf	保存済み	
+現行	Lee_1996	Lee_1996.pdf	https://adsabs.harvard.edu/pdf/1996A&A...311..690L	保存済み	
+現行	McKee_1982	McKee_1982.pdf	https://adsabs.harvard.edu/pdf/1982ApJ...259..647M	保存済み	
+現行	Field_1958	Field_1958.pdf	https://www.astro.rug.nl/~saleem/courses/EoRCourse/Field1958.pdf	保存済み	
+現行	Field_1959	Field_1959.pdf	https://adsabs.harvard.edu/pdf/1959ApJ...129..536F	保存済み	
+現行	Liszt_2001	Liszt_2001.pdf	https://arxiv.org/pdf/astro-ph/0103246	保存済み	
+現行	Peters_2017	Peters_2017.pdf	https://arxiv.org/pdf/1610.06569	保存済み	
+現行	Morisset_2020_PyNeb	Morisset_2020_PyNeb.pdf	https://arxiv.org/pdf/2009.10586	保存済み	H II 領域の酸素原子データの選定元 PyNeb。
+現行	Reader_Kramida_Ralchenko_2010_NIST_ASD	Reader_Kramida_Ralchenko_2010_NIST_ASD.pdf	https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=907527	保存済み	NIST Atomic Spectra Database の説明。準位エネルギーの出典は NIST ASD（現行版の引用は DOI 10.18434/T4W30F）。
+現行	Zeippen_1982	Zeippen_1982.pdf	https://adsabs.harvard.edu/pdf/1982MNRAS.198..111Z	保存済み	O II の遷移確率。
+現行	Kisielius_2009	Kisielius_2009.pdf	https://arxiv.org/pdf/0907.4209	保存済み	O II の5準位間の有効衝突強度。
+現行	Froese_Fischer_Tachiev_2004	Froese_Fischer_Tachiev_2004.pdf	https://nlte.nist.gov/MCHF/all/p277.pdf	保存済み	O III の遷移確率。
+現行	Storey_Zeippen_2000	Storey_Zeippen_2000.pdf	https://adsabs.harvard.edu/pdf/2000MNRAS.312..813S	保存済み	O III の5007/4959 Å遷移確率比。
+現行	Storey_Sochi_Badnell_2014	Storey_Sochi_Badnell_2014.pdf	https://amdpp.phys.strath.ac.uk/tamoc/PUB/2014/mnras_441_3028.pdf	保存済み	O III の有効衝突強度。
+関連論文	Chatzikos_2023_Cloudy_C23	Chatzikos_2023_Cloudy_C23.pdf	https://www.scielo.org.mx/pdf/rmaa/v59n2/0185-1101-rmaa-59-02-327.pdf	保存済み	Cloudy C23 のリリース論文。H II 領域の比較計算で参照。
+関連論文	Gunasekera_2023_Cloudy_C23_01	Gunasekera_2023_Cloudy_C23_01.pdf	https://arxiv.org/pdf/2311.10163	保存済み	Cloudy C23.01 のリリース論文。テストスクリプトの実行対象版。
+代替・背景	Abel_1997	Abel_1997.pdf	https://arxiv.org/pdf/astro-ph/9608040	保存済み	
+代替・背景	Lennon_1988	Lennon_1988.pdf	https://srd.nist.gov/jpcrdreprint/1.555809.pdf	保存済み	
+代替・背景	Fukugita_Kawasaki_1994	Fukugita_Kawasaki_1994.pdf	https://adsabs.harvard.edu/pdf/1994MNRAS.269..563F	保存済み	
+代替・背景	Stancil_1998		https://ui.adsabs.harvard.edu/abs/1998ApJ...502.1006S/abstract	取得失敗 (403)	
+代替・背景	Stancil_1999		https://ui.adsabs.harvard.edu/abs/1999A%26AS..140..225S/abstract	取得失敗 (curl 28, 403)	
+代替・背景	Zhao_2004		https://ui.adsabs.harvard.edu/abs/2004ApJ...615.1063Z/abstract	取得失敗 (curl 28, 403)	
+代替・背景	Kimura_1993	Kimura_1993.pdf	https://adsabs.harvard.edu/pdf/1993ApJ...417..812K	保存済み	
+代替・背景	Kingdon_Ferland_1996	Kingdon_Ferland_1996.pdf	https://adsabs.harvard.edu/pdf/1996ApJS..106..205K	保存済み	
+代替・背景	Pollack_1994	Pollack_1994.pdf	https://adsabs.harvard.edu/pdf/1994ApJ...421..615P	保存済み	
+代替・背景	Hollenbach_1991	Hollenbach_1991.pdf	https://adsabs.harvard.edu/pdf/1991ApJ...377..192H	保存済み	
+代替・背景	Hosokawa_Inutsuka_2006	Hosokawa_Inutsuka_2006.pdf	https://arxiv.org/pdf/astro-ph/0511165	保存済み	
+代替・背景	Wolfire_2003	Wolfire_2003.pdf	https://arxiv.org/pdf/astro-ph/0207098	保存済み	
+代替・背景	Werner_1970			書誌未確定	著者・年と炭素の自己遮蔽に関するコードの記述からは書誌を確定できなかった。
+代替・背景	de_Jong_1980	de_Jong_1980.pdf	https://adsabs.harvard.edu/pdf/1980A%26A....91...68D	保存済み	
+代替・背景	Tayal_2007		https://ui.adsabs.harvard.edu/abs/2007ApJS..171..331T/abstract	取得失敗 (curl 28, 403)	
+代替・背景	Hollenbach_Salpeter_1971	Hollenbach_Salpeter_1971.pdf	https://adsabs.harvard.edu/pdf/1971ApJ...163..155H	保存済み	
+代替・背景	Cazaux_Tielens_2002	Cazaux_Tielens_2002.pdf	https://arxiv.org/pdf/astro-ph/0207035	保存済み	
+代替・背景	Cazaux_Tielens_2004	Cazaux_Tielens_2004.pdf	https://pure.rug.nl/ws/portalfiles/portal/2970212/c2.pdf	保存済み（著者の学位論文に収録された版）	ApJ 604, 222–237、DOI 10.1086/381775。大学公開 PDF の相互参照表を修復。
+代替・背景	Buch_Zhang_1991	Buch_Zhang_1991.pdf	https://adsabs.harvard.edu/pdf/1991ApJ...379..647B	保存済み	
+代替・背景	Pelupessy_2006	Pelupessy_2006.pdf	https://arxiv.org/pdf/astro-ph/0603581	保存済み	
+代替・背景	Jura_1974	Jura_1974.pdf	https://adsabs.harvard.edu/pdf/1974ApJ...191..375J	保存済み	
+代替・背景	Jura_1975	Jura_1975.pdf	https://adsabs.harvard.edu/pdf/1975ApJ...197..575J	保存済み	
+代替・背景	Gnedin_2009	Gnedin_2009.pdf	https://arxiv.org/pdf/0810.4148	保存済み	
+代替・背景	Krumholz_2009	Krumholz_2009.pdf	https://arxiv.org/pdf/0811.0004	保存済み	
+代替・背景	Padoan_1997	Padoan_1997.pdf	https://arxiv.org/pdf/astro-ph/9603061	保存済み	密度分布のコメントに対応する候補として supersonic turbulence の著者版を採録。
+代替・背景	Ostriker_2001	Ostriker_2001.pdf	https://arxiv.org/pdf/astro-ph/0008454	保存済み	
+代替・背景	McKee_Ostriker_2007	McKee_Ostriker_2007.pdf	https://arxiv.org/pdf/0707.3514	保存済み	
+代替・背景	Krumholz_Gnedin_2011	Krumholz_Gnedin_2011.pdf	https://arxiv.org/pdf/1011.4065	保存済み	コードの年は2009。ApJ 729, 36 (2011) を該当候補として採録。
+代替・背景	Koyama_Inutsuka_2000	Koyama_Inutsuka_2000.pdf	https://arxiv.org/pdf/astro-ph/9912509	保存済み	
+代替・背景	Galli_Palla_1998	Galli_Palla_1998.pdf	https://arxiv.org/pdf/astro-ph/9803315	保存済み	
+代替・背景	Draine_1983	Draine_1983.pdf	https://adsabs.harvard.edu/pdf/1983ApJ...264..485D	保存済み	
+代替・背景	Flower_1986	Flower_1986.pdf	https://adsabs.harvard.edu/pdf/1986MNRAS.218..729F	保存済み	
+代替・背景	Neufeld_Kaufman_1993	Neufeld_Kaufman_1993.pdf	https://adsabs.harvard.edu/pdf/1993ApJ...418..263N	保存済み	
+代替・背景	Neufeld_1995	Neufeld_1995.pdf	https://adsabs.harvard.edu/pdf/1995ApJS..100..132N	保存済み	
+代替・背景	Meijerink_Spaans_2005	Meijerink_Spaans_2005.pdf	https://arxiv.org/pdf/astro-ph/0502454	保存済み	
+代替・背景	Le_Bourlot_1999	Le_Bourlot_1999.pdf	https://adsabs.harvard.edu/pdf/1999MNRAS.305..802L	保存済み	
+代替・背景	Visser_2009	Visser_2009.pdf	https://arxiv.org/pdf/0906.3699	保存済み	
+代替・背景	Nelson_Langer_1997		https://ui.adsabs.harvard.edu/abs/1997ApJ...482..796N/abstract	取得失敗 (403)	
+代替・背景	Martin_1998	Martin_1998.pdf	https://users.obs.carnegiescience.edu/mseibert/cwleo_collection/H2/martin_1998_collisional_dissociation_of_H2.pdf	保存済み	
+代替・背景	Pavlovski_2002	Pavlovski_2002.pdf	https://adsabs.harvard.edu/pdf/2002MNRAS.337..477P	保存済み	
+関連論文	Fioc_Rocca_Volmerange_1999	Fioc_Rocca_Volmerange_1999.pdf	https://arxiv.org/pdf/astro-ph/9912179	保存済み	同梱の PEGASE.2 資料は ../data/PEGASE2/README.pdf。
+関連論文	Kroupa_2001	Kroupa_2001.pdf	https://arxiv.org/pdf/astro-ph/0009005	保存済み	
+関連論文	Gnat_Sternberg_2007	Gnat_Sternberg_2007.pdf	https://arxiv.org/pdf/astro-ph/0608181	保存済み	同梱データは ../data/GnatSternberg2007/。
+関連論文	Gnat_Ferland_2012	Gnat_Ferland_2012.pdf	https://arxiv.org/pdf/1111.6980	保存済み	同梱データは ../data/GnatFerland2012/。
+書籍	Spitzer_1978		https://ui.adsabs.harvard.edu/abs/1978ppim.book.....S/abstract	全文PDF 未取得	
+書籍	Osterbrock_1989		https://ui.adsabs.harvard.edu/abs/1989agna.book.....O/abstract	全文PDF 未取得	
+書籍	Osterbrock_Ferland_2006		https://ui.adsabs.harvard.edu/abs/2006agna.book.....O/abstract	全文PDF 未取得	
+書籍	Stahler_Palla_2004		https://ui.adsabs.harvard.edu/abs/2005fost.book.....S/abstract	全文PDF 未取得	コードの年は2004。NASA ADS では2005。
+書籍	Tielens_2005		https://ui.adsabs.harvard.edu/abs/2005pcim.book.....T/abstract	全文PDF 未取得	
+書籍	Draine_2011		https://www.astro.princeton.edu/~draine/book/	全文PDF 未取得	
+書誌未確定	McKee_1994			書誌未確定	Wolfire et al. (1995) の文献欄では in preparation。
+書誌未確定	Verner_1999			書誌未確定	コードの記述から出典を特定できなかった。

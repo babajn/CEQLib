@@ -55,12 +55,16 @@ CEQLibStatus CEQLibTryInitialization(int check, const char *pegaseDirectory);
 void CEQLibInitialization(int Check);
 void CEQLibiSetRunParamDebugMode(bool Use);
 void CEQLibiSetRunParamRecombinationCaseB(bool Use);
+/* Use NLyn to evaluate photoionization and blend the CIE metal term with
+   [O II]/[O III] cooling where H is photoionized. The explicit line term
+   models only oxygen and tapers from 1.5e4 to 2.5e4 K to recover CIE. */
 void CEQLibiSetRunParamHIIRegion(bool Use);
 void CEQLibiSetRunParamDustAttenuation(bool Use);
 void CEQLibiSetRunParamGrainSurfaceProcesses(bool Use);
 void CEQLibiSetRunParamCosmicRayIonization(bool Use);
 void CEQLibiSetRunParamSoftXrayIonization(bool Use);
-/* The CIE table extends to 10^8.5 K. Higher temperatures return CEQ_INVALID_INPUT
+/* Extrapolate the CIE metal contribution above the table (10^8.5 K) with
+   sqrt(T) scaling up to 10^9 K. Higher temperatures return CEQ_INVALID_INPUT
    from the checked cooling and heating APIs when CIE is enabled. */
 void CEQLibiSetRunParamCIEResonanceCooling(bool Use);
 void CEQLibiSetRunParamH2Formation(bool Use, double Cp);
