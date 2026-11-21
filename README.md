@@ -27,7 +27,7 @@ H II 領域の酸素冷却を使うには、初期化前に `EQCLibSetRunParamHI
 
 ### シミュレーションで速度を優先する設定
 
-ASURA などの銀河シミュレーションでは、次の設定から始めることを勧めます。すべて `EQCLibTryInitialization` の前、並列計算を始める前に一度だけ呼びます。実行中に変えないでください。
+分子雲内部を分解せず、銀河全体のガスの熱進化を追う ASURA 計算では、H₂ とダスト遮蔽を有効にし、CO を無効にした設定から始めることを勧めます。CO はライブラリの既定値でも無効です。ASURA から粒子ごとの局所電離光子束 `NLyn` を渡す場合は、以下の `useLocalIonizingFlux` を `true` にします。実行パラメータは `EQCLibTryInitialization` の前に一度だけ設定します。
 
 ```c
 EQCLibSetRunParamRecombinationCaseB(true);
@@ -36,12 +36,14 @@ EQCLibSetRunParamGrainSurfaceProcesses(true);
 EQCLibSetRunParamCosmicRayIonization(true);
 EQCLibSetRunParamSoftXrayIonization(true);
 EQCLibSetRunParamCIEResonanceCooling(true);
-EQCLibSetRunParamHIIRegion(true);          /* 各粒子の NLyn を与える場合 */
+EQCLibSetRunParamHIIRegion(useLocalIonizingFlux);
 EQCLibSetRunParamH2Formation(true, 1.0);
-EQCLibSetRunParamCOFormation(true, 1.0);   /* CO が不要なら false */
-EQCLibSetRunParamChargeTransfer(true);     /* 物理モデルを保つため有効のまま */
+EQCLibSetRunParamCOFormation(false, 1.0);
+EQCLibSetRunParamChargeTransfer(true);
 EQCLibSetRunParamChemistryAccuracy(1.0e-5);
-if(EQCLibTryInitialization(0, pegaseDirectory) != EQC_SUCCESS) { /* 停止する */ }
+if(EQCLibTryInitialization(0, useLocalIonizingFlux ? pegaseDirectory : NULL) != EQC_SUCCESS) {
+    /* 停止する */
+}
 
 /* 各粒子・各ステップ（並列可） */
 double Du;
@@ -49,28 +51,26 @@ if(EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e
     particle.U += particle.dt * Du;
 ```
 
-速度に効く設定と、その代わりに失うものは次のとおりです。時間は単一スレッドの例で、計算機と粒子の分布によって変わります。
-
 | 設定 | 速度への効果 | 結果への影響 | 推奨 |
 | --- | --- | --- | --- |
-| `EQCLibSetRunParamChemistryAccuracy(1e-5)` | エネルギー更新が約 10〜25% 速い | 温度の変化は 2×10⁻⁵ 程度以下で、エネルギーの精度 10⁻⁴ より十分小さい | 速度優先では必ず設定 |
+| `EQCLibSetRunParamChemistryAccuracy(1e-5)` | 陰的エネルギー更新の化学平衡計算を短縮 | 測定例で温度の相対差は 2×10⁻⁵ 程度以下 | エネルギーの精度 `1e-4` と組み合わせる |
 | エネルギー更新の `accuracy` 引数（`1e-4` → `1e-3`） | 約 2〜30% 速い | 1 ステップの許容誤差が 10 倍になる | 時間刻みに対する収束を確かめてから |
-| `EQCLibSetRunParamCOFormation(false, ...)` | 分子ガスで約 2.3 倍速い（下表） | CO の存在量と輝線冷却がゼロになり、炭素と酸素の状態が変わる | CO 冷却が不要な場合 |
-| `EQCLibSetRunParamH2Formation(false, ...)` | さらに約 1.9 倍速い | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
+| `EQCLibSetRunParamCOFormation(false, 1.0)` | CO 平衡の探索と CO 輝線冷却を省き、更新時間を約 57〜70% 短縮（下表） | CO 存在量と輝線冷却がゼロになり、[C II] や [O I] の冷却も変わる | 銀河全体の熱進化を追う計算の初期設定 |
+| `EQCLibSetRunParamH2Formation(false, 1.0)` | CO 無効の状態から、更新時間をさらに約 42〜49% 短縮（下表） | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
 | `EQCLibSetRunParamChargeTransfer(false)` | H II 領域の更新が約 20〜35% 速い | H I が残る条件で O III が過剰になり、Cloudy との温度差（太陽金属量の中央値）が 1.4% から 5.3% に広がる | 有効のまま |
 | `EQCLibSetRunParamHIIRegion(false)` | PEGASE2 スペクトルの読み込みと、光電離ガスの [O II]・[O III] 冷却・H–O 電荷交換を省ける | 粒子の `NLyn` は無視され（0 として扱われ）、光電離加熱と [O II]・[O III] 冷却がなくなる。炭素は FUV による光電離を使う | 電離光子束を扱わない場合 |
 
-分子化学の有無による違いを、H II 領域・ダスト・宇宙線・X 線・電荷交換を有効にし、化学平衡の許容誤差を `1e-5` にした条件で測りました。`n_H = 10⁻²〜10⁴ cm⁻³`、`T = 10〜10⁷ K`、電離光子なしと `log10(U) = −5, −3` の 975 点、時間刻み 1 万年の平均です。
+下表は `make -C test molecular-settings-benchmark` で、H–O 電荷交換を有効にしたときのエネルギー更新1回あたりの単一スレッド CPU 時間です。太陽金属量の273条件を使い、全設定で収束した条件の平均を5回測った中央値を示します。10年と1万年では273条件すべて、100万年では272条件が収束しました。実時間の短縮幅は ASURA での粒子の分布と冷却計算にかかる時間の割合で変わります。
 
-| 分子化学 | エネルギー更新1回あたり |
-| --- | ---: |
-| H₂ と CO | 約 880 µs |
-| H₂ のみ | 約 390 µs |
-| なし | 約 210 µs |
+| 時間刻み | H₂ と CO | H₂ のみ | 分子なし |
+| --- | ---: | ---: | ---: |
+| 10年 | 117 µs | 50 µs | 29 µs |
+| 1万年 | 385 µs | 128 µs | 65 µs |
+| 100万年 | 628 µs | 186 µs | 102 µs |
 
-同じ条件で化学平衡の許容誤差を既定の `1e-8` に戻すと、H₂ と CO ありで約 1,080 µs です。
+CO を無効にしたときの更新後の温度について、CO 有効時を基準にした相対差の絶対値は、1万年刻みでは95パーセンタイルで 2.2% でした。100万年刻みでは収束した272条件のうち19条件で 10% を超えました。同じ格子のうち `n_H = 10³ cm⁻³`、初期温度 30 K、`A_V ≈ 1.7`、電離光子束なしの条件では、初期の全冷却率がほぼ半分になり、1万年後の温度は 16.8 K から 24.2 K に上がりました。
 
-その他の注意：
+CO 輝線を予測する場合は CO を有効にします。遮蔽された低温ガスが星形成や冷たいガスの質量に効く場合は、ASURA の代表的な粒子の密度、温度、柱密度 `Nt`、ダスト量 `Zd`、放射場、時間刻みを使って CO の有無を比べてください。分子雲の比較計算では、ダスト遮蔽を含めると CO の有無による星形成率の違いは小さく、最低温度には差が出ています。[Glover & Clark (2012)](https://arxiv.org/abs/1105.3073)
 
 - 正味冷却率の API（`EQCLibTryNetCoolingRateChemcalEquilibrium`）は内部で精度 1e-8 を指定するため、化学平衡の許容誤差の設定は効きません。時間積分には陰的なエネルギー更新の API を使ってください。
 - CIE 冷却を有効にすると、10⁹ K を超える温度は `EQC_INVALID_INPUT` を返します。これより高温の粒子は呼び出し側で扱います。
