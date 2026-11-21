@@ -67,7 +67,7 @@ static Fluxes ReactionFluxes(const StructCEQData *s)
     const double nH = s->n[ipHYDROGEN], T = s->T, ne = s->nel, xe = ne/nH;
     const double nHI = s->natom[ipHYDROGEN], nHII = s->nion[ipHYDROGEN], nH2 = s->nmol[ipH2];
     const double nOI = s->natom[ipOXYGEN], nOII = s->nion[ipOXYGEN], nOIII = s->nOIII;
-    const double nC = s->n[ipCARBON], nCO = s->nmol[ipCO];
+    const double nCO = s->nmol[ipCO];
     Fluxes f = {0};
 
     /* H2: grain-surface formation, shielded photodissociation, collisional dissociation. */
@@ -82,7 +82,8 @@ static Fluxes ReactionFluxes(const StructCEQData *s)
     const double formation = 4.e-16*pow(T/300.0,-0.2)*CEQLibRunParameters.CpForCO*nH2;
     const double photoCI = 3.1e-10*s->G0*DustShieldingFactor(s->Nt, s->Zd, 3.0);
     const double effective = formation+photoCI > 0.0 ? formation*photoCI/(formation+photoCI) : 0.0;
-    f.coFormation = effective*(nC-nCO);
+    const double freeCarbon = s->natom[ipCARBON] + s->nion[ipCARBON] + s->nCIII;
+    f.coFormation = effective*freeCarbon;
     f.coPhotodissociation = nCO*COPhotoDissociationRate(s->G0, s->Nt, s->Zd)
                           * COShieldingFactor(s->Nt*nH2/nH, s->Nt*nCO/nH, doppler);
 
@@ -117,9 +118,6 @@ static Residuals Balances(const StructCEQData *s, const Fluxes *f)
     };
     /* CO is limited by the oxygen supply when every O atom is in CO. */
     if(s->nmol[ipCO] >= s->n[ipOXYGEN]) r.co = 0.0;
-    StructCEQData carbon = *s;
-    if(s->nmol[ipCO] > 0.0 && CEQSolveCarbonEquilibrium(&carbon, s->nmol[ipCO], chemistryAccuracy) == CEQ_SUCCESS)
-        r.coConsistency = Relative(carbon.nmol[ipCO], s->nmol[ipCO]);
     return r;
 }
 
@@ -137,7 +135,17 @@ static void WriteHeader(FILE *file)
 static bool WriteRow(FILE *file, Condition c, const StructCEQData *s)
 {
     const Fluxes f = ReactionFluxes(s);
-    const Residuals r = Balances(s, &f);
+    Residuals r = Balances(s, &f);
+    if(s->nmol[ipCO] > 0.0){
+        StructCEQData carbon = *s;
+        const CEQLibStatus status = CEQSolveCarbonEquilibrium(&carbon, s->nmol[ipCO], chemistryAccuracy);
+        if(status != CEQ_SUCCESS){
+            fprintf(stderr, "CO re-solve failed at n_H=%g, T=%g K, G0=%g, N=%g, log U=%g (status %d)\n",
+                    c.nH, c.T, c.G0, c.Nt, c.logU, status);
+            return false;
+        }
+        r.coConsistency = Relative(carbon.nmol[ipCO], s->nmol[ipCO]);
+    }
     const double nH = s->n[ipHYDROGEN], nC = s->n[ipCARBON], nO = s->n[ipOXYGEN];
     fprintf(file, "%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.12e", c.nH, c.T, c.G0, c.Nt,
             VisualExtinction(c.Nt, s->Zd), c.logU, s->nel);
