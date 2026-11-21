@@ -5,12 +5,28 @@ int CEQSolveIonLadder(double density, double ionization0, double recombination1,
                       double *neutral, double *ion, double *doubleIon);
 int CEQSolveHydrogenEquilibrium(StructCEQData *state, double accuracy);
 
+/* Ladder coefficients that do not depend on n_e: photoionization rates [1/s],
+   electron-impact ionization and recombination coefficients [cm^3/s]. */
+typedef struct {
+    double photo0, collision0, recombination1, photo1, collision1, recombination2;
+} CEQLadderCoefficients;
+
+/* Coefficients fixed by T, NLyn, G0, Nt and Zd. A fixed-temperature equilibrium
+   evaluates them once and reuses them for every trial electron density. */
+typedef struct {
+    CEQLadderCoefficients hydrogen, helium, carbon, oxygen, silicon;
+    double toOxygenII, toHydrogenI, oxygenIIIToHydrogenI;   /* O-H charge transfer [cm^3/s] */
+} CEQRateCoefficients;
+void CEQPrepareRateCoefficients(const StructCEQData *state, CEQRateCoefficients *coefficients);
+
 /* H ionization rate per H atom and recombination rate per H+ [1/s],
    without charge transfer. They depend on the state's n_e, not on its ions. */
 typedef struct {
     double ionization, recombination;
 } CEQHydrogenRates;
 CEQHydrogenRates CEQHydrogenIonizationRates(const StructCEQData *state);
+CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructCEQData *state,
+                                                            const CEQRateCoefficients *coefficients);
 int CEQSolveHydrogenEquilibriumWithRates(StructCEQData *state, const CEQHydrogenRates *rates,
                                          double accuracy);
 
@@ -26,7 +42,8 @@ typedef struct {
    The unknown is s = ln(n_HII/n_HI); success means |s - ln(I/R)| <= accuracy
    for the H ionization and recombination rates including charge transfer. */
 int CEQSolveHydrogenOxygenChargeTransfer(StructCEQData *state, const CEQHydrogenRates *hydrogen,
-                                         const CEQIonLadderRates *oxygen, double accuracy);
+                                         const CEQIonLadderRates *oxygen,
+                                         const CEQRateCoefficients *coefficients, double accuracy);
 int CEQSolveCarbonEquilibrium(StructCEQData *state, double previousCO, double accuracy);
 
 typedef struct {
@@ -41,8 +58,10 @@ typedef struct {
 /* Allocate room for CEQCOShieldingPointCount() + 1 intervals. */
 int CEQPrepareCarbonShieldingIntervals(const StructCEQData *state,
                                        CEQCarbonShieldingInterval *intervals, int points);
+/* coefficients may be NULL; the atomic carbon ladder then evaluates its own. */
 int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double accuracy,
-                               const CEQCarbonShieldingInterval *intervals, int count);
+                               const CEQCarbonShieldingInterval *intervals, int count,
+                               const CEQRateCoefficients *coefficients);
 
 void EquilibriumHydrogenFractionalAbundance(StructCEQData *PhydroPP);
 void EquilibriumHeliumFractionalAbundance(StructCEQData *PhydroPP);

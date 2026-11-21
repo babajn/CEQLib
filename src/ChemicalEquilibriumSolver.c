@@ -28,6 +28,7 @@ typedef struct {
     double previousCO;
     double accuracy;
     const CEQCarbonShieldingInterval *carbonIntervals;
+    const CEQRateCoefficients *coefficients;
     int carbonIntervalCount;
     StructCEQData solution;
     bool found;
@@ -37,38 +38,36 @@ typedef struct {
     int failure;
 } ChargeSearch;
 
-static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen, double accuracy)
+static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen,
+                          const CEQRateCoefficients *c, double accuracy)
 {
     const double ne = state->nel;
     const double nH = state->n[ipHYDROGEN];
     const double xe = ne/nH;
     const double T = state->T;
-    const double NLyn = state->NLyn;
     const double X0 = state->X0;
     const double G0 = state->G0;
     const double Nt = state->Nt;
     const double Zd = state->Zd;
 
     int status = CEQSolveIonLadder(state->n[ipHELIUM],
-        HeIPhotoIonizationRate(NLyn) + ne*HeICollisionalIonizationRate(T)
+        c->helium.photo0 + ne*c->helium.collision0
             + X0*(CosmicRayIonizationRateHeI(xe) + SoftXrayIonizationRateHeI(xe,Nt)),
-        ne*(HeIIRecombinationRate(T) + HeIIDielectronicRecombinationRate(T))
-            + nH*HeIIRecombinationRateOnDust(T,G0,ne,Zd),
-        HeIIPhotoIonizationRate(NLyn) + ne*HeIICollisionalIonizationRate(T),
-        ne*HeIIIRecombinationRate(T),
+        ne*c->helium.recombination1 + nH*HeIIRecombinationRateOnDust(T,G0,ne,Zd),
+        c->helium.photo1 + ne*c->helium.collision1,
+        ne*c->helium.recombination2,
         &state->natom[ipHELIUM], &state->nion[ipHELIUM], &state->nHeIII);
     if(status != CEQ_SUCCESS) return status;
 
     const CEQIonLadderRates oxygen = {
-        .ionization0 = OIPhotoionizationRate(NLyn) + ne*OICollisionalIonizationRate(T)
-                     + X0*CosmicRayIonizationRateOI(xe),
-        .recombination1 = ne*OIIRecombinationRate(T) + nH*OIIRecombinationRateOnDust(T,G0,ne,Zd),
-        .ionization1 = OIIPhotoionizationRate(NLyn) + ne*OIICollisionalIonizationRate(T),
-        .recombination2 = ne*OIIIRecombinationRate(T),
+        .ionization0 = c->oxygen.photo0 + ne*c->oxygen.collision0 + X0*CosmicRayIonizationRateOI(xe),
+        .recombination1 = ne*c->oxygen.recombination1 + nH*OIIRecombinationRateOnDust(T,G0,ne,Zd),
+        .ionization1 = c->oxygen.photo1 + ne*c->oxygen.collision1,
+        .recombination2 = ne*c->oxygen.recombination2,
     };
     /* In H II region mode, couple O and H through charge transfer. */
     status = CEQLibRunParameters.UseHIIRegion ?
-        CEQSolveHydrogenOxygenChargeTransfer(state,hydrogen,&oxygen,accuracy) :
+        CEQSolveHydrogenOxygenChargeTransfer(state,hydrogen,&oxygen,c,accuracy) :
         CEQSolveIonLadder(state->n[ipOXYGEN]-state->nmol[ipCO],
                           oxygen.ionization0, oxygen.recombination1,
                           oxygen.ionization1, oxygen.recombination2,
@@ -76,12 +75,12 @@ static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen
     if(status != CEQ_SUCCESS) return status;
 
     return CEQSolveIonLadder(state->n[ipSILICON],
-        SiIPhotoionizationRate(NLyn) + ne*SiICollisionalIonizationRate(T)
+        c->silicon.photo0 + ne*c->silicon.collision0
             + X0*(CosmicRayIonizationRateSiI(xe) + SoftXrayIonizationRateSiI(xe,Nt)),
-        ne*SiIIRecombinationRate(T) + nH*SiIIRecombinationRateOnDust(T,G0,ne,Zd),
-        SiIIPhotoionizationRate(NLyn) + ne*SiIICollisionalIonizationRate(T)
+        ne*c->silicon.recombination1 + nH*SiIIRecombinationRateOnDust(T,G0,ne,Zd),
+        c->silicon.photo1 + ne*c->silicon.collision1
             + X0*(CosmicRayIonizationRateSiII(xe) + SoftXrayIonizationRateSiII(xe,Nt)),
-        ne*SiIIIRecombinationRate(T),
+        ne*c->silicon.recombination2,
         &state->natom[ipSILICON], &state->nion[ipSILICON], &state->nSiIII);
 }
 
@@ -89,13 +88,14 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
 {
     StructCEQData state = *search->initial;
     state.nel = electronDensity;
-    const CEQHydrogenRates hydrogen = CEQHydrogenIonizationRates(&state);
+    const CEQHydrogenRates hydrogen = CEQHydrogenIonizationRatesWithCoefficients(&state,search->coefficients);
     int status = CEQSolveHydrogenEquilibriumWithRates(&state,&hydrogen,search->accuracy);
     if(status == CEQ_SUCCESS)
         status = CEQSolveCarbonWithIntervals(&state,search->previousCO,search->accuracy,
-                                             search->carbonIntervals,search->carbonIntervalCount);
+                                             search->carbonIntervals,search->carbonIntervalCount,
+                                             search->coefficients);
     if(status == CEQ_SUCCESS)
-        status = SolveOtherIons(&state,&hydrogen,search->accuracy);
+        status = SolveOtherIons(&state,&hydrogen,search->coefficients,search->accuracy);
 
     ChargePoint point = {.density = electronDensity, .status = status};
     if(status != CEQ_SUCCESS){
@@ -394,8 +394,12 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
                                 CEQCOShieldingPointCount() : 0;
     CEQCarbonShieldingInterval carbonIntervals[shieldingPoints+1];
     const int carbonIntervalCount = CEQPrepareCarbonShieldingIntervals(state,carbonIntervals,shieldingPoints);
+    /* T, NLyn and the dust and column parameters are fixed during the search. */
+    CEQRateCoefficients coefficients;
+    CEQPrepareRateCoefficients(state,&coefficients);
     ChargeSearch search = {
         .initial = state,
+        .coefficients = &coefficients,
         .previousElectronDensity = isfinite(state->nel) ? fmin(fmax(state->nel,0.0),maximumCharge) : 0.0,
         .previousCO = CEQLibRunParameters.UseCOFormation ? state->nmol[ipCO] : 0.0,
         .accuracy = accuracy,
