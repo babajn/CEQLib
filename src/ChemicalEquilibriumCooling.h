@@ -59,7 +59,8 @@ void CEQLibiSetRunParamDebugMode(bool Use);
 void CEQLibiSetRunParamRecombinationCaseB(bool Use);
 /* Use NLyn to evaluate photoionization and blend the CIE metal term with
    [O II]/[O III] cooling where H is photoionized. The explicit line term
-   models only oxygen and tapers from 1.5e4 to 2.5e4 K to recover CIE. */
+   models only oxygen and tapers from 1.5e4 to 2.5e4 K to recover CIE.
+   When off, NLyn is ignored and C keeps its FUV photoionization. */
 void CEQLibiSetRunParamHIIRegion(bool Use);
 /* With H II regions enabled, solve O0 + H+ <-> O+ + H0 and O++ + H0 -> O+ + H+
    together with the H balance (default on). Turning it off makes H II updates

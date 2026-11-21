@@ -795,6 +795,28 @@ static void CheckChemistryAccuracySetting(void)
     }
 }
 
+static void CheckIonizingFluxNeedsHIIRegion(void)
+{
+    /* With H II region mode off, NLyn must not reach the chemistry or heating,
+       even after the PEGASE2 tables are loaded. Otherwise C would lose its FUV
+       photoionization and drop from C II to C I in diffuse gas. */
+    const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
+    CEQLibiSetRunParamHIIRegion(false);
+    CEQLibiSetRunParamH2Formation(false,1.0);
+    CEQLibiSetRunParamCOFormation(false,1.0);
+    StructCEQData dark = GasState(1.0,100.0,1.0e19);
+    dark.nel = 1.0e-3;
+    StructCEQData lit = dark;
+    lit.NLyn = 1.0e-3*LIGHT_C_CGS;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&dark,1.0e-10) == CEQ_SUCCESS);
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&lit,1.0e-10) == CEQ_SUCCESS);
+    assert(lit.nel == dark.nel && lit.H_tot == dark.H_tot && lit.L_tot == dark.L_tot);
+    for(int i = 0; i < NumberChemicalElement; i++)
+        assert(lit.natom[i] == dark.natom[i] && lit.nion[i] == dark.nion[i]);
+    assert(dark.nion[ipCARBON] > 0.99*dark.n[ipCARBON]);
+    CEQLibRunParameters = saved;
+}
+
 static void CheckPhotoionization(const char *pegaseDirectory)
 {
     const double unattenuated = CIFUVPhotoionizationRate(1.7,0.0);
@@ -836,6 +858,7 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     CheckMolecularHydrogenRoundoffAccuracy();
     CheckChargeTransferSwitch();
     CheckChemistryAccuracySetting();
+    CheckIonizingFluxNeedsHIIRegion();
 }
 
 int main(int argc, char **argv)

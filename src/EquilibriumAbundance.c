@@ -249,7 +249,8 @@ static int SolveMolecularHydrogen(const StructCEQData *state, const CEQMolecular
 }
 
 static CEQLadderCoefficients CarbonCoefficients(const StructCEQData *s){
-    const double NLyn = s->NLyn;
+    /* Without H II region mode, NLyn is ignored and C keeps its FUV photoionization. */
+    const double NLyn = CEQLibRunParameters.UseHIIRegion ? s->NLyn : 0.0;
     return (CEQLadderCoefficients){
         .photo0 = NLyn == 0.0 ? CIFUVPhotoionizationRate(s->G0,VisualExtinction(s->Nt,s->Zd))
                               : CIPhotoionizationRate(NLyn),
@@ -1060,7 +1061,7 @@ void EquilibriumCarbonFractionalAbundance(StructCEQData *PhydroPP){
         double Av         = VisualExtinction(Ntot,Zd);
         
         double dnCI_phti  = 0.e0;
-        if(NLyn==0.e0)  dnCI_phti = CIFUVPhotoionizationRate(G0,Av);
+        if(NLyn==0.e0 || !CEQLibRunParameters.UseHIIRegion)  dnCI_phti = CIFUVPhotoionizationRate(G0,Av);
         else            dnCI_phti = CIPhotoionizationRate(NLyn);
         double dnCI_coli  = ne*CICollisionalIonizationRate(T);
         double dnCI_cr    = X0*CosmicRayIonizationRateCI(xe);

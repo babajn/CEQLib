@@ -106,8 +106,9 @@ void InitializePhotochemistory(int Check){
 }
 
 //// Photo-ionization rate [1/s]
+// The stellar ionizing flux NLyn acts only in H II region mode.
 static double SimplifiedPhotoionizationRate(double NLyn, int iZ, int ip){
-    if(NLyn==0.0)   return 0.e0;
+    if(NLyn==0.0 || !CEQLibRunParameters.UseHIIRegion)   return 0.e0;
     return Photoionization[iZ].ionization[ip]*NLyn;   // [1/s]
 }
 
@@ -159,12 +160,12 @@ double SiIFUVPhotoionizationRate(double G0, double Av){
 
 ////// Photo-ionization Heating [erg/s]
 static double SimplifiedPhotoionizationHeating(double NLyn, int iZ, int ip){
-    if(NLyn==0.0)   return 0.e0;
+    if(NLyn==0.0 || !CEQLibRunParameters.UseHIIRegion)   return 0.e0;
     return Photoionization[iZ].heating[ip]*NLyn; // [erg/s]
 }
 double HeatingPhotoionization(StructCEQData *PhydroPP){
     double NLyn = PhydroPP->NLyn;
-    if(NLyn==0.e0)  return 0.e0;
+    if(NLyn==0.e0 || !CEQLibRunParameters.UseHIIRegion)  return 0.e0;
     return PhydroPP->natom[ipHYDROGEN]*HeatingHIPhotoionization(NLyn)
           +PhydroPP->natom[ipHELIUM  ]*HeatingHeIPhotoionization(NLyn)
           +PhydroPP->natom[ipCARBON  ]*HeatingCIPhotoionization(NLyn)

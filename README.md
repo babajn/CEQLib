@@ -57,7 +57,7 @@ if(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e
 | `CEQLibiSetRunParamCOFormation(false, ...)` | 分子ガスで約 2.3 倍速い（下表） | CO の存在量と輝線冷却がゼロになり、炭素と酸素の状態が変わる | CO 冷却が不要な場合 |
 | `CEQLibiSetRunParamH2Formation(false, ...)` | さらに約 1.9 倍速い | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
 | `CEQLibiSetRunParamChargeTransfer(false)` | H II 領域の更新が約 20〜35% 速い | H I が残る条件で O III が過剰になり、Cloudy との温度差（太陽金属量の中央値）が 1.4% から 5.3% に広がる | 有効のまま |
-| `CEQLibiSetRunParamHIIRegion(false)` | 光電離の計算を省ける | `NLyn` が無視され、光電離加熱と [O II]・[O III] 冷却がなくなる | `NLyn` を与えない場合 |
+| `CEQLibiSetRunParamHIIRegion(false)` | PEGASE2 スペクトルの読み込みと、光電離ガスの [O II]・[O III] 冷却・H–O 電荷交換を省ける | 粒子の `NLyn` は無視され（0 として扱われ）、光電離加熱と [O II]・[O III] 冷却がなくなる。炭素は FUV による光電離を使う | 電離光子束を扱わない場合 |
 
 分子化学の有無による違いを、H II 領域・ダスト・宇宙線・X 線・電荷交換を有効にし、化学平衡の許容誤差を `1e-5` にした条件で測りました。`n_H = 10⁻²〜10⁴ cm⁻³`、`T = 10〜10⁷ K`、電離光子なしと `log10(U) = −5, −3` の 975 点、時間刻み 1 万年の平均です。
 
