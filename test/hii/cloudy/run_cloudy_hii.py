@@ -4,6 +4,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import csv
 import math
+import os
 from pathlib import Path
 import re
 import shutil
@@ -13,7 +14,6 @@ import numpy as np
 
 
 TEST_DIR = Path(__file__).resolve().parents[2]
-SPECTRUM = TEST_DIR.parent / "data/PEGASE2/spectra_Kroupa_Z0.0200.dat"
 KEY = ("nH", "Z_solar", "log_U")
 ABUNDANCES = ("He_H", "C_H", "O_H", "Si_H")
 ELEMENTS = ("helium", "carbon", "oxygen", "silicon")
@@ -28,8 +28,8 @@ ION_COLUMNS = {
 }
 
 
-def write_sed(destination):
-    with SPECTRUM.open() as source:
+def write_sed(spectrum, destination):
+    with spectrum.open() as source:
         for _ in range(27):
             next(source)
         values = np.fromstring(source.read(), sep=" ")
@@ -141,6 +141,9 @@ def run_model(cloudy, root, index, sample):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cloudy", required=True, type=Path, help="path to the built cloudy.exe")
+    parser.add_argument("--pegase-dir", type=Path,
+                        default=os.getenv("PEGASE_DIR") or str(TEST_DIR.parent / "data/PEGASE2"),
+                        help="directory containing spectra_Kroupa_Z0.0200.dat (default: PEGASE_DIR)")
     parser.add_argument("--equilibrium", type=Path, default=TEST_DIR / "out/hii/equilibrium.csv")
     parser.add_argument("--work-dir", type=Path, default=TEST_DIR / "out/hii/cloudy")
     parser.add_argument("--jobs", type=int, default=4)
@@ -152,7 +155,7 @@ def main():
         if not samples or args.jobs < 1:
             raise ValueError("Expected at least one equilibrium sample and a positive job count")
         args.work_dir.mkdir(parents=True, exist_ok=True)
-        write_sed(args.work_dir / "pegase2.sed")
+        write_sed(args.pegase_dir / "spectra_Kroupa_Z0.0200.dat", args.work_dir / "pegase2.sed")
         cloudy = args.cloudy.resolve(strict=True)
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
             models = [pool.submit(run_model, cloudy, args.work_dir, i, sample)

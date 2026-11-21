@@ -2,6 +2,7 @@
 CC = gcc
 EQCLIB_DIR ?= ../src
 GSL_DIR ?= $(or $(shell gsl-config --prefix 2>/dev/null),$(wildcard $(HOME)/lib/gsl),/usr)
+export PEGASE_DIR ?= $(abspath ../data/PEGASE2)
 PYTHON ?= python3
 
 OPTIMIZE += -O3 -std=c99
@@ -60,9 +61,9 @@ check: $(UNIT_OBJS) eqclib
 	$(CC) $(CFLAGS) -fno-fast-math out/ThermochemistryModeTest.o $(LDFLAGS) -o out/thermochemistry_mode_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/check.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
-	"$(CURDIR)/out/equilibrium_test.out" "$(abspath ../data/PEGASE2)"; \
-	"$(CURDIR)/out/hydrogen_chemistry_test.out" "$(abspath ../data/PEGASE2)"; \
-	"$(CURDIR)/out/thermochemistry_mode_test.out" "$(abspath ../data/PEGASE2)"
+	"$(CURDIR)/out/equilibrium_test.out" "$$PEGASE_DIR"; \
+	"$(CURDIR)/out/hydrogen_chemistry_test.out" "$$PEGASE_DIR"; \
+	"$(CURDIR)/out/thermochemistry_mode_test.out" "$$PEGASE_DIR"
 
 $(UNIT_OBJS): out/%.o: unit/%.c $(COMMON_HEADERS) $(EQCLIB_DIR)/ChemicalEquilibriumCooling.h Makefile | out
 	$(CC) $(CFLAGS) -fno-fast-math -c $< -o $@
@@ -89,7 +90,7 @@ hii: hii/HIIRegionTest.c hii/HIIRegionFixture.h eqclib
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/hii_region_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/hii.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
-	"$(CURDIR)/out/hii_region_test.out" "$(abspath ../data/PEGASE2)"; \
+	"$(CURDIR)/out/hii_region_test.out" "$$PEGASE_DIR"; \
 	mv equilibrium.csv thermal_curve.csv reactions.csv "$(CURDIR)/out/hii/"
 
 hii-benchmark: hii/HIIRegionBenchmark.c hii/HIIRegionFixture.h eqclib
@@ -97,7 +98,7 @@ hii-benchmark: hii/HIIRegionBenchmark.c hii/HIIRegionFixture.h eqclib
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/hii_region_benchmark.out
 	@set -e; csv=$$(mktemp "$(CURDIR)/out/hii/benchmark.XXXXXX"); \
 	trap 'rm -f "$$csv"' EXIT; \
-	./out/hii_region_benchmark.out "$(abspath ../data/PEGASE2)" > "$$csv"; \
+	./out/hii_region_benchmark.out "$$PEGASE_DIR" > "$$csv"; \
 	mv "$$csv" out/hii/hii_benchmark.csv
 	@echo "H II region timings saved in out/hii/hii_benchmark.csv"
 
@@ -109,7 +110,7 @@ co: co/MolecularTest.c co/MolecularFixture.h eqclib
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/molecular_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/co.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
-	"$(CURDIR)/out/molecular_test.out" "$(abspath ../data/PEGASE2)"; \
+	"$(CURDIR)/out/molecular_test.out" "$$PEGASE_DIR"; \
 	mv equilibrium.csv column_scan.csv "$(CURDIR)/out/co/"
 
 co-plot: co
@@ -120,7 +121,7 @@ molecular-settings-benchmark: co/MolecularSettingsBenchmark.c co/MolecularFixtur
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/molecular_settings_benchmark.out
 	@set -e; csv=$$(mktemp "$(CURDIR)/out/co/settings.XXXXXX"); \
 	trap 'rm -f "$$csv"' EXIT; \
-	./out/molecular_settings_benchmark.out "$(abspath ../data/PEGASE2)" > "$$csv"; \
+	./out/molecular_settings_benchmark.out "$$PEGASE_DIR" > "$$csv"; \
 	mv "$$csv" out/co/molecular_settings.csv
 
 molecular-settings-plot: molecular-settings-benchmark
@@ -134,7 +135,7 @@ noneq: noneq/NonEquilibriumTest.c eqclib
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/non_equilibrium_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
-	"$(CURDIR)/out/non_equilibrium_test.out" "$(abspath ../data/PEGASE2)"; \
+	"$(CURDIR)/out/non_equilibrium_test.out" "$$PEGASE_DIR"; \
 	mv evolution.csv evolution_direct.csv recombination.csv recombination_direct.csv \
 	   convergence.csv convergence_direct.csv "$(CURDIR)/out/noneq/"
 
@@ -143,7 +144,7 @@ noneq-benchmark: noneq/NonEquilibriumBenchmark.c eqclib
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/non_equilibrium_benchmark.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq-bench.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
-	"$(CURDIR)/out/non_equilibrium_benchmark.out" "$(abspath ../data/PEGASE2)"; \
+	"$(CURDIR)/out/non_equilibrium_benchmark.out" "$$PEGASE_DIR"; \
 	mv benchmark.csv "$(CURDIR)/out/noneq/"
 
 # Use the production archive for all variants. Override just its cooling
@@ -158,9 +159,9 @@ noneq-hot: noneq/NonEquilibriumHotCoolingTest.c eqclib
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq-hot.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	mkdir legacy cie_linear cie_bridge; \
-	(cd legacy && "$(CURDIR)/out/noneq_hot_legacy.out" "$(abspath ../data/PEGASE2)" legacy); \
-	(cd cie_linear && "$(CURDIR)/out/noneq_hot_linear.out" "$(abspath ../data/PEGASE2)" cie_linear); \
-	(cd cie_bridge && "$(CURDIR)/out/noneq_hot_current.out" "$(abspath ../data/PEGASE2)" cie_bridge); \
+	(cd legacy && "$(CURDIR)/out/noneq_hot_legacy.out" "$$PEGASE_DIR" legacy); \
+	(cd cie_linear && "$(CURDIR)/out/noneq_hot_linear.out" "$$PEGASE_DIR" cie_linear); \
+	(cd cie_bridge && "$(CURDIR)/out/noneq_hot_current.out" "$$PEGASE_DIR" cie_bridge); \
 	for name in hot_cooling hot_benchmark oxygen_after_switch; do \
 	    cat "legacy/$$name.csv" > "$$name.csv"; \
 	    tail -n +2 "cie_linear/$$name.csv" >> "$$name.csv"; \

@@ -33,7 +33,7 @@ export LD_LIBRARY_PATH="$chimes_local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 cpu=${BENCH_CPU:-$(awk '/^Cpus_allowed_list:/ {split($2, cpus, /[-,]/); print cpus[1]}' /proc/self/status)}
 for group in hydrogen mixed; do
-    if ! taskset -c "$cpu" "$build/compare" "$eqclib/data/PEGASE2" \
+    if ! taskset -c "$cpu" "$build/compare" "${PEGASE_DIR:-$eqclib/data/PEGASE2}" \
         "$chimes_dir/chimes-data/chimes_main_data.hdf5" "$build" "$group" 2>"$build/$group.log" \
         || [[ -s "$build/$group.log" ]]; then
         head -30 "$build/$group.log" >&2

@@ -25,5 +25,8 @@ tags
 # Reference papers stay local; only the index is tracked
 /reference/*.pdf
 
+# PEGASE.2 inputs are managed locally
+/data/PEGASE2/
+
 # Local gnuplot scripts
 /plot/**/*.gp

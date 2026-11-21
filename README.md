@@ -22,16 +22,39 @@ EQCLib は化学平衡モードを既定とします。その時点の温度・�
 
 ビルドには GNU Make、C99 対応の GCC、Steffen 補間（`gsl_interp_steffen`）に対応した GNU Scientific Library（GSL）の開発ファイルが必要です。テストと作図には Python 3 を使います。GSL のパスは `gsl-config` があれば自動で取得します。別の場所にインストールした GSL を指定する場合は、ビルドの前に `export GSL_DIR=/path/to/gsl` を実行してください。
 
-ソースを取得し、EQCLib のリポジトリルートで次を実行すると、静的ライブラリをビルドして基本テストを実行できます。
+ソースを取得し、EQCLib のリポジトリルートで静的ライブラリをビルドします。
 
 ```sh
 make -C src libEQCLib.a
-make -C test check cell-check
 ```
+
+### PEGASE.2 のスペクトルを指定する
+
+PEGASE.2 由来のファイルは再配布条件を確認するまでローカルで管理します。光電離を含むテストを実行するには、手元の Kroupa IMF スペクトル7本を同じディレクトリに用意します。
+
+```text
+spectra_Kroupa_Z0.0001.dat
+spectra_Kroupa_Z0.0004.dat
+spectra_Kroupa_Z0.0040.dat
+spectra_Kroupa_Z0.0080.dat
+spectra_Kroupa_Z0.0200.dat
+spectra_Kroupa_Z0.0500.dat
+spectra_Kroupa_Z0.1000.dat
+```
+
+テスト用の `PEGASE_DIR` には、そのディレクトリの絶対パスを指定します。すでに取得済みの `data/PEGASE2/` に7本がそろっている場合は、テストの既定のパスで実行できます。
+
+```sh
+export PEGASE_DIR="/absolute/path/to/pegase-spectra"
+make -C test check cell-check
+make -C test hii
+```
+
+`check` と `hii` はスペクトルを使います。ライブラリのビルドと `cell-check` はデータの準備前に実行できます。
 
 ### テスト結果を Jupyter で確認する
 
-リポジトリのルートで次を実行します。`notebook-data` はライブラリのビルドと基本テストも行い、H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に出力します。計算時間はターゲットを順番に実行して測ります。
+スペクトルを用意したシェルでリポジトリのルートから次を実行します。`notebook-data` はライブラリのビルドと基本テストも行い、H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に出力します。H II 領域のノートブックだけを使う場合は `make -C test hii` で作図データを用意できます。計算時間はターゲットを順番に実行して測ります。
 
 ```sh
 make -C test notebook-data
@@ -70,7 +93,7 @@ cp examples/cell.conf cell.conf
 
 平衡モードは指定された `T` で化学平衡を解き、その組成から初期の内部エネルギーを計算します。非平衡モードは `x_HII` と `x_H2` を初期値に使い、He・C・O は中性から始めます。He/H、C/H、O/H の数比は 0.1、`3×10⁻⁴`、`5×10⁻⁴` です。H₂ 生成は `Zd` が正の場合と、非平衡で初期 H₂ がある場合に有効になります。
 
-`NLyn` が正の場合は、第2引数に PEGASE2 のディレクトリを指定します。リポジトリのルートからなら `./src/eqclib-cell cell.conf data/PEGASE2` です。標準出力の CSV には初期状態と各ステップ後の温度、組成、加熱・冷却率 [erg cm⁻³ s⁻¹] が入ります。
+`NLyn` が正の場合は、第2引数にスペクトルのディレクトリを渡します。上の例で設定したパスを使う場合は `./src/eqclib-cell cell.conf "$PEGASE_DIR"` です。標準出力の CSV には初期状態と各ステップ後の温度、組成、加熱・冷却率 [erg cm⁻³ s⁻¹] が入ります。 [必要なスペクトル](#pegase2-のスペクトルを指定する)
 
 `chemistry_mode` は `eqclib-cell` の起動時に読み込みます。この実行例では、非平衡モードを選ぶと高温側の金属 CIE 冷却を有効にします。平衡モードでは無効です。 [単一セルの CIE 設定](docs/physics.md#元素別-cie-冷却と酸素輝線の切り替え)
 
@@ -89,7 +112,7 @@ chemistry_mode = nonequilibrium
 
 設定値は `equilibrium`（`EQC_CHEMISTRY_EQUILIBRIUM`）と `nonequilibrium`（`EQC_CHEMISTRY_NONEQUILIBRIUM`）です。項目を省略すると従来の平衡モードを使います。`EQCLibTryLoadChemistryMode` は `名前 = 値` 形式で `chemistry_mode` を読み取り、ホストの他の設定項目や `#` 以降のコメントは読み飛ばします。設定ファイルを使わない場合はパスに `NULL` を渡せます。パスを指定してファイルを開けない場合や、`chemistry_mode` の値が不正または重複している場合はエラーを返します。ホストに設定パーサーがある場合は、前後の空白を除いた値を `EQCLibTryParseChemistryMode` に渡せます。その場合も項目を省略できるように、モード変数を `EQC_CHEMISTRY_EQUILIBRIUM` で初期化します。
 
-ライブラリの実行パラメータを設定し、並列計算を始める前に `EQCLibTryInitialization` を呼びます。H II 領域の計算には PEGASE2 の入力ディレクトリを指定できます。ホスト側でモードを保持し、各粒子の更新に渡します。
+ライブラリの実行パラメータを設定し、並列計算を始める前に `EQCLibTryInitialization` を呼びます。H II 領域を有効にした場合は、第2引数に PEGASE.2 のスペクトルがあるディレクトリを渡します。ホスト側でモードを保持し、各粒子の更新に渡します。 [必要なスペクトル](#pegase2-のスペクトルを指定する)
 
 ```c
 #include "ChemicalEquilibriumCooling.h"

@@ -20,6 +20,8 @@
 
 ## 基本テスト
 
+`check`、H II 領域、H₂・CO、非平衡などの光電離を含むテストでは、スペクトルのディレクトリを `PEGASE_DIR` に絶対パスで指定します。既定値は手元の `data/PEGASE2/` です。 [必要なスペクトルと設定例](../README.md#pegase2-のスペクトルを指定する)
+
 ```sh
 make -C test check cell-check
 ```
@@ -39,6 +41,8 @@ make -C test check cell-check
 ```sh
 make -C test hii
 ```
+
+このコマンドは `PEGASE_DIR` のスペクトルを読み込みます。ノートブックの再描画には、ここで得た CSV を使います。 [スペクトルの指定方法](../README.md#pegase2-のスペクトルを指定する)
 
 [HIIRegionTest.c](hii/HIIRegionTest.c) は、ダストと分子を含まない単一セルを、太陽金属量の PEGASE2 電離スペクトルと case B 再結合で計算します。入射電離光の減衰、非電離 FUV、宇宙線、X 線は含めません。水素核密度 `n_H = 1, 10, 100, 1000 cm⁻³`、ガス金属量 `Z/Z☉ = 0, 0.1, 1`、電離パラメータ `U = NLyn/(n_H c)` の `log10(U) = −4〜−2` の108条件で、等積の熱平衡温度と各元素の電離分率を求めます。さらに `n_H = 100 cm⁻³`、`Z/Z☉ = 1`、`log10(U) = −3` で約3,160〜31,600 K の温度範囲を走査します。
 
@@ -68,8 +72,11 @@ CO を無効にした `make -C test hii-benchmark` と同じ条件で、電荷�
 
 ```sh
 make -C test hii
-python3 test/hii/cloudy/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe
+python3 test/hii/cloudy/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe \
+  --pegase-dir /absolute/path/to/pegase-spectra
 ```
+
+`--pegase-dir` の省略時は環境変数 `PEGASE_DIR` を参照し、設定がなければ手元の `data/PEGASE2/` を使います。
 
 [run_cloudy_hii.py](hii/cloudy/run_cloudy_hii.py) は EQCLib の `equilibrium.csv` から密度、電離パラメータ、元素組成を読み取ります。PEGASE2 の連続スペクトルを EQCLib と同じ水素電離光子数で年齢ごとに規格化し、0〜30 Myr の18時点を等重みで平均します。Cloudy には case B、ダストと分子なし、厚さ 1 cm の1ゾーンを指定します。密度、入射電離光子束、光学的厚さ、熱収支を確認し、冷却の出力から O II と O III の正味の衝突線冷却を集計します。EQCLib の比較量には H II 領域で使われる温度重みを含めています。
 
