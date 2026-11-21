@@ -6,6 +6,7 @@
 
 #include "ChemicalEquilibriumCooling.h"
 #include "Constants.h"
+#include "CollisionalGasPhaseChemistry.h"
 #include "CosmicRay.h"
 #include "EquilibriumAbundance.h"
 #include "FineStructureLines.h"
@@ -46,6 +47,24 @@ static void CheckAtomicEquilibrium(void)
     assert(fabs(CEQLibGetElectronNumberDensity(&state) - state.nel) <= 1.0e-9 * state.nel);
     assert(state.nmol[ipH2] == 0.0 && state.nmol[ipCO] == 0.0);
     assert(isfinite(state.H_tot) && isfinite(state.L_tot));
+}
+
+static void CheckHeIIIRecombinationCooling(void)
+{
+    /* Hydrogenic scaling: Lambda_HeIII(T) = 8 Lambda_HII(T/4) for case A and case B. */
+    const bool caseB[] = {true, false};
+    for(size_t c = 0; c < sizeof(caseB)/sizeof(caseB[0]); c++){
+        CEQLibiSetRunParamRecombinationCaseB(caseB[c]);
+        const double temperatures[] = {1.0e4, 3.0e4, 1.0e5, 1.0e6};
+        for(size_t i = 0; i < sizeof(temperatures)/sizeof(temperatures[0]); i++){
+            StructCEQData helium = {.T = temperatures[i], .nel = 1.0, .nHeIII = 1.0};
+            StructCEQData hydrogen = {.T = 0.25*temperatures[i], .nel = 1.0, .nion = {[ipHYDROGEN] = 1.0}};
+            const double expected = 8.0*CoolingRecombination(&hydrogen);
+            /* The He II threshold is 4.0018 times the H threshold, so the scaling holds to ~1e-3. */
+            assert(fabs(CoolingHeIIIRecombination(&helium)-expected) <= 2.0e-3*expected);
+        }
+    }
+    CEQLibiSetRunParamRecombinationCaseB(true);
 }
 
 static void CheckIonizedGasEquationOfState(void)
@@ -532,6 +551,58 @@ static void CheckPhotoionizationTurnOn(void)
     assert(fabs(updated.T-tightUpdate.T) <= 1.0e-8*tightUpdate.T);
 }
 
+static double RelativeDifference(double a, double b)
+{
+    const double scale = fmax(fabs(a),fabs(b));
+    return scale > 0.0 ? fabs(a-b)/scale : 0.0;
+}
+
+static void CheckHydrogenOxygenChargeTransfer(void)
+{
+    CEQLibiSetRunParamH2Formation(false,1.0);
+    CEQLibiSetRunParamCOFormation(false,1.0);
+    const double nH = 100.0, accuracy = 1.0e-10;
+    StructCEQData state = GasState(nH,8000.0,1.0e19);
+    state.G0 = state.X0 = state.Zd = 0.0;
+    state.nel = nH;
+    state.NLyn = 1.0e-4*nH*LIGHT_C_CGS;   /* log U = -4 leaves a few per cent H I. */
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,accuracy) == CEQ_SUCCESS);
+    assert(fabs(CEQLibGetElectronNumberDensity(&state)-state.nel) <= 1.0e-9*state.nel);
+
+    const double T = state.T, ne = state.nel;
+    const double nHI = state.natom[ipHYDROGEN], nHII = state.nion[ipHYDROGEN];
+    const double nOI = state.natom[ipOXYGEN], nOII = state.nion[ipOXYGEN], nOIII = state.nOIII;
+    assert(nHI > 0.01*nH && nHI < 0.1*nH);
+    const double toOxygenII = nOI*nHII*OIChargeTransferRateToHII(T);
+    const double toOxygenI = nOII*nHI*OIIChargeTransferRateToHI(T);
+    const double fromOxygenIII = nOIII*nHI*OIIIChargeTransferRateToHI(T);
+
+    /* Each ladder balances with the charge-transfer fluxes included. */
+    const double hydrogenIonization = nHI*(HIPhotoIonizationRate(state.NLyn) + ne*HICollisionalIonizationRate(T))
+                                    + toOxygenI + fromOxygenIII;
+    const double hydrogenRecombination = nHII*ne*HIIRecombinationRate(T) + toOxygenII;
+    assert(RelativeDifference(hydrogenIonization,hydrogenRecombination) <= 1.0e-8);
+    const double oxygenIIIonization = nOI*(OIPhotoionizationRate(state.NLyn) + ne*OICollisionalIonizationRate(T))
+                                    + toOxygenII;
+    const double oxygenIIRecombination = nOII*ne*OIIRecombinationRate(T) + toOxygenI;
+    assert(RelativeDifference(oxygenIIIonization,oxygenIIRecombination) <= 1.0e-8);
+    const double oxygenIIIIonization = nOII*(OIIPhotoionizationRate(state.NLyn) + ne*OIICollisionalIonizationRate(T));
+    const double oxygenIIIRecombination = nOIII*ne*OIIIRecombinationRate(T) + fromOxygenIII;
+    assert(RelativeDifference(oxygenIIIIonization,oxygenIIIRecombination) <= 1.0e-8);
+
+    /* At this H I fraction, O++ + H dominates the O++ recombination. */
+    const double withoutTransfer = (OIIPhotoionizationRate(state.NLyn) + ne*OIICollisionalIonizationRate(T))
+                                 / (ne*OIIIRecombinationRate(T));
+    assert(nOIII/nOII < 0.25*withoutTransfer);
+
+    /* Dust, cosmic rays and X-rays use the same coupled solve. */
+    StructCEQData dusty = GasState(nH,8000.0,1.0e19);
+    dusty.nel = nH;
+    dusty.NLyn = state.NLyn;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&dusty,accuracy) == CEQ_SUCCESS);
+    assert(fabs(CEQLibGetElectronNumberDensity(&dusty)-dusty.nel) <= 1.0e-9*dusty.nel);
+}
+
 static void CheckPhotoionization(const char *pegaseDirectory)
 {
     const double unattenuated = CIFUVPhotoionizationRate(1.7,0.0);
@@ -565,6 +636,7 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     assert(HIPhotoIonizationRate(1.0) == rate);
     CheckPhotoionizedOxygenCooling();
     CheckPhotoionizationTurnOn();
+    CheckHydrogenOxygenChargeTransfer();
 }
 
 int main(int argc, char **argv)
@@ -588,6 +660,7 @@ int main(int argc, char **argv)
     const double cosmicRayHeating = TotalCosmicRayHeatingRate(&probe);
     assert(isfinite(cosmicRayHeating) && cosmicRayHeating > 0.0);
     CheckAtomicEquilibrium();
+    CheckHeIIIRecombinationCooling();
     CheckIonizedGasEquationOfState();
     CheckFailureStatus();
     CheckZeroElectronSeed();

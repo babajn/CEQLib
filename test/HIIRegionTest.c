@@ -96,7 +96,8 @@ static double HeliumIIRecombination(double temperature)
 
 static bool WriteReactions(FILE *file, HIIRegion region, const StructCEQData *s, const char *sample)
 {
-    /* Evaluate n_i Gamma_i, n_i n_e C_i and n_{i+1} n_e alpha_{i+1} using the same rate coefficients as the solver. */
+    /* Evaluate n_i Gamma_i, n_i n_e C_i, n_{i+1} n_e alpha_{i+1} and the charge-transfer
+       fluxes using the same rate coefficients as the solver. */
     const struct {
         const char *ion;
         double lower, upper;
@@ -112,27 +113,50 @@ static bool WriteReactions(FILE *file, HIIRegion region, const StructCEQData *s,
         {"SiI", s->natom[ipSILICON], s->nion[ipSILICON], SiIPhotoionizationRate, SiICollisionalIonizationRate, SiIIRecombinationRate},
         {"SiII", s->nion[ipSILICON], s->nSiIII, SiIIPhotoionizationRate, SiIICollisionalIonizationRate, SiIIIRecombinationRate},
     };
+    /* H-O charge transfer: O + H+ -> O+ + H, O+ + H -> O + H+, O++ + H -> O+ + H+. */
+    const double toOxygenII = s->natom[ipOXYGEN]*s->nion[ipHYDROGEN]*OIChargeTransferRateToHII(s->T);
+    const double toOxygenI = s->nion[ipOXYGEN]*s->natom[ipHYDROGEN]*OIIChargeTransferRateToHI(s->T);
+    const double toOxygenIIfromIII = s->nOIII*s->natom[ipHYDROGEN]*OIIIChargeTransferRateToHI(s->T);
+    const double transferIonization[] = {toOxygenI + toOxygenIIfromIII, 0, 0, 0, 0, toOxygenII, 0, 0, 0};
+    const double transferRecombination[] = {toOxygenII, 0, 0, 0, 0, toOxygenI, toOxygenIIfromIII, 0, 0};
     for(size_t i = 0; i < sizeof(transitions)/sizeof(transitions[0]); i++){
         const double photo = transitions[i].lower * transitions[i].photo(s->NLyn);
         const double collision = transitions[i].lower * s->nel * transitions[i].collision(s->T);
         const double recombination = transitions[i].upper * s->nel * transitions[i].recombine(s->T);
-        if(!(fabs(photo + collision - recombination) <= 1.0e-6 * fmax(photo + collision,recombination))){
+        const double ionization = photo + collision + transferIonization[i];
+        const double loss = recombination + transferRecombination[i];
+        if(!(fabs(ionization - loss) <= 1.0e-6 * fmax(ionization,loss))){
             fprintf(stderr, "%s reaction balance failed at n_H=%g, Z/Z_sun=%g, log U=%g, T=%g K\n",
                     transitions[i].ion, region.nH, region.metallicity, region.logIonization, s->T);
             return false;
         }
-        fprintf(file, "%s,%.9g,%.9g,%.9g,%.12e,%s,%.12e,%.12e,%.12e\n", sample,
+        fprintf(file, "%s,%.9g,%.9g,%.9g,%.12e,%s,%.12e,%.12e,%.12e,%.12e,%.12e\n", sample,
                 region.nH, region.metallicity, region.logIonization, s->T, transitions[i].ion,
-                photo, collision, recombination);
+                photo, collision, recombination, transferIonization[i], transferRecombination[i]);
     }
     return true;
+}
+
+static bool CheckNeutralSeed(HIIRegion region, const StructCEQData *equilibrium)
+{
+    /* A nearly neutral seed takes the photoionized electron-density path;
+       the ionized seed of the equilibrium solve uses the general search. */
+    StructCEQData seeded = HIIRegionGasState(region, equilibrium->T);
+    seeded.nel = 1.0e-3*region.nH;
+    if(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&seeded, 1.0e-9) == CEQ_SUCCESS &&
+       fabs(seeded.nel-equilibrium->nel) <= 1.0e-8*equilibrium->nel)
+        return true;
+    fprintf(stderr, "Neutral seed reached a different electron density at n_H=%g, Z/Z_sun=%g, log U=%g\n",
+            region.nH, region.metallicity, region.logIonization);
+    return false;
 }
 
 static bool RunModels(FILE *equilibrium, FILE *thermal, FILE *reactions)
 {
     WriteSampleHeader(equilibrium);
     WriteSampleHeader(thermal);
-    fputs("sample,nH,Z_solar,log_U,T,ion,photoionization,collisional_ionization,recombination\n", reactions);
+    fputs("sample,nH,Z_solar,log_U,T,ion,photoionization,collisional_ionization,recombination,"
+          "charge_transfer_ionization,charge_transfer_recombination\n", reactions);
     StructCEQData state;
     const double densities[] = {1.0, 10.0, 100.0, 1000.0};
     const double metallicities[] = {0.0, 0.1, 1.0};
@@ -140,7 +164,8 @@ static bool RunModels(FILE *equilibrium, FILE *thermal, FILE *reactions)
         for(size_t z = 0; z < sizeof(metallicities)/sizeof(metallicities[0]); z++){
             for(int u = 0; u <= 8; u++){
                 const HIIRegion region = {densities[i], metallicities[z], -4.0 + 0.25*u};
-                if(!FindThermalEquilibrium(region, &state) || !WriteReactions(reactions, region, &state, "equilibrium"))
+                if(!FindThermalEquilibrium(region, &state) || !CheckNeutralSeed(region, &state) ||
+                   !WriteReactions(reactions, region, &state, "equilibrium"))
                     return false;
                 WriteSample(equilibrium, region, &state);
             }
@@ -184,6 +209,6 @@ int main(int argc, char **argv)
             success = false;
         }
     }
-    if(success) puts("H II region equilibrium and reaction balance checks passed.");
+    if(success) puts("H II region equilibrium, seed and reaction balance checks passed.");
     return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }

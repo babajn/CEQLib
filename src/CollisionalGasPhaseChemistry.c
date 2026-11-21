@@ -441,6 +441,12 @@ double OIIChargeTransferRateToHI(double T){
     return 7.7e-10;
 #endif
 }
+//// O++ + H -> O+ + H+
+double OIIIChargeTransferRateToHI(double T){
+    /// ref. Table 1 of Kingdon & Ferland (1996), fitted for 1e2-1e5 K
+    const double T4 = fmin(10.0,fmax(1.e-2,1.e-4*T));
+    return 1.04e-9*pow(T4,0.27)*(1.0+2.02*exp(-5.92*T4));
+}
 //// He+ + O -> O+ + He
 double OIChargeTransferRateToHeII(double T){
     /// ref. Zhao et al. (2004); Glover & Jappsen (2007)
@@ -582,14 +588,16 @@ double CoolingHeIIRecombination(StructCEQData *PhydroPP){
 // ref. Hui & Gnedin (1997)
 double CoolingHeIIIRecombination(StructCEQData *PhydroPP){
     double nHeIII = PhydroPP->nHeIII;
-    double ne     = PhydroPP->nel; 
+    double ne     = PhydroPP->nel;
     double T      = PhydroPP->T;
     double lamb = 2.0*(T_HeII)/T;
     double eta = 0.0;
+    /* Hydrogenic scaling: Lambda_HeIII(T) = 8 Lambda_HII(T/4). The hydrogen
+       fits carry a factor of T, so the He++ coefficients are twice the H ones. */
     if(CEQLibRunParameters.UseRecombinationCaseB==true)
-        eta = 2.7480e-29*T*pow(lamb,1.970)*pow(1.0+pow(0.44444*lamb,0.376),-3.720);
+        eta = 6.870e-30*T*pow(lamb,1.970)*pow(1.0+pow(0.44444*lamb,0.376),-3.720);
     else
-        eta = 1.4224e-28*T*pow(lamb,1.965)*pow(1.0+pow(1.91571*lamb,0.470),-1.923);
+        eta = 3.556e-29*T*pow(lamb,1.965)*pow(1.0+pow(1.84843*lamb,0.502),-2.697);
     return nHeIII*ne*eta;
 }
 // ref. eq.(14) of Cen (1992)

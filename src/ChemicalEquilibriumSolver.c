@@ -37,7 +37,7 @@ typedef struct {
     int failure;
 } ChargeSearch;
 
-static int SolveOtherIons(StructCEQData *state)
+static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen, double accuracy)
 {
     const double ne = state->nel;
     const double nH = state->n[ipHYDROGEN];
@@ -59,13 +59,20 @@ static int SolveOtherIons(StructCEQData *state)
         &state->natom[ipHELIUM], &state->nion[ipHELIUM], &state->nHeIII);
     if(status != CEQ_SUCCESS) return status;
 
-    status = CEQSolveIonLadder(state->n[ipOXYGEN]-state->nmol[ipCO],
-        OIPhotoionizationRate(NLyn) + ne*OICollisionalIonizationRate(T)
-            + X0*CosmicRayIonizationRateOI(xe),
-        ne*OIIRecombinationRate(T) + nH*OIIRecombinationRateOnDust(T,G0,ne,Zd),
-        OIIPhotoionizationRate(NLyn) + ne*OIICollisionalIonizationRate(T),
-        ne*OIIIRecombinationRate(T),
-        &state->natom[ipOXYGEN], &state->nion[ipOXYGEN], &state->nOIII);
+    const CEQIonLadderRates oxygen = {
+        .ionization0 = OIPhotoionizationRate(NLyn) + ne*OICollisionalIonizationRate(T)
+                     + X0*CosmicRayIonizationRateOI(xe),
+        .recombination1 = ne*OIIRecombinationRate(T) + nH*OIIRecombinationRateOnDust(T,G0,ne,Zd),
+        .ionization1 = OIIPhotoionizationRate(NLyn) + ne*OIICollisionalIonizationRate(T),
+        .recombination2 = ne*OIIIRecombinationRate(T),
+    };
+    /* In H II region mode, couple O and H through charge transfer. */
+    status = CEQLibRunParameters.UseHIIRegion ?
+        CEQSolveHydrogenOxygenChargeTransfer(state,hydrogen,&oxygen,accuracy) :
+        CEQSolveIonLadder(state->n[ipOXYGEN]-state->nmol[ipCO],
+                          oxygen.ionization0, oxygen.recombination1,
+                          oxygen.ionization1, oxygen.recombination2,
+                          &state->natom[ipOXYGEN], &state->nion[ipOXYGEN], &state->nOIII);
     if(status != CEQ_SUCCESS) return status;
 
     return CEQSolveIonLadder(state->n[ipSILICON],
@@ -82,12 +89,13 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
 {
     StructCEQData state = *search->initial;
     state.nel = electronDensity;
-    int status = CEQSolveHydrogenEquilibrium(&state,search->accuracy);
+    const CEQHydrogenRates hydrogen = CEQHydrogenIonizationRates(&state);
+    int status = CEQSolveHydrogenEquilibriumWithRates(&state,&hydrogen,search->accuracy);
     if(status == CEQ_SUCCESS)
         status = CEQSolveCarbonWithIntervals(&state,search->previousCO,search->accuracy,
                                              search->carbonIntervals,search->carbonIntervalCount);
     if(status == CEQ_SUCCESS)
-        status = SolveOtherIons(&state);
+        status = SolveOtherIons(&state,&hydrogen,search->accuracy);
 
     ChargePoint point = {.density = electronDensity, .status = status};
     if(status != CEQ_SUCCESS){
@@ -403,7 +411,10 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
        recombination, every ionization/recombination ratio is of the form
        A + B/ne at fixed T. The ion charge is nonincreasing, giving a unique
        positive root. Leave branch selection to the original search when
-       molecular coupling, grain recombination, cosmic rays or X-rays apply. */
+       molecular coupling, grain recombination, cosmic rays or X-rays apply.
+       H-O charge transfer conserves charge and couples the H and O ladders
+       only through O/H. The argument above does not cover that coupling, so
+       HIIRegionTest compares it with solves from an ionized seed. */
     if(!search.found && hint.status == CEQ_SUCCESS && hint.residual > 0.5 &&
             CEQLibRunParameters.UseHIIRegion && state->NLyn > 0.0 &&
             !search.hasMolecularChargeCoupling && state->X0 == 0.0 &&

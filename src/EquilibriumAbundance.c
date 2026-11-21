@@ -136,22 +136,117 @@ static double HydrogenFluxResidual(double fraction, const void *parameters){
     return FluxResidual((photo+collision)*nH2,balance->formation*nHI);
 }
 
-static void HydrogenIonizationRates(const StructCEQData *s, double *ionization, double *recombination){
+CEQHydrogenRates CEQHydrogenIonizationRates(const StructCEQData *s){
     const double xe = s->nel/s->n[ipHYDROGEN];
-    *ionization = HIPhotoIonizationRate(s->NLyn) + s->nel*HICollisionalIonizationRate(s->T)
-                + s->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,s->Nt));
-    *recombination = s->nel*HIIRecombinationRate(s->T)
-                   + s->n[ipHYDROGEN]*HIIRecombinationRateOnDust(s->T,s->G0,s->nel,s->Zd);
+    return (CEQHydrogenRates){
+        .ionization = HIPhotoIonizationRate(s->NLyn) + s->nel*HICollisionalIonizationRate(s->T)
+                    + s->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,s->Nt)),
+        .recombination = s->nel*HIIRecombinationRate(s->T)
+                       + s->n[ipHYDROGEN]*HIIRecombinationRateOnDust(s->T,s->G0,s->nel,s->Zd),
+    };
+}
+
+typedef struct {
+    StructCEQData *state;
+    const CEQIonLadderRates *oxygen;
+    double atomicHydrogen, freeOxygen;
+    double ionization, recombination;   /* H rates per atom without charge transfer. */
+    double toOxygenII, toHydrogenI, oxygenIIIToHydrogenI;
+} ChargeTransferBalance;
+
+/* Set H I/H II for s = ln(n_HII/n_HI), solve the O ladder with charge
+   transfer, and return s - ln(I/R) for the resulting per-atom H rates. */
+static double ChargeTransferResidual(double s, const ChargeTransferBalance *b){
+    StructCEQData *state = b->state;
+    state->nion[ipHYDROGEN] = b->atomicHydrogen/(1.0+exp(-s));
+    state->natom[ipHYDROGEN] = b->atomicHydrogen/(1.0+exp(s));
+    const double nHI = state->natom[ipHYDROGEN], nHII = state->nion[ipHYDROGEN];
+    const CEQIonLadderRates *o = b->oxygen;
+    if(CEQSolveIonLadder(b->freeOxygen, o->ionization0 + nHII*b->toOxygenII,
+                         o->recombination1 + nHI*b->toHydrogenI, o->ionization1,
+                         o->recombination2 + nHI*b->oxygenIIIToHydrogenI,
+                         &state->natom[ipOXYGEN], &state->nion[ipOXYGEN], &state->nOIII) != CEQ_SUCCESS)
+        return NAN;
+    const double ionization = b->ionization + state->nion[ipOXYGEN]*b->toHydrogenI
+                            + state->nOIII*b->oxygenIIIToHydrogenI;
+    const double recombination = b->recombination + state->natom[ipOXYGEN]*b->toOxygenII;
+    return s - (log(ionization) - log(recombination));
+}
+
+int CEQSolveHydrogenOxygenChargeTransfer(StructCEQData *state, const CEQHydrogenRates *hydrogen,
+                                         const CEQIonLadderRates *oxygen, double accuracy){
+    const double freeOxygen = state->n[ipOXYGEN]-state->nmol[ipCO];
+    const double atomicHydrogen = state->natom[ipHYDROGEN]+state->nion[ipHYDROGEN];
+    ChargeTransferBalance b = {
+        .state = state, .oxygen = oxygen, .atomicHydrogen = atomicHydrogen, .freeOxygen = freeOxygen,
+        .ionization = hydrogen->ionization, .recombination = hydrogen->recombination,
+        .toOxygenII = OIChargeTransferRateToHII(state->T),
+        .toHydrogenI = OIIChargeTransferRateToHI(state->T),
+        .oxygenIIIToHydrogenI = OIIIChargeTransferRateToHI(state->T),
+    };
+    if(!isfinite(freeOxygen) || freeOxygen < 0.0 || !isfinite(atomicHydrogen) ||
+       !isfinite(b.ionization) || !isfinite(b.recombination)) return CEQ_INVALID_INPUT;
+
+    if(freeOxygen == 0.0 || atomicHydrogen == 0.0 || b.ionization == 0.0 || b.recombination == 0.0){
+        /* Without both H I and H II, charge transfer only acts on oxygen; keep the H ladder. */
+        const double nHI = state->natom[ipHYDROGEN], nHII = state->nion[ipHYDROGEN];
+        return CEQSolveIonLadder(freeOxygen, oxygen->ionization0 + nHII*b.toOxygenII,
+                                 oxygen->recombination1 + nHI*b.toHydrogenI, oxygen->ionization1,
+                                 oxygen->recombination2 + nHI*b.oxygenIIIToHydrogenI,
+                                 &state->natom[ipOXYGEN], &state->nion[ipOXYGEN], &state->nOIII);
+    }
+
+    /* Charge transfer adds at most these rates to the H ladder, so the root
+       lies in [lower, upper], where the residual is <= 0 and >= 0. */
+    double lower = log(b.ionization) - log(b.recombination + freeOxygen*b.toOxygenII);
+    double upper = log(b.ionization + freeOxygen*fmax(b.toHydrogenI,b.oxygenIIIToHydrogenI))
+                 - log(b.recombination);
+    double lowerResidual = NAN, upperResidual = NAN;
+
+    /* Start from the root without charge transfer. The map s -> ln(I/R) changes
+       slowly when O/H is small, so a fixed-point step followed by secant steps
+       converges in a few evaluations; the bracket keeps every step bounded. */
+    double s = log(b.ionization) - log(b.recombination);
+    double previous = NAN, previousResidual = NAN;
+    for(int iteration = 0; iteration < 200; iteration++){
+        if(!(s > lower && s < upper)){
+            s = isfinite(lowerResidual) && isfinite(upperResidual) ?
+                (lower*upperResidual - upper*lowerResidual)/(upperResidual - lowerResidual) :
+                lower + 0.5*(upper-lower);
+            if(!(s > lower && s < upper)) s = lower + 0.5*(upper-lower);
+        }
+        if(iteration > 0 && (s <= lower || s >= upper)) break;
+        const double residual = ChargeTransferResidual(s,&b);
+        if(!isfinite(residual)) return CEQ_INVALID_INPUT;
+        if(fabs(residual) <= accuracy) return CEQ_SUCCESS;
+        if(residual < 0.0){ lower = s; lowerResidual = residual; }
+        else              { upper = s; upperResidual = residual; }
+
+        double next = s - residual;   /* Fixed-point step s <- ln(I/R). */
+        if(isfinite(previous) && residual != previousResidual)
+            next = s - residual*(s-previous)/(residual-previousResidual);
+        if(iteration % 4 == 3) next = lower + 0.5*(upper-lower);
+        previous = s; previousResidual = residual;
+        s = next;
+    }
+    return CEQ_NO_CONVERGENCE;
 }
 
 int CEQSolveHydrogenEquilibrium(StructCEQData *state, double accuracy){
     const double nH = state->n[ipHYDROGEN];
+    if(!isfinite(nH) || nH <= 0.0) return CEQ_INVALID_INPUT;
+    const CEQHydrogenRates rates = CEQHydrogenIonizationRates(state);
+    return CEQSolveHydrogenEquilibriumWithRates(state,&rates,accuracy);
+}
+
+int CEQSolveHydrogenEquilibriumWithRates(StructCEQData *state, const CEQHydrogenRates *rates,
+                                         double accuracy){
+    const double nH = state->n[ipHYDROGEN];
     if(!isfinite(nH) || nH <= 0.0 || !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0){
         return CEQ_INVALID_INPUT;
     }
-    double ionization, recombination, neutral, ion, unused;
-    HydrogenIonizationRates(state,&ionization,&recombination);
-    int status = CEQSolveIonLadder(1.0,ionization,recombination,0.0,0.0,&neutral,&ion,&unused);
+    double neutral, ion, unused;
+    int status = CEQSolveIonLadder(1.0,rates->ionization,rates->recombination,0.0,0.0,&neutral,&ion,&unused);
     if(status != CEQ_SUCCESS) return status;
 
     double atomic = 1.0;

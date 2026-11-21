@@ -22,6 +22,8 @@ OMP_NUM_THREADS=12 make -C test GSL_DIR="$HOME/lib/gsl" benchmark
 
 H II 領域の酸素冷却を使うには、初期化前に `CEQLibiSetRunParamHIIRegion(true)` を呼び、各粒子の `NLyn` に局所の水素電離光子束を設定します。光電離ガスの CIE 金属冷却を [O II] と [O III] の冷却に徐々に置き換え、15,000〜25,000 K の間で CIE に戻します。各遷移の光学的に薄い放射率は [HIIregionLineCooling.h](src/HIIregionLineCooling.h) の `CoolingLinesOII` と `CoolingLinesOIII` で取得できます。
 
+この設定では、O⁰ + H⁺ ⇄ O⁺ + H⁰ と O²⁺ + H⁰ → O⁺ + H⁺ の電荷交換も解きます。H の電離分率を1変数とし、O の電離平衡と H I・H II の反応平衡を、電荷交換を含めて同時に満たします。H₂ の量は H の解で決まった値に保ちます。
+
 ## H II 領域の検証計算と描画
 
 ```sh
@@ -89,6 +91,7 @@ PNG を生成するには `make -C test wolfire-plot` を実行してくださ�
 | 高温ガスの衝突電離平衡（CIE）冷却表 | [Sutherland & Dopita (1993)](https://doi.org/10.1086/191823) |
 | H II 領域の [O II]・[O III] 輝線 | O II の遷移確率は [Zeippen (1982)](https://adsabs.harvard.edu/abs/1982MNRAS.198..111Z)、有効衝突強度は [Kisielius et al. (2009)](https://doi.org/10.1111/j.1365-2966.2009.14989.x)。O III の遷移確率は [Froese Fischer & Tachiev (2004)](https://doi.org/10.1016/j.adt.2004.02.001) と [Storey & Zeippen (2000)](https://doi.org/10.1046/j.1365-8711.2000.03184.x)、有効衝突強度は [Storey et al. (2014)](https://doi.org/10.1093/mnras/stu777) |
 | 原子データの選定と準位エネルギー | [Morisset et al. (2020), PyNeb](https://doi.org/10.3390/atoms8040066)、[NIST Atomic Spectra Database](https://doi.org/10.18434/T4W30F) |
+| H II 領域の O–H 電荷交換 | O²⁺ + H⁰ は [Kingdon & Ferland (1996)](https://ui.adsabs.harvard.edu/abs/1996ApJS..106..205K/abstract)、O⁰ + H⁺ ⇄ O⁺ + H⁰ は [Millar et al. (1997)](https://ui.adsabs.harvard.edu/abs/1997A%26AS..121..139M/abstract) |
 | Hα 放射率 | [Peters et al. (2017)](https://doi.org/10.1093/mnras/stw3216) |
 
 上表の原典 PDF、Cloudy の比較用リリース論文、既存モデルの全参考文献は [CEQLib/reference/index.tsv](reference/index.tsv) に取得元とともに整理しています。

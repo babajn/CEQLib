@@ -58,6 +58,7 @@ double HeIChargeTransferRateToHII(double T);
 double HeIIChargeTransferRateToHI(double T);
 double OIChargeTransferRateToHII(double T);
 double OIIChargeTransferRateToHI(double T);
+double OIIIChargeTransferRateToHI(double T);
 double OIChargeTransferRateToHeII(double T);
 double CIChargeTransferRateToHII(double T);
 double CIIChargeTransferRateToHI(double T);
