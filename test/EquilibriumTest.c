@@ -603,6 +603,54 @@ static void CheckHydrogenOxygenChargeTransfer(void)
     assert(fabs(CEQLibGetElectronNumberDensity(&dusty)-dusty.nel) <= 1.0e-9*dusty.nel);
 }
 
+static void CheckChargeTransferSwitch(void)
+{
+    const double nH = 100.0, accuracy = 1.0e-10;
+    StructCEQData coupled = GasState(nH,8000.0,1.0e19);
+    coupled.G0 = coupled.X0 = coupled.Zd = 0.0;
+    coupled.nel = nH;
+    coupled.NLyn = 1.0e-4*nH*LIGHT_C_CGS;
+    StructCEQData uncoupled = coupled;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&coupled,accuracy) == CEQ_SUCCESS);
+
+    CEQLibiSetRunParamChargeTransfer(false);
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&uncoupled,accuracy) == CEQ_SUCCESS);
+    CEQLibiSetRunParamChargeTransfer(true);
+
+    /* Without charge transfer, the O ladder balances on photo- and electron processes alone. */
+    const double T = uncoupled.T, ne = uncoupled.nel;
+    const double ionization = uncoupled.nion[ipOXYGEN]*(OIIPhotoionizationRate(uncoupled.NLyn)
+                                                     + ne*OIICollisionalIonizationRate(T));
+    const double recombination = uncoupled.nOIII*ne*OIIIRecombinationRate(T);
+    assert(RelativeDifference(ionization,recombination) <= 1.0e-8);
+    assert(uncoupled.nOIII/uncoupled.nion[ipOXYGEN] > 4.0*coupled.nOIII/coupled.nion[ipOXYGEN]);
+    assert(fabs(CEQLibGetElectronNumberDensity(&uncoupled)-uncoupled.nel) <= 1.0e-9*uncoupled.nel);
+}
+
+static void CheckChemistryAccuracySetting(void)
+{
+    const double invalid[] = {0.0, -1.0e-5, 1.0, NAN, INFINITY};
+    for(size_t i = 0; i < sizeof(invalid)/sizeof(invalid[0]); i++)
+        assert(CEQLibiSetRunParamChemistryAccuracy(invalid[i]) == CEQ_INVALID_INPUT);
+    assert(CEQLibRunParameters.ChemistryAccuracy == 1.0e-8);
+
+    /* A looser chemistry tolerance keeps energy updates within the energy accuracy. */
+    const double nH = 100.0, accuracy = 1.0e-4;
+    const double fluxes[] = {0.0, 1.0e-3*nH*LIGHT_C_CGS};
+    for(size_t i = 0; i < sizeof(fluxes)/sizeof(fluxes[0]); i++){
+        StructCEQData state = GasState(nH,1.0e4,1.0e19);
+        state.nel = 0.5*nH;
+        state.NLyn = fluxes[i];
+        state.dt = 1.0e4*YEAR_CGS;
+        StructCEQData loose = state;
+        assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,accuracy,&state.Du) == CEQ_SUCCESS);
+        assert(CEQLibiSetRunParamChemistryAccuracy(1.0e-5) == CEQ_SUCCESS);
+        assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&loose,accuracy,&loose.Du) == CEQ_SUCCESS);
+        assert(CEQLibiSetRunParamChemistryAccuracy(1.0e-8) == CEQ_SUCCESS);
+        assert(fabs(loose.T-state.T) <= accuracy*state.T);
+    }
+}
+
 static void CheckPhotoionization(const char *pegaseDirectory)
 {
     const double unattenuated = CIFUVPhotoionizationRate(1.7,0.0);
@@ -637,6 +685,8 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     CheckPhotoionizedOxygenCooling();
     CheckPhotoionizationTurnOn();
     CheckHydrogenOxygenChargeTransfer();
+    CheckChargeTransferSwitch();
+    CheckChemistryAccuracySetting();
 }
 
 int main(int argc, char **argv)

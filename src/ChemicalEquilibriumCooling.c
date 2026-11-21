@@ -24,7 +24,10 @@
 #include "CoolingCIE.h"
 #include "HIIregionLineCooling.h"
 
-struct StructCEQLibParameters_tag CEQLibRunParameters;
+struct StructCEQLibParameters_tag CEQLibRunParameters = {
+    .UseChargeTransfer = true,
+    .ChemistryAccuracy = 1.e-8,
+};
 
 //#ifdef LSODA_SUBCYCLE_COOLING_SOLVER
 //#include "lsoda.h"
@@ -128,6 +131,16 @@ void CEQLibiSetRunParamH2Formation(bool Use, double Cp){
 void CEQLibiSetRunParamCOFormation(bool Use, double Cp){
     CEQLibRunParameters.UseCOFormation = Use;
     CEQLibRunParameters.CpForCO = Cp;
+}
+
+void CEQLibiSetRunParamChargeTransfer(bool Use){
+    CEQLibRunParameters.UseChargeTransfer = Use;
+}
+
+CEQLibStatus CEQLibiSetRunParamChemistryAccuracy(double value){
+    if(!isfinite(value) || value <= 0.0 || value >= 1.0) return CEQ_INVALID_INPUT;
+    CEQLibRunParameters.ChemistryAccuracy = value;
+    return CEQ_SUCCESS;
 }
 
 //#ifdef LSODA_SUBCYCLE_COOLING_SOLVER

@@ -231,7 +231,8 @@ static CEQLibStatus SolveThermalState(const StructCEQData *initial, double times
         .timestep = timestep,
         .accuracy = accuracy,
         .hasXrayIonization = CEQLibRunParameters.UseSoftXrayIonization && initial->X0 > 0.0,
-        .chemistryAccuracy = fmax(minimumChemistryAccuracy, fmin(1.e-8, 0.1 * accuracy))
+        .chemistryAccuracy = fmax(minimumChemistryAccuracy,
+                                  fmin(CEQLibRunParameters.ChemistryAccuracy, 0.1 * accuracy))
     };
     CEQLibStatus status = SearchThermalState(&problem, temperature, trial);
     if(status == CEQ_NO_CONVERGENCE && problem.chemistryAccuracy > minimumChemistryAccuracy){

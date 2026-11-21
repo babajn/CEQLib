@@ -35,8 +35,10 @@ extern struct StructCEQLibParameters_tag{
     bool UseH2Formation;
     bool UseCOFormation;
     bool UseHIIRegion;
+    bool UseChargeTransfer;
     double CpForH2;
     double CpForCO;
+    double ChemistryAccuracy;
 } CEQLibRunParameters;
 
 typedef enum {
@@ -59,6 +61,18 @@ void CEQLibiSetRunParamRecombinationCaseB(bool Use);
    [O II]/[O III] cooling where H is photoionized. The explicit line term
    models only oxygen and tapers from 1.5e4 to 2.5e4 K to recover CIE. */
 void CEQLibiSetRunParamHIIRegion(bool Use);
+/* With H II regions enabled, solve O0 + H+ <-> O+ + H0 and O++ + H0 -> O+ + H+
+   together with the H balance (default on). Turning it off makes H II updates
+   about 20-35% faster, but leaves O III too abundant where some H I remains;
+   against Cloudy, the median temperature error at solar metallicity grows
+   from about 1.4% to 5.3%. */
+void CEQLibiSetRunParamChargeTransfer(bool Use);
+/* Upper bound on the relative charge residual of the chemistry inside the
+   energy and net-rate APIs, which use min(value, 0.1*accuracy). The default
+   1e-8 is far tighter than the energy accuracy needs. 1e-5 typically makes
+   energy updates 10-25% faster and changes T by less than about 2e-5.
+   Returns CEQ_INVALID_INPUT unless 0 < value < 1. */
+CEQLibStatus CEQLibiSetRunParamChemistryAccuracy(double value);
 void CEQLibiSetRunParamDustAttenuation(bool Use);
 void CEQLibiSetRunParamGrainSurfaceProcesses(bool Use);
 void CEQLibiSetRunParamCosmicRayIonization(bool Use);

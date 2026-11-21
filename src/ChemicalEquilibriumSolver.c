@@ -65,8 +65,8 @@ static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen
         .ionization1 = c->oxygen.photo1 + ne*c->oxygen.collision1,
         .recombination2 = ne*c->oxygen.recombination2,
     };
-    /* In H II region mode, couple O and H through charge transfer. */
-    status = CEQLibRunParameters.UseHIIRegion ?
+    /* In H II region mode, couple O and H through charge transfer unless it is turned off. */
+    status = CEQLibRunParameters.UseHIIRegion && CEQLibRunParameters.UseChargeTransfer ?
         CEQSolveHydrogenOxygenChargeTransfer(state,hydrogen,&oxygen,c,accuracy) :
         CEQSolveIonLadder(state->n[ipOXYGEN]-state->nmol[ipCO],
                           oxygen.ionization0, oxygen.recombination1,
