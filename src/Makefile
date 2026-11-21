@@ -1,4 +1,4 @@
-# Makefile for CEQLib
+# Makefile for EQCLib
 .SUFFIX: .c .o
 
 CC = gcc
@@ -88,13 +88,13 @@ HEADS = Astro.h \
 
 
 .PHONY: all
-all:	depend libCEQLib.a
+all:	depend libEQCLib.a
 
 .PHONY: clean
 clean:
-	rm *.o *.s *.a *.swp depend.inc libCEQLib.a -f
+	rm *.o *.s *.a *.swp depend.inc libEQCLib.a -f
 
-libCEQLib.a: $(OBJS)
+libEQCLib.a: $(OBJS)
 	$(AR) -r $@ $^
 	ranlib $@
 
@@ -109,7 +109,11 @@ tag:
 	ctags *.[c,h]
 
 .PHONY: depend
-depend: $(OBJS:.o=.c)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MM $^ > depend.inc
+depend: depend.inc
 
+depend.inc: $(OBJS:.o=.c) $(wildcard *.h) Makefile
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MM $(OBJS:.o=.c) > $@.tmp && mv $@.tmp $@
+
+ifneq ($(MAKECMDGOALS),clean)
 -include depend.inc
+endif

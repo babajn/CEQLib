@@ -67,22 +67,22 @@ static bool CloseSpectrumFile(FILE *stream){
     return fclose(stream) == 0 && ok;
 }
 
-CEQLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory){
-    if(!CEQLibRunParameters.UseHIIRegion) return CEQ_SUCCESS;
+EQCLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory){
+    if(!EQCLibRunParameters.UseHIIRegion) return EQC_SUCCESS;
     if(pegaseDirectory == NULL) pegaseDirectory = "../data/PEGASE2";
-    if(*pegaseDirectory == '\0') return CEQ_INVALID_INPUT;
+    if(*pegaseDirectory == '\0') return EQC_INVALID_INPUT;
 
     PhotoionizationTable tables[nZ_PI] = {0};
     for(int i = 0; i < nZ_PI; i++){
         if(!ReadPEGASESpectrum(pegaseDirectory,SpectrumFiles[i],check == 1,&tables[i]))
-            return CEQ_INITIALIZATION_FAILED;
+            return EQC_INITIALIZATION_FAILED;
     }
 
     if(check == 1){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/PhotoionizationNormalizedNLyn.dat","w");
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/PhotoionizationNormalizedNLyn.dat","w");
         if(output == NULL){
-            perror("CEQLib could not open PhotoionizationNormalizedNLyn.dat");
-            return CEQ_INITIALIZATION_FAILED;
+            perror("EQCLib could not open PhotoionizationNormalizedNLyn.dat");
+            return EQC_INITIALIZATION_FAILED;
         }
         for(int i = 0; i < nZ_PI; i++){
             fprintf(output,"%f ",Z_PI[i]);
@@ -92,23 +92,23 @@ CEQLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory)
             fputc('\n',output);
         }
         if(!CloseSpectrumFile(output)){
-            fprintf(stderr,"CEQLib could not write PhotoionizationNormalizedNLyn.dat\n");
-            return CEQ_INITIALIZATION_FAILED;
+            fprintf(stderr,"EQCLib could not write PhotoionizationNormalizedNLyn.dat\n");
+            return EQC_INITIALIZATION_FAILED;
         }
     }
 
     memcpy(Photoionization,tables,sizeof(tables));
-    return CEQ_SUCCESS;
+    return EQC_SUCCESS;
 }
 
 void InitializePhotochemistory(int Check){
-    if(CEQInitializePhotochemistry(Check,NULL) != CEQ_SUCCESS) exit(EXIT_FAILURE);
+    if(CEQInitializePhotochemistry(Check,NULL) != EQC_SUCCESS) exit(EXIT_FAILURE);
 }
 
 //// Photo-ionization rate [1/s]
 // The stellar ionizing flux NLyn acts only in H II region mode.
 static double SimplifiedPhotoionizationRate(double NLyn, int iZ, int ip){
-    if(NLyn==0.0 || !CEQLibRunParameters.UseHIIRegion)   return 0.e0;
+    if(NLyn==0.0 || !EQCLibRunParameters.UseHIIRegion)   return 0.e0;
     return Photoionization[iZ].ionization[ip]*NLyn;   // [1/s]
 }
 
@@ -146,13 +146,13 @@ double CIFUVPhotoionizationRate(double G0, double Av){
     //return (2.1e-10)*G0*exp(-2.6*Av);
     
     // R171 in Table B2 of Glover et al. 2010
-    if(CEQLibRunParameters.UseDustAttenuation==true)
+    if(EQCLibRunParameters.UseDustAttenuation==true)
         G0 *= exp(-3.0*Av);
     return 3.1e-10*G0; 
 }
 double SiIFUVPhotoionizationRate(double G0, double Av){
     // see eq(C2) and Tables 5 of Tielens & Hollenbach (1985)
-    if(CEQLibRunParameters.UseDustAttenuation==true)
+    if(EQCLibRunParameters.UseDustAttenuation==true)
         G0 *= exp(-1.6*Av);
     return 1.2e-9*G0;
 }
@@ -160,12 +160,12 @@ double SiIFUVPhotoionizationRate(double G0, double Av){
 
 ////// Photo-ionization Heating [erg/s]
 static double SimplifiedPhotoionizationHeating(double NLyn, int iZ, int ip){
-    if(NLyn==0.0 || !CEQLibRunParameters.UseHIIRegion)   return 0.e0;
+    if(NLyn==0.0 || !EQCLibRunParameters.UseHIIRegion)   return 0.e0;
     return Photoionization[iZ].heating[ip]*NLyn; // [erg/s]
 }
-double HeatingPhotoionization(StructCEQData *PhydroPP){
+double HeatingPhotoionization(StructEQCData *PhydroPP){
     double NLyn = PhydroPP->NLyn;
-    if(NLyn==0.e0 || !CEQLibRunParameters.UseHIIRegion)  return 0.e0;
+    if(NLyn==0.e0 || !EQCLibRunParameters.UseHIIRegion)  return 0.e0;
     return PhydroPP->natom[ipHYDROGEN]*HeatingHIPhotoionization(NLyn)
           +PhydroPP->natom[ipHELIUM  ]*HeatingHeIPhotoionization(NLyn)
           +PhydroPP->natom[ipCARBON  ]*HeatingCIPhotoionization(NLyn)
@@ -232,7 +232,7 @@ double HeatingSiIIPhotoionization(double NLyn){
 //    // assuming photoionization balance
 //    // ref. Osterblock's text eq.(3.2)
 //    if(NLyn==0.e0)   return 0.0;
-//    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+//    if(EQCLibRunParameters.UseRecombinationCaseB==true)
 //        return ne*nHII*1.5*(BOLTZMANN_CONSTANT_CGS*T_c)*HIIRecombinationRateCaseB(T);
 //    else
 //        return ne*nHII*1.5*(BOLTZMANN_CONSTANT_CGS*T_c)*HIIRecombinationRateCaseA(T);
@@ -241,7 +241,7 @@ double HeatingSiIIPhotoionization(double NLyn){
 //    // assuming photoionization balance
 //    // ref. Osterblock's text eq.(3.2)
 //    if(NLyn==0.e0)   return 0.0;
-//    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+//    if(EQCLibRunParameters.UseRecombinationCaseB==true)
 //        return ne*nHeII*1.5*(BOLTZMANN_CONSTANT_CGS)*T_c*HeIIRecombinationRateCaseB(T);
 //    else
 //        return ne*nHeII*1.5*(BOLTZMANN_CONSTANT_CGS)*T_c*HeIIRecombinationRateCaseA(T);
@@ -544,6 +544,6 @@ done:
     if(!CloseSpectrumFile(spectrum)) ok = false;
     if(!CloseSpectrumFile(rates)) ok = false;
     if(!CloseSpectrumFile(scenario)) ok = false;
-    if(!ok) fprintf(stderr,"CEQLib could not load PEGASE2 spectrum %s/%s\n",directory,name);
+    if(!ok) fprintf(stderr,"EQCLib could not load PEGASE2 spectrum %s/%s\n",directory,name);
     return ok;
 }

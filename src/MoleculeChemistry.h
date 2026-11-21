@@ -1,7 +1,7 @@
 #ifndef CEQ_MOLECULE_CHEMISTRY_H
 #define CEQ_MOLECULE_CHEMISTRY_H
 
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 void InitializeHydrogenChemistory(int Check);
 void InitializeMoleculeChemistory(int Check);
@@ -31,13 +31,13 @@ double CoolingH2RovibrationalLineLowDensityLimitGloverAbel2008(double T, double 
 double CoolingH2RovibrationalLineHollenbachMcKee1979(double T, double nHI, double nH2);
 double CoolingH2RovibrationalLineNeufeldKaufman1993(double T, double nHI, double nH2);
 double CoolingH2RovibrationalLineLeBourlot1999(double T, double nHI, double nH2);
-double CoolingH2RovibrationalLine(StructCEQData *PhydroPP);
+double CoolingH2RovibrationalLine(StructEQCData *PhydroPP);
 
-double CoolingH2CollisionalDissociation(StructCEQData *PhydroPP);
+double CoolingH2CollisionalDissociation(StructEQCData *PhydroPP);
 
-double HeatingH2Photodissociate(StructCEQData *PhydroPP);
-double HeatingH2PhotomPumping(StructCEQData *PhydroPP);
-double HeatingH2Formation(StructCEQData *PhydroPP);
+double HeatingH2Photodissociate(StructEQCData *PhydroPP);
+double HeatingH2PhotomPumping(StructEQCData *PhydroPP);
+double HeatingH2Formation(StructEQCData *PhydroPP);
 
 double COShieldingFactor(double N2, double Nco, double b5);
 /* The tabulated log10 column and log10 CO self-shielding factor. */
@@ -47,6 +47,6 @@ double COPhotoDissociationRate(double G0, double Ntot, double Zd);
 #ifdef CHEMISTRY_CO_NELSON_LANGER_1997
 double COFormationRate(double nH, double xO, double G0, double Ntot, double Zd);
 #endif
-double CoolingCORovibrationalLine(StructCEQData *PhydroPP);
+double CoolingCORovibrationalLine(StructEQCData *PhydroPP);
 
 #endif

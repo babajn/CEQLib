@@ -1,4 +1,4 @@
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 void InitializeFineStructureLines(int Check);
 //double TotalFineStructureLinesCoolingRate(double T, double nel, double nHII, double nHI, double nH2, 
@@ -9,13 +9,13 @@ double CoolingCI(double nCI, double T, double nel, double nHII, double nHI, doub
 double CoolingCI610um(double nCI, double T, double nel, double nHII, double nHI, double nH2);
 double CoolingCI230um(double nCI, double T, double nel, double nHII, double nHI, double nH2);
 double CoolingCI370um(double nCI, double T, double nel, double nHII, double nHI, double nH2);
-double CoolingCII158um(StructCEQData *PhydroPP);
+double CoolingCII158um(StructEQCData *PhydroPP);
 
 double CoolingOI(double nOI, double T, double nel, double nHII, double nHI, double nH2, 
         double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um);
-double CoolingOI63um(StructCEQData *PhydroPP);
-double CoolingOI44um(StructCEQData *PhydroPP);
-double CoolingOI146um(StructCEQData *PhydroPP);
+double CoolingOI63um(StructEQCData *PhydroPP);
+double CoolingOI44um(StructEQCData *PhydroPP);
+double CoolingOI146um(StructEQCData *PhydroPP);
 //double CoolingOI63um(double nOI, double T, double nel, double nHII, double nHI, double nH2);
 //double CoolingOI44um(double nOI, double T, double nel, double nHII, double nHI, double nH2);
 //double CoolingOI146um(double nOI, double T, double nel, double nHII, double nHI, double nH2);
@@ -27,5 +27,5 @@ double CoolingSiI(double nSiI, double T, double nHI, double nHII,
 double CoolingSiI130um(double nSiI, double T, double nHI, double nHII);
 double CoolingSiI45um(double nSiI, double T, double nHI, double nHII);
 double CoolingSiI68um(double nSiI, double T, double nHI, double nHII);
-double CoolingSiII35um(StructCEQData *PhydroPP);
+double CoolingSiII35um(StructEQCData *PhydroPP);
 //double CoolingSiII35um(double nSiII, double T, double nel, double nHI);

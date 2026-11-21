@@ -1,4 +1,4 @@
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 void InitializeCosmicRayIonization(int Check);
 double CosmicRayIonizationRateHI(double xe);
@@ -11,5 +11,5 @@ double CosmicRayIonizationRateSiI(double xe);
 double CosmicRayIonizationRateSiII(double xe);
 double CosmicRayIonizationRateCO(double xe);
 //double CosmicRayHeating(double nH);
-double TotalCosmicRayHeatingRate(StructCEQData *PhydroPP);
+double TotalCosmicRayHeatingRate(StructEQCData *PhydroPP);
 double TotalCosmicRayHeatingRateFixed(double nH, double X0);

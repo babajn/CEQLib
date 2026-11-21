@@ -46,8 +46,8 @@ static double h2ShieldingTailOpticalDepth;
 
 void InitializeMoleculeChemistory(int Check){
 
-    if(CEQLibRunParameters.UseH2Formation==true&&Check==1){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/H2ShieldingFactor.dat","w");
+    if(EQCLibRunParameters.UseH2Formation==true&&Check==1){
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/H2ShieldingFactor.dat","w");
         for(double logNh2=12.0; logNh2<=23.0; logNh2+=0.01){
             double b5   = 3.0;
             double f_H2 = H2SelfShieldingFactor(pow(10,logNh2),b5);
@@ -55,7 +55,7 @@ void InitializeMoleculeChemistory(int Check){
         }
         fclose(output);
         
-        output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CoolingRateH2.dat","w");
+        output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/CoolingRateH2.dat","w");
         double nHI = 1.0, nHII = 0.e0, ne = nHII, nHe = 0.0; 
         //for(double lognH2=-1.0; lognH2<=4.0; lognH2+=1.0){
         for(double lognH2=2.0; lognH2<=2.0; lognH2+=1.0){
@@ -111,8 +111,8 @@ void InitializeMoleculeChemistory(int Check){
         h2ShieldingTailPower = edgeSlope-h2ShieldingTailOpticalDepth;
     }
 
-    if(CEQLibRunParameters.UseCOFormation==true && Check==1){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/COShieldingFactor.dat","w");
+    if(EQCLibRunParameters.UseCOFormation==true && Check==1){
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/COShieldingFactor.dat","w");
         for(double logNco=12.0; logNco<=23.0; logNco+=0.01){
             double f_self = f_co_self(logNco);
             fprintf(output,"%e %e\n",logNco,pow(10,f_self));
@@ -150,14 +150,14 @@ void InitializeMoleculeChemistory(int Check){
 
 /// see eq(1) and Table B2 of Glover et al. (2010)
 double DustShieldingFactor(double Ntot, double Zd, double gamma){
-    if(CEQLibRunParameters.UseDustAttenuation==false)   return 1.e0;
+    if(EQCLibRunParameters.UseDustAttenuation==false)   return 1.e0;
 
     // eq(1) of Glover et al. (2010)
     double Av = VisualExtinction(Ntot,Zd);
     return exp(-gamma*Av);
 }
 double VisualExtinction(double Ntot, double Zd){
-    if(CEQLibRunParameters.UseDustAttenuation==false)   return 0.e0;
+    if(EQCLibRunParameters.UseDustAttenuation==false)   return 0.e0;
 
     // eq(2) of Glover et al. (2010)
     return 0.535e-21*(Zd/Zsol)*Ntot;
@@ -165,7 +165,7 @@ double VisualExtinction(double Ntot, double Zd){
 
 #define sigma1000MW     (2.0e-21)   // [cm^-2]
 double DustShieldingFactorFUV(double Ntot, double Zd){
-    if(CEQLibRunParameters.UseDustAttenuation==false)   return 1.e0;
+    if(EQCLibRunParameters.UseDustAttenuation==false)   return 1.e0;
 
     double tau1000 = (double)sigma1000MW*(Zd/Zsol)*Ntot;
     return exp(-tau1000);
@@ -229,7 +229,7 @@ double DustShieldingFactorFUV(double Ntot, double Zd){
 //  resosulution does ~100pc.
 //   e.g. Cp = 30 (Krumholz & Gnedin, 2009)
 double H2FormationRate(double T, double Z, double Tdust){
-    double Cp = CEQLibRunParameters.CpForH2;
+    double Cp = EQCLibRunParameters.CpForH2;
     // R60 in Table 3 of Glover & Jappsen (2007) 
     double St = 1.e0/(1.0 + 4.e-2*sqrt(T+Tdust) + 2.e-3*T + 8.e-6*SQ(T));
     //return 3.0e-18*Cp*sqrt(T)*(Z/Zsol)*St/(1.0 + 1.e+4*exp(-600.0/Tdust));
@@ -560,7 +560,7 @@ double CoolingH2RovibrationalLineLeBourlot1999(double T, double nHI, double nH2)
 }
 
 //// Cooling via Rotational & Vibrational Lines of H2 [erg/cc/s]
-double CoolingH2RovibrationalLine(StructCEQData *PhydroPP){
+double CoolingH2RovibrationalLine(StructEQCData *PhydroPP){
     double nHII = PhydroPP->nion[ipHYDROGEN];
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
@@ -586,7 +586,7 @@ static double CoolingH2CollisionalDissociationBody(double nHI, double nH2, doubl
     //double dissH2 = nH2*H2collisionCoefficient(T,nH,nHI,nH2);
     //return 4.48*(EV_TO_ERG)*nH2*(dissHI + dissH2);
 }
-double CoolingH2CollisionalDissociation(StructCEQData *PhydroPP){
+double CoolingH2CollisionalDissociation(StructEQCData *PhydroPP){
     double nHI = PhydroPP->natom[ipHYDROGEN];
     double nH2 = PhydroPP->nmol [ipH2];
     if(nH2==0.e0)   return 0.e0;
@@ -602,7 +602,7 @@ double CoolingH2CollisionalDissociation(StructCEQData *PhydroPP){
 // Following Black & Dalgarno (1977) and Glover & MacLow (2007), we assume that
 // each photodissociation deposits 0.4 eV (= 6.4 x 10^-13 erg) of heat into the gas.
 // see also  eq(3.18)(3.19) of Teilens' textbook (2005)
-double HeatingH2Photodissociate(StructCEQData *PhydroPP){
+double HeatingH2Photodissociate(StructEQCData *PhydroPP){
     double nH2 = PhydroPP->nmol[ipH2];
     double Nt  = PhydroPP->Nt;
     double N2  = Nt*nH2/PhydroPP->n[ipHYDROGEN]; 
@@ -618,7 +618,7 @@ double HeatingH2Photodissociate(StructCEQData *PhydroPP){
 // Radiative pupmping rate that is 8.5 times larger than the photodissociation rate (Draine & Bertoldi 1996).
 // Each excitation transfers an average of 2*n/(n+ncr) [eV] = 3.2e-12*n/(n+ncr) [erg] to the gas (Appendix A of Burton et al. 1990).
 // eq.(6.46) of Hollenbach & McKee (1979)
-double HeatingH2PhotomPumping(StructCEQData *PhydroPP){
+double HeatingH2PhotomPumping(StructEQCData *PhydroPP){
     double nH  = PhydroPP->n[ipHYDROGEN];
     double nHI = PhydroPP->natom[ipHYDROGEN];
     double nH2 = PhydroPP->nmol[ipH2];
@@ -642,7 +642,7 @@ double HeatingH2PhotomPumping(StructCEQData *PhydroPP){
 //// Heating associating with H2 formation on grains [erg/cc/s]
 // Hollenbach & McKee (1989)
 // eq.(6.43) of Hollenbach & McKee (1979)
-double HeatingH2Formation(StructCEQData *PhydroPP){
+double HeatingH2Formation(StructEQCData *PhydroPP){
     double nH  = PhydroPP->n[ipHYDROGEN];
     double nHI = PhydroPP->natom[ipHYDROGEN];
     double nH2 = PhydroPP->nmol[ipH2];
@@ -748,7 +748,7 @@ double COFormationRate(double nH, double xO, double G0, double Ntot, double Zd){
 static double COFormationRateCH2(double nH2, double T){
     // CH2 formation rate coefficient from CII and H2 (via radiative association to form CH2+)
     //double kRA = 6.e-16; // ref.  Table 12 of Tielens & Hollenbach (1985)
-    double Cp = CEQLibRunParameters.CpForCO;
+    double Cp = EQCLibRunParameters.CpForCO;
     double kRA = 4.e-16*pow(T/300.0,-0.2);  // k148 in Table B1 of Glover et al. (2010)
     return kRA*Cp*nH2; // [/s] 
 }
@@ -770,7 +770,7 @@ static double CItoCIIratio(double nH2, double T, double G0, double Ntot, double 
 // eq(11)-(13) in Glover & Clark, MNRAS, 421, 116, (2012)
 void EquilibriumCarbonFractionalAbundance(double xC, double nH, double ne, double nH2, double T, double G0, double X0, double Ntot, double N2, 
         double Z, double *fCII, double *fCI, double *fCO){
-    if(CEQLibRunParameters.UseCOFormation==true){
+    if(EQCLibRunParameters.UseCOFormation==true){
         double Nco = Ntot*(*fCO)*xC;
         double COtoCII = COtoCIIratio(nH2,T,G0,Ntot,N2,Nco,Z);  // eq.(14)
         double CItoCII = CItoCIIratio(nH2,T,G0,Ntot,Z);         // eq.(15)
@@ -848,7 +848,7 @@ static double CoolingCORovibrationalLineHollenbachMcKee(double T, double nCO, do
 }
 
 //// CO cooling [erg/cc/s]
-double CoolingCORovibrationalLine(StructCEQData *PhydroPP){
+double CoolingCORovibrationalLine(StructEQCData *PhydroPP){
     double nH  = PhydroPP->n[ipHYDROGEN];
     double nHI = PhydroPP->natom[ipHYDROGEN];
     double nH2 = PhydroPP->nmol [ipH2];

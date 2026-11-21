@@ -1,10 +1,10 @@
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 #include "MoleculeChemistry.h"
 
 int CEQSolveIonLadder(double density, double ionization0, double recombination1,
                       double ionization1, double recombination2,
                       double *neutral, double *ion, double *doubleIon);
-int CEQSolveHydrogenEquilibrium(StructCEQData *state, double accuracy);
+int CEQSolveHydrogenEquilibrium(StructEQCData *state, double accuracy);
 
 /* Ladder coefficients that do not depend on n_e: photoionization rates [1/s],
    electron-impact ionization and recombination coefficients [cm^3/s]. */
@@ -33,18 +33,18 @@ typedef struct {
     CEQMolecularHydrogenCoefficients molecularHydrogen;
     CEQMolecularCarbonCoefficients molecularCarbon;
 } CEQRateCoefficients;
-void CEQPrepareRateCoefficients(const StructCEQData *state, CEQRateCoefficients *coefficients);
+void CEQPrepareRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients);
 
 /* H ionization rate per H atom and recombination rate per H+ [1/s],
    without charge transfer. They depend on the state's n_e, not on its ions. */
 typedef struct {
     double ionization, recombination;
 } CEQHydrogenRates;
-CEQHydrogenRates CEQHydrogenIonizationRates(const StructCEQData *state);
-CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructCEQData *state,
+CEQHydrogenRates CEQHydrogenIonizationRates(const StructEQCData *state);
+CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData *state,
                                                             const CEQRateCoefficients *coefficients);
 /* coefficients may be NULL; the H2 terms are then evaluated here. */
-int CEQSolveHydrogenEquilibriumWithRates(StructCEQData *state, const CEQHydrogenRates *rates,
+int CEQSolveHydrogenEquilibriumWithRates(StructEQCData *state, const CEQHydrogenRates *rates,
                                          const CEQRateCoefficients *coefficients, double accuracy);
 
 /* Per-species ladder rates [1/s]: ionization of the neutral, recombination of
@@ -59,10 +59,10 @@ typedef struct {
    hydrogen holds the H rates without charge transfer for the state's n_e.
    The unknown is s = ln(n_HII/n_HI); success means |s - ln(I/R)| <= accuracy
    for the H ionization and recombination rates including charge transfer. */
-int CEQSolveHydrogenOxygenChargeTransfer(StructCEQData *state, const CEQHydrogenRates *hydrogen,
+int CEQSolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogenRates *hydrogen,
                                          const CEQIonLadderRates *oxygen,
                                          const CEQRateCoefficients *coefficients, double accuracy);
-int CEQSolveCarbonEquilibrium(StructCEQData *state, double previousCO, double accuracy);
+int CEQSolveCarbonEquilibrium(StructEQCData *state, double previousCO, double accuracy);
 
 typedef struct {
     double upperFraction;
@@ -74,21 +74,21 @@ typedef struct {
 } CEQCarbonShieldingInterval;
 
 /* Allocate room for CEQCOShieldingPointCount() + 1 intervals. */
-int CEQPrepareCarbonShieldingIntervals(const StructCEQData *state,
+int CEQPrepareCarbonShieldingIntervals(const StructEQCData *state,
                                        CEQCarbonShieldingInterval *intervals, int points);
 /* With checkExistingCO, keep the previously solved CO if it balances at the
    current H2 density, and update the carbon outside CO as needed.
    coefficients may be NULL to compute the rates here. */
-int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double accuracy,
+int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double accuracy,
                                const CEQCarbonShieldingInterval *intervals, int count,
                                const CEQRateCoefficients *coefficients, bool checkExistingCO);
 
-void EquilibriumHydrogenFractionalAbundance(StructCEQData *PhydroPP);
-void EquilibriumHeliumFractionalAbundance(StructCEQData *PhydroPP);
-void EquilibriumCarbonFractionalAbundance(StructCEQData *PhydroPP);
-void EquilibriumOxygenFractionalAbundanceChargeTransfer(StructCEQData *PhydroPP);
-void EquilibriumOxygenFractionalAbundance(StructCEQData *PhydroPP);
-void EquilibriumSiliconFractionalAbundance(StructCEQData *PhydroPP);
+void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP);
+void EquilibriumHeliumFractionalAbundance(StructEQCData *PhydroPP);
+void EquilibriumCarbonFractionalAbundance(StructEQCData *PhydroPP);
+void EquilibriumOxygenFractionalAbundanceChargeTransfer(StructEQCData *PhydroPP);
+void EquilibriumOxygenFractionalAbundance(StructEQCData *PhydroPP);
+void EquilibriumSiliconFractionalAbundance(StructEQCData *PhydroPP);
 
 //void EquilibriumHydrogenFractionalAbundance(double T, double nH, double ne, double G0, double Ntot, double Z, double X0, 
 //                                            double *fHII, double *fHI, double *fH2);

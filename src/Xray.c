@@ -14,7 +14,7 @@ static double SoftXrayHeatingRateBody(double xe, double Ntot);
 void InitializeSoftXrayIonization(int Check){
     
     if(Check==1){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/SoftXrayIonization.dat","w");
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/SoftXrayIonization.dat","w");
         for(double logNt=17.0; logNt<=22.0; logNt+=0.01){
             double Ntot  = pow(10.0,logNt);
             fprintf(output,"%e ",Ntot);
@@ -48,37 +48,37 @@ static double SoftXrayIonizationRate(double xe, double Ntot){
 }
 
 double SoftXrayIonizationRateHI(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.5*SoftXrayIonizationRate(xe,Ntot);
 }
 
 double SoftXrayIonizationRateHeI(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.5*SoftXrayIonizationRate(xe,Ntot);
 }
 
 double SoftXrayIonizationRateHeII(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.e0;
 }
 
 double SoftXrayIonizationRateCI(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.e0;
 }
 
 double SoftXrayIonizationRateOI(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.e0;
 }
 
 double SoftXrayIonizationRateSiI(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.e0;
 }
 
 double SoftXrayIonizationRateSiII(double xe, double Ntot){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return 0.e0;
 }
 
@@ -96,8 +96,8 @@ static double SoftXrayHeatingRateBody(double xe, double Ntot){
 
 /// Soft X-ray heating [erg/cc/s]
 //double TotalSoftXrayHeatingRate(double xe, double nH, double Ntot){
-double TotalSoftXrayHeatingRate(StructCEQData *PhydroPP){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+double TotalSoftXrayHeatingRate(StructEQCData *PhydroPP){
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     double nH   = PhydroPP->n[ipHYDROGEN];
     double xe   = PhydroPP->nel/nH;
     double Ntot = PhydroPP->Nt;
@@ -107,7 +107,7 @@ double TotalSoftXrayHeatingRate(StructCEQData *PhydroPP){
 }
 
 double TotalSoftXrayHeatingRateFixed(double nH, double X0){
-    if(CEQLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
+    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
     return nH*X0*(1.6e-17); // [erg/s/cc]
 }
 

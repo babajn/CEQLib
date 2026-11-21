@@ -1,7 +1,7 @@
 #ifndef CEQ_HII_REGION_LINE_COOLING_H
 #define CEQ_HII_REGION_LINE_COOLING_H
 
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 enum { OxygenLevelCount = 5 };
 
@@ -18,6 +18,6 @@ double CoolingLinesOIII(double T, double ne, double nOIII,
                         double lines[OxygenLevelCount][OxygenLevelCount]);
 double CoolingLinesHIIregionOxygen(double T, double ne, double nOII, double nOIII);
 
-double CoolingHalphaEmission(StructCEQData *PhydroPP);
+double CoolingHalphaEmission(StructEQCData *PhydroPP);
 
 #endif

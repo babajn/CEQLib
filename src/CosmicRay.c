@@ -42,9 +42,9 @@ void InitializeCosmicRayIonization(int Check){
         gsl_spline_init(f3Access,x_e,f_3,ElectronFractionTableSize);
     }
 
-    if(Check == 1 && CEQLibRunParameters.UseCosmicRayIonization){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CosmicRayIonization.dat","w");
-        StructCEQData state = {.n = {1.0}, .X0 = 1.0};
+    if(Check == 1 && EQCLibRunParameters.UseCosmicRayIonization){
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/CosmicRayIonization.dat","w");
+        StructEQCData state = {.n = {1.0}, .X0 = 1.0};
         for(double xe = 1.e-6; xe <= 1.0; xe *= 2.0){
             state.nel = xe*state.n[ipHYDROGEN];
             double deposited = HeatDepositedForEachPrimaryElectron((double)E_ELECTRON,xe);
@@ -56,7 +56,7 @@ void InitializeCosmicRayIonization(int Check){
 
 // CR ionization
 double CosmicRayIonizationRateHI(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // see Table B3 in Glover et al. (2010)
     return zetaHI;  // [s^-1]
@@ -72,7 +72,7 @@ double CosmicRayIonizationRateHI(double xe){
 /// Cosmica ray ionization rate of D
 //// D + cr -> D+ + e
 double CosmicRayIonizationRateDI(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
     
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
@@ -82,7 +82,7 @@ double CosmicRayIonizationRateDI(double xe){
 /// Cosmica ray ionization rate of H2
 // H2 + cr -> H2+ + e
 double CosmicRayIonizationRateH2(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
@@ -90,7 +90,7 @@ double CosmicRayIonizationRateH2(double xe){
 }
 
 double CosmicRayIonizationRateHeI(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
@@ -107,7 +107,7 @@ double CosmicRayIonizationRateHeI(double xe){
 /// Cosmica ray ionization rate of CI
 // C + cr -> C+ + e
 double CosmicRayIonizationRateCI(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
@@ -117,7 +117,7 @@ double CosmicRayIonizationRateCI(double xe){
 /// Cosmica ray ionization rate of OI
 // O + cr -> O+ + e
 double CosmicRayIonizationRateOI(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
@@ -127,7 +127,7 @@ double CosmicRayIonizationRateOI(double xe){
 /// Cosmica ray ionization rate of SiI
 // Si + cr -> Si+ + e
 double CosmicRayIonizationRateSiI(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table 4 in Glover & Jappsen (2007)
@@ -137,7 +137,7 @@ double CosmicRayIonizationRateSiI(double xe){
 /// Cosmica ray ionization rate of SiI
 // Si+ + cr -> Si++ + e
 double CosmicRayIonizationRateSiII(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table 4 in Glover & Jappsen (2007)
@@ -147,7 +147,7 @@ double CosmicRayIonizationRateSiII(double xe){
 /// Cosmica ray ionization rate of CO
 // CO + cr -> CO+ + e
 double CosmicRayIonizationRateCO(double xe){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
 
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
@@ -181,8 +181,8 @@ static double HeatDepositedForEachPrimaryElectron(double E_in_eV, double xe){
     }
     return (E_in_eV*EV_TO_ERG)*(f1 + 1.0/(f2/f3+1.0/(1.0-f1))); // [erg]
 }
-double TotalCosmicRayHeatingRate(StructCEQData *PhydroPP){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+double TotalCosmicRayHeatingRate(StructEQCData *PhydroPP){
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
     double nH = PhydroPP->n[ipHYDROGEN];
     double xe = PhydroPP->nel/nH;
     double X0 = PhydroPP->X0;
@@ -196,7 +196,7 @@ double TotalCosmicRayHeatingRate(StructCEQData *PhydroPP){
 }
 
 double TotalCosmicRayHeatingRateFixed(double nH, double X0){
-    if(CEQLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
+    if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
     // ref. Shull & van Steenberg (1985)
     //      eq(4) and eq(A3)(A4)(A5) of Wolfire et al. (1995)
     double xe   = 0.001;

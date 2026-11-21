@@ -1,4 +1,4 @@
-"""Matplotlib style shared by the CEQLib plotting scripts and notebooks."""
+"""Matplotlib style shared by the EQCLib plotting scripts and notebooks."""
 
 BLACK, GRAY = "#202020", "#555555"
 BLUE, ORANGE, GREEN, PURPLE = "#0072b2", "#c44e00", "#007b5e", "#8d4b9f"

@@ -24,7 +24,7 @@
 #include "CoolingCIE.h"
 #include "HIIregionLineCooling.h"
 
-struct StructCEQLibParameters_tag CEQLibRunParameters = {
+struct StructEQCLibParameters_tag EQCLibRunParameters = {
     .UseChargeTransfer = true,
     .ChemistryAccuracy = 1.e-8,
 };
@@ -58,14 +58,14 @@ static bool EnsureDiagnosticDirectory(const char *path){
            S_ISDIR(info.st_mode) && access(path,W_OK | X_OK) == 0;
 }
 
-CEQLibStatus CEQLibTryInitialization(int Check, const char *pegaseDirectory){
-    if(Check == 1 && (!EnsureDiagnosticDirectory(CEQ_DIAGNOSTIC_DIRECTORY) ||
-            (CEQLibRunParameters.UseHIIRegion && !EnsureDiagnosticDirectory("out")))){
-        fprintf(stderr,"CEQLib could not create its diagnostic output directories\n");
-        return CEQ_INITIALIZATION_FAILED;
+EQCLibStatus EQCLibTryInitialization(int Check, const char *pegaseDirectory){
+    if(Check == 1 && (!EnsureDiagnosticDirectory(EQC_DIAGNOSTIC_DIRECTORY) ||
+            (EQCLibRunParameters.UseHIIRegion && !EnsureDiagnosticDirectory("out")))){
+        fprintf(stderr,"EQCLib could not create its diagnostic output directories\n");
+        return EQC_INITIALIZATION_FAILED;
     }
-    const CEQLibStatus status = CEQInitializePhotochemistry(Check,pegaseDirectory);
-    if(status != CEQ_SUCCESS) return status;
+    const EQCLibStatus status = CEQInitializePhotochemistry(Check,pegaseDirectory);
+    if(status != EQC_SUCCESS) return status;
 
     InitializeChemicalElementTable(Check);
     InitializeCollisionalIonization(Check);
@@ -84,63 +84,63 @@ CEQLibStatus CEQLibTryInitialization(int Check, const char *pegaseDirectory){
     InitializeLSODA(10000);
 #endif
 
-    return CEQ_SUCCESS;
+    return EQC_SUCCESS;
 }
 
-void CEQLibInitialization(int Check){
-    if(CEQLibTryInitialization(Check,NULL) != CEQ_SUCCESS) exit(EXIT_FAILURE);
+void EQCLibInitialization(int Check){
+    if(EQCLibTryInitialization(Check,NULL) != EQC_SUCCESS) exit(EXIT_FAILURE);
 }
 
-void CEQLibSetRunParamDebugMode(bool Use){
-    CEQLibRunParameters.UseDebugMode = Use;
+void EQCLibSetRunParamDebugMode(bool Use){
+    EQCLibRunParameters.UseDebugMode = Use;
 }
 
-void CEQLibSetRunParamRecombinationCaseB(bool Use){
-    CEQLibRunParameters.UseRecombinationCaseB = Use;
+void EQCLibSetRunParamRecombinationCaseB(bool Use){
+    EQCLibRunParameters.UseRecombinationCaseB = Use;
 }
 
-void CEQLibSetRunParamHIIRegion(bool Use){
-    CEQLibRunParameters.UseHIIRegion = Use;
+void EQCLibSetRunParamHIIRegion(bool Use){
+    EQCLibRunParameters.UseHIIRegion = Use;
 }
 
-void CEQLibSetRunParamDustAttenuation(bool Use){
-    CEQLibRunParameters.UseDustAttenuation = Use;
+void EQCLibSetRunParamDustAttenuation(bool Use){
+    EQCLibRunParameters.UseDustAttenuation = Use;
 }
 
-void CEQLibSetRunParamGrainSurfaceProcesses(bool Use){
-    CEQLibRunParameters.UseGrainSurfaceProcesses = Use;
+void EQCLibSetRunParamGrainSurfaceProcesses(bool Use){
+    EQCLibRunParameters.UseGrainSurfaceProcesses = Use;
 }
 
-void CEQLibSetRunParamCosmicRayIonization(bool Use){
-    CEQLibRunParameters.UseCosmicRayIonization = Use;
+void EQCLibSetRunParamCosmicRayIonization(bool Use){
+    EQCLibRunParameters.UseCosmicRayIonization = Use;
 }
 
-void CEQLibSetRunParamSoftXrayIonization(bool Use){
-    CEQLibRunParameters.UseSoftXrayIonization = Use;
+void EQCLibSetRunParamSoftXrayIonization(bool Use){
+    EQCLibRunParameters.UseSoftXrayIonization = Use;
 }
 
-void CEQLibSetRunParamCIEResonanceCooling(bool Use){
-    CEQLibRunParameters.UseCIEResonanceCooling = Use;
+void EQCLibSetRunParamCIEResonanceCooling(bool Use){
+    EQCLibRunParameters.UseCIEResonanceCooling = Use;
 }
 
-void CEQLibSetRunParamH2Formation(bool Use, double Cp){
-    CEQLibRunParameters.UseH2Formation = Use;
-    CEQLibRunParameters.CpForH2 = Cp;
+void EQCLibSetRunParamH2Formation(bool Use, double Cp){
+    EQCLibRunParameters.UseH2Formation = Use;
+    EQCLibRunParameters.CpForH2 = Cp;
 }
 
-void CEQLibSetRunParamCOFormation(bool Use, double Cp){
-    CEQLibRunParameters.UseCOFormation = Use;
-    CEQLibRunParameters.CpForCO = Cp;
+void EQCLibSetRunParamCOFormation(bool Use, double Cp){
+    EQCLibRunParameters.UseCOFormation = Use;
+    EQCLibRunParameters.CpForCO = Cp;
 }
 
-void CEQLibSetRunParamChargeTransfer(bool Use){
-    CEQLibRunParameters.UseChargeTransfer = Use;
+void EQCLibSetRunParamChargeTransfer(bool Use){
+    EQCLibRunParameters.UseChargeTransfer = Use;
 }
 
-CEQLibStatus CEQLibSetRunParamChemistryAccuracy(double value){
-    if(!isfinite(value) || value <= 0.0 || value >= 1.0) return CEQ_INVALID_INPUT;
-    CEQLibRunParameters.ChemistryAccuracy = value;
-    return CEQ_SUCCESS;
+EQCLibStatus EQCLibSetRunParamChemistryAccuracy(double value){
+    if(!isfinite(value) || value <= 0.0 || value >= 1.0) return EQC_INVALID_INPUT;
+    EQCLibRunParameters.ChemistryAccuracy = value;
+    return EQC_SUCCESS;
 }
 
 //#ifdef LSODA_SUBCYCLE_COOLING_SOLVER
@@ -174,7 +174,7 @@ CEQLibStatus CEQLibSetRunParamChemistryAccuracy(double value){
 //        atol[i] = 0.e0;
 //    }
 //    
-//    StructCEQData PhydroPPwork = *PhydroPP;
+//    StructEQCData PhydroPPwork = *PhydroPP;
 //    
 //    /// LSODA
 //    lsoda(RateEquations,ineq,y,&t,tout,itol,rtol,atol,itask,&istate,iopt,jt,
@@ -200,30 +200,30 @@ CEQLibStatus CEQLibSetRunParamChemistryAccuracy(double value){
 //}
 //#endif
 
-CEQLibStatus CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(StructCEQData *state, double accuracy){
-    if(state == NULL) return CEQ_INVALID_INPUT;
+EQCLibStatus EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(StructEQCData *state, double accuracy){
+    if(state == NULL) return EQC_INVALID_INPUT;
 
-    StructCEQData trial = *state;
-    int status = CEQLibChemicalReactionEquilibrium(&trial,accuracy);
-    if(status < 0) return (CEQLibStatus)status;
+    StructEQCData trial = *state;
+    int status = EQCLibChemicalReactionEquilibrium(&trial,accuracy);
+    if(status < 0) return (EQCLibStatus)status;
 
     trial.invT = 1.0/trial.T;
     trial.logT = log10(trial.T);
-    status = CEQLibCalculateCoolingHeatingRates(&trial);
-    if(status != CEQ_SUCCESS) return (CEQLibStatus)status;
+    status = EQCLibCalculateCoolingHeatingRates(&trial);
+    if(status != EQC_SUCCESS) return (EQCLibStatus)status;
 
     *state = trial;
-    return CEQ_SUCCESS;
+    return EQC_SUCCESS;
 }
 
-void CEQLibCalulateChemcalAbundanceCoolingHeatingRates(StructCEQData *PhydroPP){
-    CEQLibStatus status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(PhydroPP,1.e-3);
-    if(status != CEQ_SUCCESS){
-        fprintf(stderr,"CEQLib could not evaluate the chemical equilibrium rates: status %d\n",status);
+void EQCLibCalulateChemcalAbundanceCoolingHeatingRates(StructEQCData *PhydroPP){
+    EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(PhydroPP,1.e-3);
+    if(status != EQC_SUCCESS){
+        fprintf(stderr,"EQCLib could not evaluate the chemical equilibrium rates: status %d\n",status);
         return;
     }
 
-    if(CEQLibRunParameters.UseDebugMode==true){
+    if(EQCLibRunParameters.UseDebugMode==true){
         double Ts = SpinTemperatureHI21cm(PhydroPP->natom[ipHYDROGEN],PhydroPP->T);
         fprintf(stderr," ==>");
         //fprintf(stderr," itr = %d\n",itr);
@@ -288,12 +288,12 @@ void CEQLibCalulateChemcalAbundanceCoolingHeatingRates(StructCEQData *PhydroPP){
     }
 }
 
-static double PhotoionizedOxygenWeight(const StructCEQData *state)
+static double PhotoionizedOxygenWeight(const StructEQCData *state)
 {
     const double taperStart = 1.5e4;
     const double taperEnd = 2.5e4;
     const double nH = state->n[ipHYDROGEN];
-    if(!CEQLibRunParameters.UseHIIRegion || state->NLyn <= 0.0 || state->T >= taperEnd || nH <= 0.0)
+    if(!EQCLibRunParameters.UseHIIRegion || state->NLyn <= 0.0 || state->T >= taperEnd || nH <= 0.0)
         return 0.0;
 
     const double photoionization = HIPhotoIonizationRate(state->NLyn);
@@ -306,12 +306,12 @@ static double PhotoionizedOxygenWeight(const StructCEQData *state)
     return ionizedFraction * (photoionization/(photoionization+otherIonization)) * warm*warm*(3.0-2.0*warm);
 }
 
-int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
+int EQCLibCalculateCoolingHeatingRates(StructEQCData *PhydroPP){
 
-    if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return CEQ_INVALID_INPUT;
+    if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return EQC_INVALID_INPUT;
 
     PhydroPP->L_res = CoolingRateCIE(PhydroPP);
-    if(!isfinite(PhydroPP->L_res)) return CEQ_INVALID_INPUT;
+    if(!isfinite(PhydroPP->L_res)) return EQC_INVALID_INPUT;
 
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double T    = PhydroPP->T;
@@ -321,7 +321,7 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     PhydroPP->H_PE      = HeatingDustPhotoelectic(PhydroPP); //T,nH,ne,Z,G0,Nt);
     PhydroPP->H_CR      = TotalCosmicRayHeatingRate(PhydroPP);
     PhydroPP->H_XR      = TotalSoftXrayHeatingRate(PhydroPP);
-    if(CEQLibRunParameters.UseH2Formation==true){
+    if(EQCLibRunParameters.UseH2Formation==true){
         PhydroPP->H_H2  = HeatingH2Photodissociate(PhydroPP)
                         + HeatingH2PhotomPumping(PhydroPP)
                         + HeatingH2Formation(PhydroPP);
@@ -356,7 +356,7 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     PhydroPP->L_OIII    = 0.e0;
     PhydroPP->L_OII     = 0.e0;
     const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP);
-    if(!isfinite(oxygenWeight)) return CEQ_INVALID_INPUT;
+    if(!isfinite(oxygenWeight)) return EQC_INVALID_INPUT;
     if(oxygenWeight > 0.0){
         /* Replace the CIE metal contribution in photoionized gas without counting oxygen twice. */
         PhydroPP->L_res *= 1.0-oxygenWeight;
@@ -368,7 +368,7 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
               nHI,PhydroPP->nmol[ipH2],&PhydroPP->L_OI63,&coolingOI44,&PhydroPP->L_OI146);
     PhydroPP->L_SiII35  = CoolingSiII35um(PhydroPP); //nSiII,T,ne,nHI);
     PhydroPP->L_DustRec = CoolingDustRecombination(PhydroPP); //T,nH,ne,Z,G0,Nt);
-    if(CEQLibRunParameters.UseH2Formation==true){
+    if(EQCLibRunParameters.UseH2Formation==true){
         PhydroPP->L_H2  = 
                         + CoolingH2RovibrationalLine(PhydroPP)
                         + CoolingH2CollisionalDissociation(PhydroPP)
@@ -376,7 +376,7 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
     }else {
         PhydroPP->L_H2  = 0.e0;
     }
-    if(CEQLibRunParameters.UseCOFormation==true){
+    if(EQCLibRunParameters.UseCOFormation==true){
         PhydroPP->L_CO  = CoolingCORovibrationalLine(PhydroPP); //T,nCO,nH,nHI,nH2);
     }else{
         PhydroPP->L_CO  = 0.e0;
@@ -415,11 +415,11 @@ int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP){
 
     if(!isfinite(PhydroPP->H_tot) || !isfinite(PhydroPP->L_tot)
        || !isfinite(PhydroPP->L_Halpha) || !isfinite(PhydroPP->L_HI21cm)
-       || !isfinite(PhydroPP->k_HI21cm)) return CEQ_INVALID_INPUT;
-    return CEQ_SUCCESS;
+       || !isfinite(PhydroPP->k_HI21cm)) return EQC_INVALID_INPUT;
+    return EQC_SUCCESS;
 }
 
-double CEQLibGetTotalNumberDensity(StructCEQData *PhydroPP){
+double EQCLibGetTotalNumberDensity(StructEQCData *PhydroPP){
     double Ntot = PhydroPP->nel 
                 + PhydroPP->nHeIII + PhydroPP->nCIII + PhydroPP->nOIII + PhydroPP->nSiIII;
     for(int i=0; i<NumberChemicalElement; i++)
@@ -429,7 +429,7 @@ double CEQLibGetTotalNumberDensity(StructCEQData *PhydroPP){
     return Ntot;
 }
 
-double CEQLibGetTotalMassDensity(StructCEQData *PhydroPP){
+double EQCLibGetTotalMassDensity(StructEQCData *PhydroPP){
     double Mass = PhydroPP->nHeIII*ChemicalElementMass[ipHELIUM]
                 + PhydroPP->nCIII *ChemicalElementMass[ipCARBON]
                 + PhydroPP->nOIII *ChemicalElementMass[ipOXYGEN]
@@ -441,19 +441,19 @@ double CEQLibGetTotalMassDensity(StructCEQData *PhydroPP){
     return Mass;
 }
 
-double CEQLibGetElectronNumberDensity(StructCEQData *PhydroPP){
+double EQCLibGetElectronNumberDensity(StructEQCData *PhydroPP){
     double Ntot = 2*(PhydroPP->nHeIII + PhydroPP->nCIII + PhydroPP->nOIII + PhydroPP->nSiIII);
     for(int i=0; i<NumberChemicalElement; i++)
         Ntot += PhydroPP->nion[i];
     return Ntot;
 }
 
-double CEQLibGetMeanMolecularWeight(StructCEQData *PhydroPP){
-    return CEQLibGetTotalMassDensity(PhydroPP)/(PROTON_MASS_CGS*CEQLibGetTotalNumberDensity(PhydroPP));
+double EQCLibGetMeanMolecularWeight(StructEQCData *PhydroPP){
+    return EQCLibGetTotalMassDensity(PhydroPP)/(PROTON_MASS_CGS*EQCLibGetTotalNumberDensity(PhydroPP));
 }
 
-double CEQLibGetMeanDegreeOfFreedom(StructCEQData *PhydroPP){
-    double Ntot    = CEQLibGetTotalNumberDensity(PhydroPP);
+double EQCLibGetMeanDegreeOfFreedom(StructEQCData *PhydroPP){
+    double Ntot    = EQCLibGetTotalNumberDensity(PhydroPP);
     double Freedom = PhydroPP->nHeIII*NumberOfTranslationalDegreesOfFreedom
                    + PhydroPP->nCIII *NumberOfTranslationalDegreesOfFreedom
                    + PhydroPP->nOIII *NumberOfTranslationalDegreesOfFreedom
@@ -466,19 +466,19 @@ double CEQLibGetMeanDegreeOfFreedom(StructCEQData *PhydroPP){
     return 0.5*Freedom/Ntot;
 }
 
-double CEQLibConvertTtoU(StructCEQData *PhydroPP){
+double EQCLibConvertTtoU(StructEQCData *PhydroPP){
     return PhydroPP->DegreeOfFreedom*(BOLTZMANN_CONSTANT_CGS)*PhydroPP->T/(PhydroPP->MeanMolecularWeight*PROTON_MASS_CGS);
 }
 
-double CEQLibConvertUtoT(StructCEQData *PhydroPP){
+double EQCLibConvertUtoT(StructEQCData *PhydroPP){
     return PhydroPP->MeanMolecularWeight*PROTON_MASS_CGS*PhydroPP->U/(PhydroPP->DegreeOfFreedom*BOLTZMANN_CONSTANT_CGS);
 }
 
-double CEQApproximateDustToGasRatio(double T){
+double EQCApproximateDustToGasRatio(double T){
     return ApproximateDustToGasRatio(T);
 }
 
-double CEQApproximateDustTemperature(double Nt, double G0){
+double EQCApproximateDustTemperature(double Nt, double G0){
     return ApproximateDustTemperature(Nt,G0);
 }
 #if 0

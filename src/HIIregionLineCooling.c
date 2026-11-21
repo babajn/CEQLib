@@ -126,7 +126,7 @@ static double G13(double T){
     else
         return 0.e0;
 }
-double CoolingHalphaEmission(StructCEQData *PhydroPP){
+double CoolingHalphaEmission(StructEQCData *PhydroPP){
     double T    = PhydroPP->T;
     double T4   = 1.e-4*T;
     double lnT4 = log(T4);

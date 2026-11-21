@@ -23,14 +23,14 @@ typedef struct {
 } ChargePoint;
 
 typedef struct {
-    const StructCEQData *initial;
+    const StructEQCData *initial;
     double previousElectronDensity;
     double previousCO;
     double accuracy;
     const CEQCarbonShieldingInterval *carbonIntervals;
     const CEQRateCoefficients *coefficients;
     int carbonIntervalCount;
-    StructCEQData solution;
+    StructEQCData solution;
     bool found;
     double seedH2;   /* H2 density of the latest successful trial, to seed the next. */
     bool hasXrayIonization;
@@ -41,11 +41,11 @@ typedef struct {
 
 static bool UsesChargeTransfer(void)
 {
-    return CEQLibRunParameters.UseHIIRegion && CEQLibRunParameters.UseChargeTransfer;
+    return EQCLibRunParameters.UseHIIRegion && EQCLibRunParameters.UseChargeTransfer;
 }
 
 /* These rates stay fixed when only the CO abundance changes at a trial n_e. */
-static CEQIonLadderRates OxygenRates(const StructCEQData *state, const CEQRateCoefficients *c)
+static CEQIonLadderRates OxygenRates(const StructEQCData *state, const CEQRateCoefficients *c)
 {
     const double ne = state->nel;
     const double nH = state->n[ipHYDROGEN];
@@ -63,7 +63,7 @@ static CEQIonLadderRates OxygenRates(const StructCEQData *state, const CEQRateCo
 }
 
 /* In H II region mode, couple O and H through charge transfer unless it is turned off. */
-static int SolveOxygen(StructCEQData *state, const CEQHydrogenRates *hydrogen,
+static int SolveOxygen(StructEQCData *state, const CEQHydrogenRates *hydrogen,
                        const CEQIonLadderRates *oxygen, const CEQRateCoefficients *c, double accuracy)
 {
     return UsesChargeTransfer() ?
@@ -74,7 +74,7 @@ static int SolveOxygen(StructCEQData *state, const CEQHydrogenRates *hydrogen,
                           &state->natom[ipOXYGEN], &state->nion[ipOXYGEN], &state->nOIII);
 }
 
-static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen,
+static int SolveOtherIons(StructEQCData *state, const CEQHydrogenRates *hydrogen,
                           CEQIonLadderRates *oxygen, const CEQRateCoefficients *c, double accuracy)
 {
     const double ne = state->nel;
@@ -93,11 +93,11 @@ static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen
         c->helium.photo1 + ne*c->helium.collision1,
         ne*c->helium.recombination2,
         &state->natom[ipHELIUM], &state->nion[ipHELIUM], &state->nHeIII);
-    if(status != CEQ_SUCCESS) return status;
+    if(status != EQC_SUCCESS) return status;
 
     *oxygen = OxygenRates(state,c);
     status = SolveOxygen(state,hydrogen,oxygen,c,accuracy);
-    if(status != CEQ_SUCCESS) return status;
+    if(status != EQC_SUCCESS) return status;
 
     return CEQSolveIonLadder(state->n[ipSILICON],
         c->silicon.photo0 + ne*c->silicon.collision0
@@ -111,28 +111,28 @@ static int SolveOtherIons(StructCEQData *state, const CEQHydrogenRates *hydrogen
 
 static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
 {
-    StructCEQData state = *search->initial;
+    StructEQCData state = *search->initial;
     state.nel = electronDensity;
     /* The H2 root is unique, so the previous trial only shortens its search. */
     state.nmol[ipH2] = search->seedH2;
     const CEQHydrogenRates hydrogen = CEQHydrogenIonizationRatesWithCoefficients(&state,search->coefficients);
     int status = CEQSolveHydrogenEquilibriumWithRates(&state,&hydrogen,search->coefficients,search->accuracy);
-    if(status == CEQ_SUCCESS)
+    if(status == EQC_SUCCESS)
         status = CEQSolveCarbonWithIntervals(&state,search->previousCO,search->accuracy,
                                              search->carbonIntervals,search->carbonIntervalCount,
                                              search->coefficients,false);
     double carbonH2 = state.nmol[ipH2];
     CEQIonLadderRates oxygen;
-    if(status == CEQ_SUCCESS)
+    if(status == EQC_SUCCESS)
         status = SolveOtherIons(&state,&hydrogen,&oxygen,search->coefficients,search->accuracy);
     /* Check the CO fluxes whenever charge transfer changes H2. Even a small
        change can cross a shielding table boundary. Update H and O again only
        when the CO solve changes the oxygen available for charge transfer. */
-    if(status == CEQ_SUCCESS && UsesChargeTransfer() && CEQLibRunParameters.UseH2Formation &&
-       CEQLibRunParameters.UseCOFormation && state.T <= 1.e4 && state.n[ipCARBON] > 0.0){
+    if(status == EQC_SUCCESS && UsesChargeTransfer() && EQCLibRunParameters.UseH2Formation &&
+       EQCLibRunParameters.UseCOFormation && state.T <= 1.e4 && state.n[ipCARBON] > 0.0){
         for(int pass = 0; state.nmol[ipH2] != carbonH2; pass++){
             if(pass == 16){
-                status = CEQ_NO_CONVERGENCE;
+                status = EQC_NO_CONVERGENCE;
                 break;
             }
             carbonH2 = state.nmol[ipH2];
@@ -140,23 +140,23 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
             status = CEQSolveCarbonWithIntervals(&state,previousCO,search->accuracy,
                                                  search->carbonIntervals,search->carbonIntervalCount,
                                                  search->coefficients,true);
-            if(status != CEQ_SUCCESS || state.nmol[ipCO] == previousCO) break;
+            if(status != EQC_SUCCESS || state.nmol[ipCO] == previousCO) break;
             status = SolveOxygen(&state,&hydrogen,&oxygen,search->coefficients,search->accuracy);
-            if(status != CEQ_SUCCESS) break;
+            if(status != EQC_SUCCESS) break;
         }
     }
 
-    if(status == CEQ_SUCCESS) search->seedH2 = state.nmol[ipH2];
+    if(status == EQC_SUCCESS) search->seedH2 = state.nmol[ipH2];
     ChargePoint point = {.density = electronDensity, .status = status};
-    if(status != CEQ_SUCCESS){
-        if(status == CEQ_NO_CONVERGENCE || search->failure == CEQ_NO_EQUILIBRIUM)
+    if(status != EQC_SUCCESS){
+        if(status == EQC_NO_CONVERGENCE || search->failure == EQC_NO_EQUILIBRIUM)
             search->failure = status;
         return point;
     }
 
-    const double charge = CEQLibGetElectronNumberDensity(&state);
+    const double charge = EQCLibGetElectronNumberDensity(&state);
     if(!isfinite(charge) || charge < 0.0){
-        point.status = search->failure = CEQ_NO_CONVERGENCE;
+        point.status = search->failure = EQC_NO_CONVERGENCE;
         return point;
     }
     double scale = fmax(charge,electronDensity);
@@ -194,7 +194,7 @@ static void SearchPhotoionizedCharge(ChargeSearch *search, ChargePoint hint, dou
     for(int i = 0; i < 6 && density > 0.0 && density <= maximumCharge && density != previous.density; i++){
         const ChargePoint next = EvaluateCharge(search,density);
         if(search->found) return;
-        if(next.status != CEQ_SUCCESS) break;
+        if(next.status != EQC_SUCCESS) break;
 
         /* Use a constant scale for the secant so it sees the slope of q-ne.
            The convergence check still uses the relative charge residual. */
@@ -231,7 +231,7 @@ static LocalChargeResult ExpandChargeBracket(ChargeSearch *search, ChargePoint h
             break;
 
         const ChargePoint next = EvaluateCharge(search,density);
-        if(next.status != CEQ_SUCCESS)
+        if(next.status != EQC_SUCCESS)
             break;
         if(fabs(next.residual) <= search->accuracy)
             return LocalChargeRoot;
@@ -270,7 +270,7 @@ static bool NarrowChargeBracket(ChargeSearch *search, ChargePoint *lower, Charge
 static void BisectCharge(ChargeSearch *search, ChargePoint lower, ChargePoint upper,
                         bool interpolate)
 {
-    if(lower.status != CEQ_SUCCESS || upper.status != CEQ_SUCCESS ||
+    if(lower.status != EQC_SUCCESS || upper.status != EQC_SUCCESS ||
             fabs(lower.residual) <= search->accuracy || fabs(upper.residual) <= search->accuracy ||
             (lower.residual < 0.0) == (upper.residual < 0.0))
         return;
@@ -302,22 +302,22 @@ static void BisectCharge(ChargeSearch *search, ChargePoint lower, ChargePoint up
 
         const int failure = search->failure;
         ChargePoint trial = EvaluateCharge(search,density);
-        if(trial.status != CEQ_SUCCESS && density != middle){
+        if(trial.status != EQC_SUCCESS && density != middle){
             search->failure = failure;
             trial = EvaluateCharge(search,middle);
         }
-        if(trial.status != CEQ_SUCCESS) return;
+        if(trial.status != EQC_SUCCESS) return;
         if(fabs(trial.residual) <= search->accuracy) return;
         if((trial.residual < 0.0) == (lower.residual < 0.0)) lower = trial;
         else upper = trial;
     }
-    search->failure = CEQ_NO_CONVERGENCE;
+    search->failure = EQC_NO_CONVERGENCE;
 }
 
 static void SearchChargeAroundHint(ChargeSearch *search, ChargePoint hint,
                                    double minimumDensity, double maximumDensity)
 {
-    if(hint.status != CEQ_SUCCESS || hint.density <= 0.0 || hint.density < minimumDensity)
+    if(hint.status != EQC_SUCCESS || hint.density <= 0.0 || hint.density < minimumDensity)
         return;
 
     ChargePoint lower, upper;
@@ -335,7 +335,7 @@ static void SearchChargeInterval(ChargeSearch *search, double lowerDensity, doub
     ChargePoint upper = EvaluateCharge(search,upperDensity);
     double xrayRangeStart = XrayFitMinimumElectronFraction*search->initial->n[ipHYDROGEN];
     bool probeBelowXrayRange = lowerDensity == 0.0 && search->hasXrayIonization &&
-        hint.density < xrayRangeStart && lower.status == CEQ_SUCCESS && lower.residual == 0.0;
+        hint.density < xrayRangeStart && lower.status == EQC_SUCCESS && lower.residual == 0.0;
 
     if(lowerDensity == 0.0){
         /* Test the positive side separately; pure collisional gas can also have
@@ -346,9 +346,9 @@ static void SearchChargeInterval(ChargeSearch *search, double lowerDensity, doub
             positiveDensity = fmin(xrayRangeStart,0.5*upperDensity);
         if(positiveDensity > lowerDensity && positiveDensity < upperDensity){
             ChargePoint positive = EvaluateCharge(search,positiveDensity);
-            if(positive.status == CEQ_SUCCESS){
+            if(positive.status == EQC_SUCCESS){
                 /* Keep the neutral-limit probes on the existing bisection grid. */
-                if(hint.status == CEQ_SUCCESS && hint.density > lower.density && hint.density < positive.density){
+                if(hint.status == EQC_SUCCESS && hint.density > lower.density && hint.density < positive.density){
                     BisectCharge(search,lower,hint,false);
                     BisectCharge(search,hint,positive,false);
                 }else{
@@ -360,7 +360,7 @@ static void SearchChargeInterval(ChargeSearch *search, double lowerDensity, doub
     }
 
     unsigned int beforeBisection = search->solutions;
-    if(hint.status == CEQ_SUCCESS && hint.density > lower.density && hint.density < upper.density){
+    if(hint.status == EQC_SUCCESS && hint.density > lower.density && hint.density < upper.density){
         BisectCharge(search,lower,hint,true);
         BisectCharge(search,hint,upper,true);
     }else{
@@ -380,9 +380,9 @@ static void SearchChargeInterval(ChargeSearch *search, double lowerDensity, doub
 
     /* Molecular shielding can remove a CO root over part of the interval.
        Probe neighboring valid subintervals without bracketing across failures. */
-    if(CEQLibRunParameters.UseCOFormation && search->initial->T <= 1.0e4 &&
+    if(EQCLibRunParameters.UseCOFormation && search->initial->T <= 1.0e4 &&
             search->solutions == beforeBisection &&
-            (search->solutions == initialSolutions || lower.status != CEQ_SUCCESS || upper.status != CEQ_SUCCESS)){
+            (search->solutions == initialSolutions || lower.status != EQC_SUCCESS || upper.status != EQC_SUCCESS)){
         ChargePoint previous = lower;
         const int subdivisions = 32;
         for(int i=1;i<=subdivisions;i++){
@@ -406,7 +406,7 @@ static void SearchChargeInterval(ChargeSearch *search, double lowerDensity, doub
     }
 }
 
-static bool ConservesElements(const StructCEQData *state)
+static bool ConservesElements(const StructEQCData *state)
 {
     const double higher[NumberChemicalElement] = {
         0.0, state->nHeIII, state->nCIII, state->nOIII, state->nSiIII
@@ -422,25 +422,25 @@ static bool ConservesElements(const StructCEQData *state)
     return true;
 }
 
-int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accuracy)
+int EQCLibChemicalReactionEquilibrium(StructEQCData *state, const double accuracy)
 {
     if(!state || !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0 ||
-            !isfinite(state->T) || state->T <= 0.0) return CEQ_INVALID_INPUT;
+            !isfinite(state->T) || state->T <= 0.0) return EQC_INVALID_INPUT;
 
     const double conditions[] = {state->G0, state->X0, state->NLyn, state->Nt, state->Z, state->Zd};
     for(unsigned int i=0;i<sizeof(conditions)/sizeof(conditions[0]);i++){
-        if(!isfinite(conditions[i]) || conditions[i] < 0.0) return CEQ_INVALID_INPUT;
+        if(!isfinite(conditions[i]) || conditions[i] < 0.0) return EQC_INVALID_INPUT;
     }
     const double nH = state->n[ipHYDROGEN];
-    if(nH <= 0.0) return CEQ_INVALID_INPUT;
+    if(nH <= 0.0) return EQC_INVALID_INPUT;
     double maximumCharge = nH;
     for(int i=0;i<NumberChemicalElement;i++){
-        if(!isfinite(state->n[i]) || state->n[i] < 0.0) return CEQ_INVALID_INPUT;
+        if(!isfinite(state->n[i]) || state->n[i] < 0.0) return EQC_INVALID_INPUT;
         if(i != ipHYDROGEN) maximumCharge += 2.0*state->n[i];
     }
-    if(!isfinite(maximumCharge)) return CEQ_INVALID_INPUT;
+    if(!isfinite(maximumCharge)) return EQC_INVALID_INPUT;
 
-    const int shieldingPoints = CEQLibRunParameters.UseCOFormation && state->T <= 1.0e4 ?
+    const int shieldingPoints = EQCLibRunParameters.UseCOFormation && state->T <= 1.0e4 ?
                                 CEQCOShieldingPointCount() : 0;
     CEQCarbonShieldingInterval carbonIntervals[shieldingPoints+1];
     const int carbonIntervalCount = CEQPrepareCarbonShieldingIntervals(state,carbonIntervals,shieldingPoints);
@@ -452,14 +452,14 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
         .coefficients = &coefficients,
         .seedH2 = state->nmol[ipH2],
         .previousElectronDensity = isfinite(state->nel) ? fmin(fmax(state->nel,0.0),maximumCharge) : 0.0,
-        .previousCO = CEQLibRunParameters.UseCOFormation ? state->nmol[ipCO] : 0.0,
+        .previousCO = EQCLibRunParameters.UseCOFormation ? state->nmol[ipCO] : 0.0,
         .accuracy = accuracy,
         .carbonIntervals = carbonIntervals,
         .carbonIntervalCount = carbonIntervalCount,
-        .hasXrayIonization = CEQLibRunParameters.UseSoftXrayIonization && state->X0 > 0.0,
-        .hasMolecularChargeCoupling = CEQLibRunParameters.UseH2Formation ||
-                                     (CEQLibRunParameters.UseCOFormation && state->T <= 1.0e4),
-        .failure = CEQ_NO_EQUILIBRIUM
+        .hasXrayIonization = EQCLibRunParameters.UseSoftXrayIonization && state->X0 > 0.0,
+        .hasMolecularChargeCoupling = EQCLibRunParameters.UseH2Formation ||
+                                     (EQCLibRunParameters.UseCOFormation && state->T <= 1.0e4),
+        .failure = EQC_NO_EQUILIBRIUM
     };
     ChargePoint hint = EvaluateCharge(&search,search.previousElectronDensity);
     /* With only photoionization, electron collisions and electron
@@ -470,10 +470,10 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
        H-O charge transfer conserves charge and couples the H and O ladders
        only through O/H. The argument above does not cover that coupling, so
        HIIRegionTest compares it with solves from an ionized seed. */
-    if(!search.found && hint.status == CEQ_SUCCESS && hint.residual > 0.5 &&
-            CEQLibRunParameters.UseHIIRegion && state->NLyn > 0.0 &&
+    if(!search.found && hint.status == EQC_SUCCESS && hint.residual > 0.5 &&
+            EQCLibRunParameters.UseHIIRegion && state->NLyn > 0.0 &&
             !search.hasMolecularChargeCoupling && state->X0 == 0.0 &&
-            (!CEQLibRunParameters.UseGrainSurfaceProcesses || state->Zd == 0.0))
+            (!EQCLibRunParameters.UseGrainSurfaceProcesses || state->Zd == 0.0))
         SearchPhotoionizedCharge(&search,hint,maximumCharge);
     if(!search.found){
         if(search.hasXrayIonization){
@@ -503,16 +503,16 @@ int CEQLibChemicalReactionEquilibrium(StructCEQData *state, const double accurac
     }
 
     if(!search.found) return search.failure;
-    StructCEQData *solution = &search.solution;
-    if(!ConservesElements(solution)) return CEQ_NO_CONVERGENCE;
-    solution->MeanMolecularWeight = CEQLibGetMeanMolecularWeight(solution);
-    solution->DegreeOfFreedom = CEQLibGetMeanDegreeOfFreedom(solution);
+    StructEQCData *solution = &search.solution;
+    if(!ConservesElements(solution)) return EQC_NO_CONVERGENCE;
+    solution->MeanMolecularWeight = EQCLibGetMeanMolecularWeight(solution);
+    solution->DegreeOfFreedom = EQCLibGetMeanDegreeOfFreedom(solution);
     if(!isfinite(solution->MeanMolecularWeight) || solution->MeanMolecularWeight <= 0.0 ||
             !isfinite(solution->DegreeOfFreedom) || solution->DegreeOfFreedom <= 0.0)
-        return CEQ_NO_CONVERGENCE;
+        return EQC_NO_CONVERGENCE;
     solution->Gamma = (1.0+solution->DegreeOfFreedom)/solution->DegreeOfFreedom;
     solution->Gm1 = solution->Gamma-1.0;
     solution->GGm1 = solution->Gamma*solution->Gm1;
     *state = *solution;
-    return CEQ_SUCCESS;
+    return EQC_SUCCESS;
 }

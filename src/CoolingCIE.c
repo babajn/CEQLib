@@ -23,8 +23,8 @@ void InitializeCoolingTableCIE(int Check){
 
     FILE *output = NULL;
     if(Check == 1){
-        output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CIECooling.dat","w");
-        if(output == NULL) perror(CEQ_DIAGNOSTIC_DIRECTORY "/CIECooling.dat");
+        output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/CIECooling.dat","w");
+        if(output == NULL) perror(EQC_DIAGNOSTIC_DIRECTORY "/CIECooling.dat");
     }
     for(int im=1;im<COOLING_TABLE_CIE_SIZE_Z;im++){
         for(int it=0; it<COOLING_TABLE_CIE_SIZE_T; it++){
@@ -76,9 +76,9 @@ void InitializeCoolingTableCIE(int Check){
 //// normalized cooling rate for CIE gas [erg cm^3/s] 
 // ref. Sutherland & Dopita, ApJS, (1993)
 //      http://www.mso.anu.edu.au/~ralph/data/cool/
-double CoolingRateCIE(StructCEQData *PhydroPP){
+double CoolingRateCIE(StructEQCData *PhydroPP){
     
-    if(CEQLibRunParameters.UseCIEResonanceCooling==false)   return 0.e0;
+    if(EQCLibRunParameters.UseCIEResonanceCooling==false)   return 0.e0;
     if(FlagCoolingTable == OFF || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0 || PhydroPP->T > 1.0e9
        || !isfinite(PhydroPP->Z) || PhydroPP->Z < 0.0) return NAN;
     if(PhydroPP->Z == 0.0) return 0.0;

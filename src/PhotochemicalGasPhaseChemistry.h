@@ -1,7 +1,7 @@
 #include "ChemicalEquilibriumCooling.h"
 
 void InitializePhotochemistory(int Check);
-CEQLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory);
+EQCLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory);
 
 double HIPhotoIonizationRate(double NLyn);
 double HeIPhotoIonizationRate(double NLyn);
@@ -16,7 +16,7 @@ double SiIIPhotoionizationRate(double NLyn);
 double CIFUVPhotoionizationRate(double G0, double Av);
 double SiIFUVPhotoionizationRate(double G0, double Av);
 
-double HeatingPhotoionization(StructCEQData *PhydroPP);
+double HeatingPhotoionization(StructEQCData *PhydroPP);
 double HeatingHIPhotoionization(double NLyn);
 double HeatingHeIPhotoionization(double NLyn);
 double HeatingHeIIPhotoionization(double NLyn);

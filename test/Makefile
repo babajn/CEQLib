@@ -1,6 +1,6 @@
 #CC = mpicc
 CC = gcc
-CEQLIB_DIR ?= ../src
+EQCLIB_DIR ?= ../src
 GSL_DIR ?= /home/babajn/lib/gsl
 PYTHON ?= python3
 
@@ -10,9 +10,9 @@ OPTIMIZE += -Winline -Wundef -Wmissing-noreturn -Wstrict-prototypes
 OPTIMIZE += -g 
 OPTIMIZE += -DDEBUG_LEVEL=0
 
-INCLUDEPATH += -I$(GSL_DIR)/include -I$(CEQLIB_DIR)
+INCLUDEPATH += -I$(GSL_DIR)/include -I$(EQCLIB_DIR)
 
-LDFLAGS += -L$(CEQLIB_DIR) -lCEQLib
+LDFLAGS += -L$(EQCLIB_DIR) -lEQCLib
 LDFLAGS += -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas
 
 #include makeflags
@@ -40,14 +40,14 @@ HEADS = Astro.h \
 
 ALL:   start
 
-.PHONY: start ceqlib check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot
-ceqlib:
-	$(MAKE) -C $(CEQLIB_DIR) GSL_DIR=$(GSL_DIR) libCEQLib.a
+.PHONY: start eqclib check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot
+eqclib:
+	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
-start: $(OBJS) ceqlib
+start: $(OBJS) eqclib
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o test.out
 
-check: EquilibriumTest.o ceqlib
+check: EquilibriumTest.o eqclib
 	mkdir -p out
 	$(CC) $(CFLAGS) -fno-fast-math EquilibriumTest.o $(LDFLAGS) -o out/equilibrium_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/check.XXXXXX"); \
@@ -56,13 +56,13 @@ check: EquilibriumTest.o ceqlib
 
 EquilibriumTest.o: override CFLAGS += -fno-fast-math
 
-benchmark: ThermalBenchmark.c ceqlib
+benchmark: ThermalBenchmark.c eqclib
 	mkdir -p out
 	$(CC) $(CFLAGS) -fno-fast-math -fopenmp ThermalBenchmark.c $(LDFLAGS) -o out/thermal_benchmark.out
 	./out/thermal_benchmark.out atomic
 	./out/thermal_benchmark.out molecular
 
-hii: HIIRegionTest.c HIIRegionFixture.h ceqlib
+hii: HIIRegionTest.c HIIRegionFixture.h eqclib
 	mkdir -p out/hii
 	$(CC) $(CFLAGS) -fno-fast-math HIIRegionTest.c $(LDFLAGS) -o out/hii_region_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/hii.XXXXXX"); \
@@ -70,7 +70,7 @@ hii: HIIRegionTest.c HIIRegionFixture.h ceqlib
 	"$(CURDIR)/out/hii_region_test.out" "$(abspath ../data/PEGASE2)"; \
 	mv equilibrium.csv thermal_curve.csv reactions.csv "$(CURDIR)/out/hii/"
 
-hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h ceqlib
+hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h eqclib
 	mkdir -p out/hii
 	$(CC) $(CFLAGS) -fno-fast-math HIIRegionBenchmark.c $(LDFLAGS) -o out/hii_region_benchmark.out
 	@set -e; csv=$$(mktemp "$(CURDIR)/out/hii/benchmark.XXXXXX"); \
@@ -82,7 +82,7 @@ hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h ceqlib
 hii-plot: hii
 	$(PYTHON) ../plot/plot_hii_region.py
 
-co: MolecularTest.c MolecularFixture.h ceqlib
+co: MolecularTest.c MolecularFixture.h eqclib
 	mkdir -p out/co
 	$(CC) $(CFLAGS) -fno-fast-math MolecularTest.c $(LDFLAGS) -o out/molecular_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/co.XXXXXX"); \
@@ -93,7 +93,7 @@ co: MolecularTest.c MolecularFixture.h ceqlib
 co-plot: co
 	$(PYTHON) ../plot/plot_co_chemistry.py
 
-molecular-settings-benchmark: MolecularSettingsBenchmark.c MolecularFixture.h ceqlib
+molecular-settings-benchmark: MolecularSettingsBenchmark.c MolecularFixture.h eqclib
 	mkdir -p out/co
 	$(CC) $(CFLAGS) -fno-fast-math MolecularSettingsBenchmark.c $(LDFLAGS) -o out/molecular_settings_benchmark.out
 	@set -e; csv=$$(mktemp "$(CURDIR)/out/co/settings.XXXXXX"); \

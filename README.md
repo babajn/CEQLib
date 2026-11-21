@@ -1,4 +1,4 @@
-# CEQLib
+# EQCLib (Equilibrium Cooling)
 
 星間ガスの化学平衡と冷却・加熱率を計算する C ライブラリです。固定温度での化学平衡と、化学平衡を仮定したエネルギー方程式の陰的更新に対応します。
 
@@ -7,7 +7,7 @@
 C99 対応の GCC と GNU Scientific Library（GSL）が必要です。以下の `GSL_DIR` は GSL のインストール先に合わせてください。ベンチマークは OpenMP を使用します。
 
 ```sh
-make -C src GSL_DIR="$HOME/lib/gsl" libCEQLib.a
+make -C src GSL_DIR="$HOME/lib/gsl" libEQCLib.a
 make -C test GSL_DIR="$HOME/lib/gsl" check
 OMP_NUM_THREADS=12 make -C test GSL_DIR="$HOME/lib/gsl" benchmark
 ```
@@ -16,35 +16,36 @@ OMP_NUM_THREADS=12 make -C test GSL_DIR="$HOME/lib/gsl" benchmark
 
 ## シミュレーションコードからの利用
 
-公開 API は [ChemicalEquilibriumCooling.h](src/ChemicalEquilibriumCooling.h) にあります。ホストコードを `libCEQLib.a`、`libgsl`、`libgslcblas`、`libm` とリンクします。
+公開 API は [ChemicalEquilibriumCooling.h](src/ChemicalEquilibriumCooling.h) にあります。ホストコードを `libEQCLib.a`、`libgsl`、`libgslcblas`、`libm` とリンクします。
+粒子の状態は [EQCDataStructure.h](src/EQCDataStructure.h) の `StructEQCData` で渡し、ステータスを返す API では `EQC_SUCCESS` で成功を判定します。
 
-実行パラメータを設定し、並列計算を始める前に `CEQLibTryInitialization` を呼び出してください。H II 領域の計算には PEGASE2 の入力ディレクトリを指定できます。エネルギー更新では `CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating` の成功を確認してから、呼び出し側で `U += dt * Du` を適用します。
+実行パラメータを設定し、並列計算を始める前に `EQCLibTryInitialization` を呼び出してください。H II 領域の計算には PEGASE2 の入力ディレクトリを指定できます。エネルギー更新では `EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating` の成功を確認してから、呼び出し側で `U += dt * Du` を適用します。
 
-H II 領域の酸素冷却を使うには、初期化前に `CEQLibSetRunParamHIIRegion(true)` を呼び、各粒子の `NLyn` に局所の水素電離光子束を設定します。光電離ガスの CIE 金属冷却を [O II] と [O III] の冷却に徐々に置き換え、15,000〜25,000 K の間で CIE に戻します。各遷移の光学的に薄い放射率は [HIIregionLineCooling.h](src/HIIregionLineCooling.h) の `CoolingLinesOII` と `CoolingLinesOIII` で取得できます。
+H II 領域の酸素冷却を使うには、初期化前に `EQCLibSetRunParamHIIRegion(true)` を呼び、各粒子の `NLyn` に局所の水素電離光子束を設定します。光電離ガスの CIE 金属冷却を [O II] と [O III] の冷却に徐々に置き換え、15,000〜25,000 K の間で CIE に戻します。各遷移の光学的に薄い放射率は [HIIregionLineCooling.h](src/HIIregionLineCooling.h) の `CoolingLinesOII` と `CoolingLinesOIII` で取得できます。
 
 この設定では、O⁰ + H⁺ ⇄ O⁺ + H⁰ と O²⁺ + H⁰ → O⁺ + H⁺ の電荷交換も解きます。H の電離分率を1変数とし、O の電離平衡と H I・H II の反応平衡を、電荷交換を含めて同時に満たします。H₂ 生成を有効にしている場合は、H の電離分率を変えるたびに H₂ の生成と消滅の釣り合いも解き直すので、H₂、H、O の反応がすべて同時に釣り合います。
 
 ### シミュレーションで速度を優先する設定
 
-ASURA などの銀河シミュレーションでは、次の設定から始めることを勧めます。すべて `CEQLibTryInitialization` の前、並列計算を始める前に一度だけ呼びます。実行中に変えないでください。
+ASURA などの銀河シミュレーションでは、次の設定から始めることを勧めます。すべて `EQCLibTryInitialization` の前、並列計算を始める前に一度だけ呼びます。実行中に変えないでください。
 
 ```c
-CEQLibSetRunParamRecombinationCaseB(true);
-CEQLibSetRunParamDustAttenuation(true);
-CEQLibSetRunParamGrainSurfaceProcesses(true);
-CEQLibSetRunParamCosmicRayIonization(true);
-CEQLibSetRunParamSoftXrayIonization(true);
-CEQLibSetRunParamCIEResonanceCooling(true);
-CEQLibSetRunParamHIIRegion(true);          /* 各粒子の NLyn を与える場合 */
-CEQLibSetRunParamH2Formation(true, 1.0);
-CEQLibSetRunParamCOFormation(true, 1.0);   /* CO が不要なら false */
-CEQLibSetRunParamChargeTransfer(true);     /* 物理モデルを保つため有効のまま */
-CEQLibSetRunParamChemistryAccuracy(1.0e-5);
-if(CEQLibTryInitialization(0, pegaseDirectory) != CEQ_SUCCESS) { /* 停止する */ }
+EQCLibSetRunParamRecombinationCaseB(true);
+EQCLibSetRunParamDustAttenuation(true);
+EQCLibSetRunParamGrainSurfaceProcesses(true);
+EQCLibSetRunParamCosmicRayIonization(true);
+EQCLibSetRunParamSoftXrayIonization(true);
+EQCLibSetRunParamCIEResonanceCooling(true);
+EQCLibSetRunParamHIIRegion(true);          /* 各粒子の NLyn を与える場合 */
+EQCLibSetRunParamH2Formation(true, 1.0);
+EQCLibSetRunParamCOFormation(true, 1.0);   /* CO が不要なら false */
+EQCLibSetRunParamChargeTransfer(true);     /* 物理モデルを保つため有効のまま */
+EQCLibSetRunParamChemistryAccuracy(1.0e-5);
+if(EQCLibTryInitialization(0, pegaseDirectory) != EQC_SUCCESS) { /* 停止する */ }
 
 /* 各粒子・各ステップ（並列可） */
 double Du;
-if(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e-4, &Du) == CEQ_SUCCESS)
+if(EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e-4, &Du) == EQC_SUCCESS)
     particle.U += particle.dt * Du;
 ```
 
@@ -52,12 +53,12 @@ if(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e
 
 | 設定 | 速度への効果 | 結果への影響 | 推奨 |
 | --- | --- | --- | --- |
-| `CEQLibSetRunParamChemistryAccuracy(1e-5)` | エネルギー更新が約 10〜25% 速い | 温度の変化は 2×10⁻⁵ 程度以下で、エネルギーの精度 10⁻⁴ より十分小さい | 速度優先では必ず設定 |
+| `EQCLibSetRunParamChemistryAccuracy(1e-5)` | エネルギー更新が約 10〜25% 速い | 温度の変化は 2×10⁻⁵ 程度以下で、エネルギーの精度 10⁻⁴ より十分小さい | 速度優先では必ず設定 |
 | エネルギー更新の `accuracy` 引数（`1e-4` → `1e-3`） | 約 2〜30% 速い | 1 ステップの許容誤差が 10 倍になる | 時間刻みに対する収束を確かめてから |
-| `CEQLibSetRunParamCOFormation(false, ...)` | 分子ガスで約 2.3 倍速い（下表） | CO の存在量と輝線冷却がゼロになり、炭素と酸素の状態が変わる | CO 冷却が不要な場合 |
-| `CEQLibSetRunParamH2Formation(false, ...)` | さらに約 1.9 倍速い | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
-| `CEQLibSetRunParamChargeTransfer(false)` | H II 領域の更新が約 20〜35% 速い | H I が残る条件で O III が過剰になり、Cloudy との温度差（太陽金属量の中央値）が 1.4% から 5.3% に広がる | 有効のまま |
-| `CEQLibSetRunParamHIIRegion(false)` | PEGASE2 スペクトルの読み込みと、光電離ガスの [O II]・[O III] 冷却・H–O 電荷交換を省ける | 粒子の `NLyn` は無視され（0 として扱われ）、光電離加熱と [O II]・[O III] 冷却がなくなる。炭素は FUV による光電離を使う | 電離光子束を扱わない場合 |
+| `EQCLibSetRunParamCOFormation(false, ...)` | 分子ガスで約 2.3 倍速い（下表） | CO の存在量と輝線冷却がゼロになり、炭素と酸素の状態が変わる | CO 冷却が不要な場合 |
+| `EQCLibSetRunParamH2Formation(false, ...)` | さらに約 1.9 倍速い | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
+| `EQCLibSetRunParamChargeTransfer(false)` | H II 領域の更新が約 20〜35% 速い | H I が残る条件で O III が過剰になり、Cloudy との温度差（太陽金属量の中央値）が 1.4% から 5.3% に広がる | 有効のまま |
+| `EQCLibSetRunParamHIIRegion(false)` | PEGASE2 スペクトルの読み込みと、光電離ガスの [O II]・[O III] 冷却・H–O 電荷交換を省ける | 粒子の `NLyn` は無視され（0 として扱われ）、光電離加熱と [O II]・[O III] 冷却がなくなる。炭素は FUV による光電離を使う | 電離光子束を扱わない場合 |
 
 分子化学の有無による違いを、H II 領域・ダスト・宇宙線・X 線・電荷交換を有効にし、化学平衡の許容誤差を `1e-5` にした条件で測りました。`n_H = 10⁻²〜10⁴ cm⁻³`、`T = 10〜10⁷ K`、電離光子なしと `log10(U) = −5, −3` の 975 点、時間刻み 1 万年の平均です。
 
@@ -71,20 +72,20 @@ if(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e
 
 その他の注意：
 
-- 正味冷却率の API（`CEQLibTryNetCoolingRateChemcalEquilibrium`）は内部で精度 1e-8 を指定するため、化学平衡の許容誤差の設定は効きません。時間積分には陰的なエネルギー更新の API を使ってください。
-- CIE 冷却を有効にすると、10⁹ K を超える温度は `CEQ_INVALID_INPUT` を返します。これより高温の粒子は呼び出し側で扱います。
-- 戻り値が `CEQ_SUCCESS` でない粒子には `U` を更新しないでください。失敗した条件を記録しておくと、原因を調べられます。
+- 正味冷却率の API（`EQCLibTryNetCoolingRateChemcalEquilibrium`）は内部で精度 1e-8 を指定するため、化学平衡の許容誤差の設定は効きません。時間積分には陰的なエネルギー更新の API を使ってください。
+- CIE 冷却を有効にすると、10⁹ K を超える温度は `EQC_INVALID_INPUT` を返します。これより高温の粒子は呼び出し側で扱います。
+- 戻り値が `EQC_SUCCESS` でない粒子には `U` を更新しないでください。失敗した条件を記録しておくと、原因を調べられます。
 - 化学平衡を CO 優勢の分子雲の奥まで使う場合は、[CO モデルの適用範囲](#co-モデルの適用範囲) を確認してください。
 
 ### 各設定の詳細
 
 | 設定 | 既定値 | 設定例 | 効果 |
 | --- | --- | --- | --- |
-| `CEQLibSetRunParamCOFormation` | `false` | `true, 1.0` | CO の化学平衡と輝線冷却を有効にします。第2引数は CO 生成率の倍率です。 |
-| `CEQLibSetRunParamChargeTransfer` | `true` | `false` | H II 領域の更新が約 20〜35% 速くなります。物理モデルが変わり、H I が残る条件で O III が過剰になります。Cloudy との比較では、太陽金属量の平衡温度の差が中央値 1.4% から 5.3% に広がります。H II 領域の設定が無効なときは効果がありません。 |
-| `CEQLibSetRunParamChemistryAccuracy` | `1e-8` | `1e-5` | 陰的なエネルギー更新の中で解く化学平衡の許容誤差の上限です。実際には `min(値, 0.1 × エネルギーの精度)` を使います。更新が約 10〜25% 速くなり、温度の変化は 2×10⁻⁵ 程度以下です。正味冷却率の API は内部で精度 1e-8 を指定するので、この設定にかかわらず 1e-9 以下で解きます。 |
+| `EQCLibSetRunParamCOFormation` | `false` | `true, 1.0` | CO の化学平衡と輝線冷却を有効にします。第2引数は CO 生成率の倍率です。 |
+| `EQCLibSetRunParamChargeTransfer` | `true` | `false` | H II 領域の更新が約 20〜35% 速くなります。物理モデルが変わり、H I が残る条件で O III が過剰になります。Cloudy との比較では、太陽金属量の平衡温度の差が中央値 1.4% から 5.3% に広がります。H II 領域の設定が無効なときは効果がありません。 |
+| `EQCLibSetRunParamChemistryAccuracy` | `1e-8` | `1e-5` | 陰的なエネルギー更新の中で解く化学平衡の許容誤差の上限です。実際には `min(値, 0.1 × エネルギーの精度)` を使います。更新が約 10〜25% 速くなり、温度の変化は 2×10⁻⁵ 程度以下です。正味冷却率の API は内部で精度 1e-8 を指定するので、この設定にかかわらず 1e-9 以下で解きます。 |
 
-CO 化学を使う場合は、`CEQLibSetRunParamH2Formation(true, 1.0)` と `CEQLibSetRunParamCOFormation(true, 1.0)` を設定します。CO を無効にするには `CEQLibSetRunParamCOFormation(false, 1.0)` を呼びます。無効にすると、更新後の CO 存在量と CO 輝線冷却はゼロになり、炭素・酸素の化学状態や冷却率にも影響します。[CO モデルの適用範囲](#co-モデルの適用範囲)
+CO 化学を使う場合は、`EQCLibSetRunParamH2Formation(true, 1.0)` と `EQCLibSetRunParamCOFormation(true, 1.0)` を設定します。CO を無効にするには `EQCLibSetRunParamCOFormation(false, 1.0)` を呼びます。無効にすると、更新後の CO 存在量と CO 輝線冷却はゼロになり、炭素・酸素の化学状態や冷却率にも影響します。[CO モデルの適用範囲](#co-モデルの適用範囲)
 
 CO を無効にした `make hii-benchmark` と同じ条件で、電荷交換を無効にして化学平衡の許容誤差を `1e-5` にすると、エネルギー更新1回あたりの時間は既定値の 0.6〜0.8 倍になりました。電荷交換を加える前の版と比べても 0.3〜0.6 倍です。測定値は単一スレッドの例で、計算機によって変わります。
 
@@ -126,16 +127,16 @@ make -C test GSL_DIR="$HOME/lib/gsl" hii-benchmark
 
 ### Cloudy との比較
 
-[Cloudy C23.01](https://data.nublado.org/cloudy_releases/c23/) をビルドし、CEQLib のルートで次を実行します。
+[Cloudy C23.01](https://data.nublado.org/cloudy_releases/c23/) をビルドし、EQCLib のルートで次を実行します。
 
 ```sh
 make -C test GSL_DIR="$HOME/lib/gsl" hii
 python3 test/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe
 ```
 
-[run_cloudy_hii.py](test/run_cloudy_hii.py) は CEQLib の `equilibrium.csv` から密度、電離パラメータ、元素組成を読み取ります。PEGASE2 の連続スペクトルを CEQLib と同じ水素電離光子数で年齢ごとに規格化し、0〜30 Myr の18時点を等重みで平均します。Cloudy には case B、ダストと分子なし、厚さ 1 cm の1ゾーンを指定します。密度、入射電離光子束、光学的厚さ、熱収支を確認し、冷却の出力から O II と O III の正味の衝突線冷却を集計します。CEQLib の比較量には H II 領域で使われる温度重みを含めています。
+[run_cloudy_hii.py](test/run_cloudy_hii.py) は EQCLib の `equilibrium.csv` から密度、電離パラメータ、元素組成を読み取ります。PEGASE2 の連続スペクトルを EQCLib と同じ水素電離光子数で年齢ごとに規格化し、0〜30 Myr の18時点を等重みで平均します。Cloudy には case B、ダストと分子なし、厚さ 1 cm の1ゾーンを指定します。密度、入射電離光子束、光学的厚さ、熱収支を確認し、冷却の出力から O II と O III の正味の衝突線冷却を集計します。EQCLib の比較量には H II 領域で使われる温度重みを含めています。
 
-各ゾーンの入力、ログ、集計 CSV は `test/out/hii/cloudy/` に出力します。[PlotHIIRegion.ipynb](plot/PlotHIIRegion.ipynb) は再計算の出力を優先し、出力がなければ [Cloudy C23.01 の保存済み参照結果](test/reference/cloudy_hii_c23.01.csv) を使います。参照結果で描画する場合は CEQLib の `make -C test hii` の出力があれば実行できます。Cloudy のデータ更新と計算方法は [C23 リリース論文](https://doi.org/10.22201/ia.01851101p.2023.59.02.12) と [C23.01 リリース論文](https://doi.org/10.3847/2515-5172/ad0e75) を参照してください。対応する PDF は [reference/](reference/index.tsv) に保存しています。
+各ゾーンの入力、ログ、集計 CSV は `test/out/hii/cloudy/` に出力します。[PlotHIIRegion.ipynb](plot/PlotHIIRegion.ipynb) は再計算の出力を優先し、出力がなければ [Cloudy C23.01 の保存済み参照結果](test/reference/cloudy_hii_c23.01.csv) を使います。参照結果で描画する場合は EQCLib の `make -C test hii` の出力があれば実行できます。Cloudy のデータ更新と計算方法は [C23 リリース論文](https://doi.org/10.22201/ia.01851101p.2023.59.02.12) と [C23.01 リリース論文](https://doi.org/10.3847/2515-5172/ad0e75) を参照してください。対応する PDF は [reference/](reference/index.tsv) に保存しています。
 
 ## H₂・CO 化学の検証計算と描画
 
@@ -197,7 +198,7 @@ PNG を生成するには `make -C test wolfire-plot` を実行してくださ�
 | H II 領域の O–H 電荷交換 | O²⁺ + H⁰ は [Kingdon & Ferland (1996)](https://ui.adsabs.harvard.edu/abs/1996ApJS..106..205K/abstract)、O⁰ + H⁺ ⇄ O⁺ + H⁰ は [Millar et al. (1997)](https://ui.adsabs.harvard.edu/abs/1997A%26AS..121..139M/abstract) |
 | Hα 放射率 | [Peters et al. (2017)](https://doi.org/10.1093/mnras/stw3216) |
 
-上表の原典 PDF、Cloudy の比較用リリース論文、既存モデルの全参考文献は [CEQLib/reference/index.tsv](reference/index.tsv) に取得元とともに整理しています。
+上表の原典 PDF、Cloudy の比較用リリース論文、既存モデルの全参考文献は [EQCLib/reference/index.tsv](reference/index.tsv) に取得元とともに整理しています。
 
 Nelson & Langer (1997) は出版社の PDF 直リンクが自動取得時に HTTP 403 を返すため、`reference/Nelson_Langer_1997.pdf` に公開リーダー経由の本文保持版を収録しています。組版画像が必要な場合は、索引に記載した DOI の出版社ページを参照してください。
 

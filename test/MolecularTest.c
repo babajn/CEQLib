@@ -41,7 +41,7 @@ typedef struct {
     double transferOtoOII, transferOIItoO, transferOIIItoOII;
 } Fluxes;
 
-static Fluxes ReactionFluxes(const StructCEQData *s)
+static Fluxes ReactionFluxes(const StructEQCData *s)
 {
     const double nH = s->n[ipHYDROGEN], T = s->T, ne = s->nel, xe = ne/nH;
     const double nHI = s->natom[ipHYDROGEN], nHII = s->nion[ipHYDROGEN], nH2 = s->nmol[ipH2];
@@ -58,7 +58,7 @@ static Fluxes ReactionFluxes(const StructCEQData *s)
 
     /* CO (Glover & Clark 2012): C+ + H2 forms CO at k*Cp*n(H2), competing with
        C photoionization; CO is photodissociated with H2 and CO shielding. */
-    const double formation = 4.e-16*pow(T/300.0,-0.2)*CEQLibRunParameters.CpForCO*nH2;
+    const double formation = 4.e-16*pow(T/300.0,-0.2)*EQCLibRunParameters.CpForCO*nH2;
     const double photoCI = 3.1e-10*s->G0*DustShieldingFactor(s->Nt, s->Zd, 3.0);
     const double effective = formation+photoCI > 0.0 ? formation*photoCI/(formation+photoCI) : 0.0;
     const double freeCarbon = s->natom[ipCARBON] + s->nion[ipCARBON] + s->nCIII;
@@ -86,7 +86,7 @@ typedef struct {
     double h2, co, hydrogen, oxygen, oxygenII, coConsistency;
 } Residuals;
 
-static Residuals Balances(const StructCEQData *s, const Fluxes *f)
+static Residuals Balances(const StructEQCData *s, const Fluxes *f)
 {
     Residuals r = {
         .h2 = Relative(f->h2Photodissociation + f->h2CollisionalDissociation, f->h2Formation),
@@ -111,14 +111,14 @@ static void WriteHeader(FILE *file)
           "residual_H2,residual_CO,residual_H,residual_OI,residual_OII,CO_consistency\n", file);
 }
 
-static bool WriteRow(FILE *file, Condition c, const StructCEQData *s)
+static bool WriteRow(FILE *file, Condition c, const StructEQCData *s)
 {
     const Fluxes f = ReactionFluxes(s);
     Residuals r = Balances(s, &f);
     if(s->nmol[ipCO] > 0.0){
-        StructCEQData carbon = *s;
-        const CEQLibStatus status = CEQSolveCarbonEquilibrium(&carbon, s->nmol[ipCO], chemistryAccuracy);
-        if(status != CEQ_SUCCESS){
+        StructEQCData carbon = *s;
+        const EQCLibStatus status = CEQSolveCarbonEquilibrium(&carbon, s->nmol[ipCO], chemistryAccuracy);
+        if(status != EQC_SUCCESS){
             fprintf(stderr, "CO re-solve failed at n_H=%g, T=%g K, G0=%g, N=%g, log U=%g (status %d)\n",
                     c.nH, c.T, c.G0, c.Nt, c.logU, status);
             return false;
@@ -152,10 +152,10 @@ static bool WriteRow(FILE *file, Condition c, const StructCEQData *s)
     return false;
 }
 
-static bool Solve(Condition c, StructCEQData *state)
+static bool Solve(Condition c, StructEQCData *state)
 {
-    const CEQLibStatus status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(state, chemistryAccuracy);
-    if(status == CEQ_SUCCESS) return true;
+    const EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(state, chemistryAccuracy);
+    if(status == EQC_SUCCESS) return true;
     fprintf(stderr, "Chemistry failed at n_H=%g, T=%g K, G0=%g, N=%g, log U=%g (status %d)\n",
             c.nH, c.T, c.G0, c.Nt, c.logU, status);
     return false;
@@ -173,7 +173,7 @@ static bool RunGrid(FILE *file)
     for(int i = 0; i <= 20; i++){
         const double nH = pow(10.0, 0.25*i);
         const Condition c = {nH, temperatures[t], 1.7, 2.0e21*sqrt(nH/100.0), logU[u]};
-        StructCEQData state = GasState(c);
+        StructEQCData state = GasState(c);
         if(!Solve(c, &state)) return false;
         ok = WriteRow(file, c, &state) && ok;
     }
@@ -190,10 +190,10 @@ static bool RunColumnScan(FILE *file)
     bool ok = true;
     for(size_t d = 0; d < sizeof(densities)/sizeof(densities[0]); d++)
     for(size_t g = 0; g < sizeof(fields)/sizeof(fields[0]); g++){
-        StructCEQData previous = {0};
+        StructEQCData previous = {0};
         for(int i = 0; i <= 40; i++){
             const Condition c = {densities[d], 30.0, fields[g], pow(10.0, 19.0 + 0.1*i), -INFINITY};
-            StructCEQData state = GasState(c);
+            StructEQCData state = GasState(c);
             if(i > 0){
                 state.nel = previous.nel;
                 state.nmol[ipH2] = previous.nmol[ipH2];
@@ -213,7 +213,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s PEGASE2_DIRECTORY\n", argv[0]);
         return EXIT_FAILURE;
     }
-    if(InitializeMolecularFixture(argv[1]) != CEQ_SUCCESS) return EXIT_FAILURE;
+    if(InitializeMolecularFixture(argv[1]) != EQC_SUCCESS) return EXIT_FAILURE;
 
     FILE *grid = fopen("equilibrium.csv", "w");
     FILE *scan = fopen("column_scan.csv", "w");

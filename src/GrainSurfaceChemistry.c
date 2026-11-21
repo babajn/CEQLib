@@ -15,7 +15,7 @@ static double PhotoelectricHeatingEfficiency(double T, double k);
 void InitializeGrainSurfaceChemistry(int Check){
 
     if(Check==1){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/GrainSurfaceChemistry.dat","w");
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/GrainSurfaceChemistry.dat","w");
         for(double logk=0.0; logk<=7.0; logk+=0.01){
             double k = pow(10.0,logk);
             fprintf(output,"%e ",k);
@@ -39,7 +39,7 @@ static double C_HeII[] = {5.572,3.185e-7,1.512,5.115e+3,3.903e-7,0.4956,5.494e-7
 static double C_CII[]  = {45.58,6.089e-3,1.128,4.331e+2,4.845e-2,0.8120,1.333e-4};
 static double C_SiII[] = {2.166,5.678e-8,1.874,4.375e+4,1.635e-6,0.8964,7.538e-5};
 static double RecombinationRateOnDust(double T, double G0, double ne, double Z, double C[7]){
-    if(CEQLibRunParameters.UseGrainSurfaceProcesses==false || Z==0.0) return 0.0;
+    if(EQCLibRunParameters.UseGrainSurfaceProcesses==false || Z==0.0) return 0.0;
     double numerator = 1.e-14*(Z/Zsol)*C[0];
     if(G0==0.0) return numerator;
     if(ne==0.0) return 0.0;
@@ -119,15 +119,15 @@ double SiIIRecombinationRateOnDust(double T, double G0, double ne, double Z){
 // rate consistent with the values of the electron recombination rates that are 
 // inferred observationally for PAHs; the original Bakes & Tielens (1994) 
 // treatment corresponds to phiPAH=1
-double CoolingDustRecombination(StructCEQData *PhydroPP){
+double CoolingDustRecombination(StructEQCData *PhydroPP){
     double T    = PhydroPP->T;
     double nH   = PhydroPP->n[ipHYDROGEN]; 
     double ne   = PhydroPP->nel; 
     double Zd   = PhydroPP->Zd;
     double G0   = PhydroPP->G0;
     double Ntot = PhydroPP->Nt;
-    if(CEQLibRunParameters.UseGrainSurfaceProcesses==false || ne==0.0 || Zd==0.0) return 0.0;
-    if(CEQLibRunParameters.UseDustAttenuation==true)
+    if(EQCLibRunParameters.UseGrainSurfaceProcesses==false || ne==0.0 || Zd==0.0) return 0.0;
+    if(EQCLibRunParameters.UseDustAttenuation==true)
         G0 *= DustShieldingFactor(Ntot,Zd,2.5);
     double k = G0*sqrt(T)/(ne*phiPAH);
     double beta = bt*pow(T,-0.068); 
@@ -140,7 +140,7 @@ double CoolingDustRecombination(StructCEQData *PhydroPP){
 static double PhotoelectricHeatingEfficiency(double T, double k){
     return (4.87e-2)/(1.0+(4.0e-3)*pow(k,0.73)) + (3.65e-2)*pow(1.e-4*T,0.7)/(1.0+(2.0e-4)*k);
 }
-double HeatingDustPhotoelectic(StructCEQData *PhydroPP){
+double HeatingDustPhotoelectic(StructEQCData *PhydroPP){
     double nH    = PhydroPP->n[ipHYDROGEN]; 
     double ne    = PhydroPP->nel; 
     double T     = PhydroPP->T;
@@ -148,7 +148,7 @@ double HeatingDustPhotoelectic(StructCEQData *PhydroPP){
     double G0    = PhydroPP->G0;
     double Ntot  = PhydroPP->Nt;
     if(ne==0.0 || G0==0.0 || Zd==0.0) return 0.0;
-    if(CEQLibRunParameters.UseDustAttenuation==true)
+    if(EQCLibRunParameters.UseDustAttenuation==true)
         G0 *= DustShieldingFactor(Ntot,Zd,2.5);
     double k = G0*sqrt(T)/(ne*phiPAH);
     double eff = PhotoelectricHeatingEfficiency(T,k);
@@ -197,7 +197,7 @@ double ApproximateDustTemperature(double Ntot, double G0){
     return DUST_TEMPERATURE;
 }
 
-double EffectiveDustTemperature(const StructCEQData *state){
+double EffectiveDustTemperature(const StructEQCData *state){
     return isfinite(state->Td) && state->Td > 0.0 ?
            state->Td : ApproximateDustTemperature(state->Nt,state->G0);
 }

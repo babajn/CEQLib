@@ -10,9 +10,9 @@
 enum { DensityCount = 13, TemperatureCount = 25, SampleCount = DensityCount*TemperatureCount, StepCount = 3 };
 static const double Accuracy = 1.0e-4;
 
-static StructCEQData GasState(double density, double temperature, double timestep)
+static StructEQCData GasState(double density, double temperature, double timestep)
 {
-    StructCEQData state = {
+    StructEQCData state = {
         .dt = timestep, .T = temperature, .Nt = 1.0e20*sqrt(density),
         .Z = SOLAR_METALLICITY, .Zd = SOLAR_METALLICITY, .G0 = 1.7, .X0 = 1.0,
         .nel = 1.0e-3*density,
@@ -22,13 +22,13 @@ static StructCEQData GasState(double density, double temperature, double timeste
         state.natom[i] = state.n[i];
         state.Rho += state.n[i]*ChemicalElementMass[i];
     }
-    state.MeanMolecularWeight = CEQLibGetMeanMolecularWeight(&state);
-    state.DegreeOfFreedom = CEQLibGetMeanDegreeOfFreedom(&state);
-    state.U = CEQLibConvertTtoU(&state);
+    state.MeanMolecularWeight = EQCLibGetMeanMolecularWeight(&state);
+    state.DegreeOfFreedom = EQCLibGetMeanDegreeOfFreedom(&state);
+    state.U = EQCLibConvertTtoU(&state);
     return state;
 }
 
-static bool SameSolution(const StructCEQData *a, const StructCEQData *b)
+static bool SameSolution(const StructEQCData *a, const StructEQCData *b)
 {
     if(a->T != b->T || a->U != b->U || a->Du != b->Du || a->nel != b->nel ||
        a->H_tot != b->H_tot || a->L_tot != b->L_tot ||
@@ -41,18 +41,18 @@ static bool SameSolution(const StructCEQData *a, const StructCEQData *b)
     return true;
 }
 
-static CEQLibStatus AdvanceState(StructCEQData *state)
+static EQCLibStatus AdvanceState(StructEQCData *state)
 {
-    const CEQLibStatus status =
-        CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(state,Accuracy,&state->Du);
-    if(status == CEQ_SUCCESS) state->U += state->dt*state->Du;
+    const EQCLibStatus status =
+        EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(state,Accuracy,&state->Du);
+    if(status == EQC_SUCCESS) state->U += state->dt*state->Du;
     return status;
 }
 
 static bool RunBenchmark(const char *mode, double years)
 {
-    static StructCEQData serial[SampleCount], parallel[SampleCount];
-    static CEQLibStatus status[SampleCount];
+    static StructEQCData serial[SampleCount], parallel[SampleCount];
+    static EQCLibStatus status[SampleCount];
     for(int i = 0; i < DensityCount; i++){
         const double density = pow(10.0,-2.0+0.5*i);
         for(int j = 0; j < TemperatureCount; j++){
@@ -78,7 +78,7 @@ static bool RunBenchmark(const char *mode, double years)
                 worstDensity = density;
                 worstTemperature = temperature;
             }
-            if(status[i] == CEQ_SUCCESS) successes++;
+            if(status[i] == EQC_SUCCESS) successes++;
             else fprintf(stderr,"%s dt=%g yr step=%d sample=%d status=%d nH=%.9g cm^-3 T=%.9g K\n",
                          mode,years,step,i,status[i],density,temperature);
         }
@@ -91,7 +91,7 @@ static bool RunBenchmark(const char *mode, double years)
             threads = omp_get_num_threads();
             #pragma omp for schedule(dynamic)
             for(int i = 0; i < SampleCount; i++){
-                const CEQLibStatus result = AdvanceState(&parallel[i]);
+                const EQCLibStatus result = AdvanceState(&parallel[i]);
                 if(result != status[i] || !SameSolution(&parallel[i],&serial[i])) mismatches++;
             }
         }
@@ -113,15 +113,15 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     const bool molecules = strcmp(argv[1],"molecular") == 0;
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(true);
-    CEQLibSetRunParamGrainSurfaceProcesses(true);
-    CEQLibSetRunParamCosmicRayIonization(true);
-    CEQLibSetRunParamSoftXrayIonization(true);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    CEQLibSetRunParamH2Formation(molecules,1.0);
-    CEQLibSetRunParamCOFormation(molecules,1.0);
-    if(CEQLibTryInitialization(0,NULL) != CEQ_SUCCESS) return EXIT_FAILURE;
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamDustAttenuation(true);
+    EQCLibSetRunParamGrainSurfaceProcesses(true);
+    EQCLibSetRunParamCosmicRayIonization(true);
+    EQCLibSetRunParamSoftXrayIonization(true);
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    EQCLibSetRunParamH2Formation(molecules,1.0);
+    EQCLibSetRunParamCOFormation(molecules,1.0);
+    if(EQCLibTryInitialization(0,NULL) != EQC_SUCCESS) return EXIT_FAILURE;
 
     const double timesteps[] = {10.0,1.0e4,1.0e6};
     bool ok = true;

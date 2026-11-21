@@ -1,6 +1,6 @@
-#ifndef __CEQDATASTRUCTURE_H_INCLUDED__
-#define __CEQDATASTRUCTURE_H_INCLUDED__
-typedef struct StructCEQData_tag{
+#ifndef __EQCDATASTRUCTURE_H_INCLUDED__
+#define __EQCDATASTRUCTURE_H_INCLUDED__
+typedef struct StructEQCData_tag{
     int GlobalID;
     double t;
     double dt;
@@ -72,5 +72,5 @@ typedef struct StructCEQData_tag{
     double L_HI21cm;    
     // absorption coefficient [1/cm]
     double k_HI21cm;    
-} StructCEQData;
+} StructEQCData;
 #endif

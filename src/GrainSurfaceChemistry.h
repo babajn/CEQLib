@@ -1,4 +1,4 @@
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 void InitializeGrainSurfaceChemistry(int Check);
 
@@ -11,13 +11,13 @@ double SiIIRecombinationRateOnDust(double T, double G0, double ne, double Z);
 
 //double TotalDustCoolingRate(double T, double nH, double ne, double Z, double G0);
 //double TotalDustCoolingRateHIIregion(double T, double nH, double ne, double Z, double G0);
-double CoolingDustRecombination(StructCEQData *PhydroPP);
+double CoolingDustRecombination(StructEQCData *PhydroPP);
 //double CoolingDustRecombination(double T, double nH, double ne, double Z, double G0, double Ntot);
-double HeatingDustPhotoelectic(StructCEQData *PhydroPP);
+double HeatingDustPhotoelectic(StructEQCData *PhydroPP);
 //double HeatingDustPhotoelectic(double T, double nH, double ne, double Z, double G0, double Ntot);
 double CoolingGasDustEnergyTransfer(double T, double Tdust, double nH, double Z);
 double HeatingGasDustEnergyTransfer(double T, double Tdust, double nH, double Z);
 
 double ApproximateDustTemperature(double Ntot, double G0);
-double EffectiveDustTemperature(const StructCEQData *state);
+double EffectiveDustTemperature(const StructEQCData *state);
 double ApproximateDustToGasRatio(double T);

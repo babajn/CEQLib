@@ -1,4 +1,4 @@
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 void InitializeCoolingTableCIE(int Check);
-double CoolingRateCIE(StructCEQData *PhydroPP);
+double CoolingRateCIE(StructEQCData *PhydroPP);

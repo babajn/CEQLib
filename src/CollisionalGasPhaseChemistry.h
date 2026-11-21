@@ -1,4 +1,4 @@
-#include "CEQDataStructure.h"
+#include "EQCDataStructure.h"
 
 void InitializeCollisionalIonization(int Check);
 
@@ -70,14 +70,14 @@ double SiIIChargeTransferRateToHII(double T);
 double SiIIIChargeTransferRateToHI(double T);
 
 
-double CoolingCollisionalIonization(StructCEQData *PhydroPP);
-double CoolingHeICollisionalIonization(StructCEQData *PhydroPP);
-double CoolingHeIICollisionalIonization(StructCEQData *PhydroPP);
-double CoolingCollisionalExcitation(StructCEQData *PhydroPP);
-double CoolingHeICollisionalExcitation(StructCEQData *PhydroPP);
-double CoolingHeIICollisionalExcitation(StructCEQData *PhydroPP);
-double CoolingRecombination(StructCEQData *PhydroPP);
-double CoolingHeIIRecombination(StructCEQData *PhydroPP);
-double CoolingHeIIIRecombination(StructCEQData *PhydroPP);
-double CoolingHeIIDielectronicRecombination(StructCEQData *PhydroPP);
+double CoolingCollisionalIonization(StructEQCData *PhydroPP);
+double CoolingHeICollisionalIonization(StructEQCData *PhydroPP);
+double CoolingHeIICollisionalIonization(StructEQCData *PhydroPP);
+double CoolingCollisionalExcitation(StructEQCData *PhydroPP);
+double CoolingHeICollisionalExcitation(StructEQCData *PhydroPP);
+double CoolingHeIICollisionalExcitation(StructEQCData *PhydroPP);
+double CoolingRecombination(StructEQCData *PhydroPP);
+double CoolingHeIIRecombination(StructEQCData *PhydroPP);
+double CoolingHeIIIRecombination(StructEQCData *PhydroPP);
+double CoolingHeIIDielectronicRecombination(StructEQCData *PhydroPP);
 

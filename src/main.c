@@ -46,7 +46,7 @@ int main(int argc, char *argv[]){
 
 }
 
-static CEQLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double X0, StructCEQData *PhydroPP){
+static EQCLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double Z, double X0, StructEQCData *PhydroPP){
     
     // tentative fractional abundances
     double fHII   = 0.90, fHI   = 0.01, fH2  = 1.0-fHI  -fHII  ;
@@ -90,18 +90,18 @@ static CEQLibStatus SetInitialHydroDataWolfireTest(double G0, double Nt, double 
     PhydroPP->nion[ipSILICON]   = fSiII *PhydroPP->n[ipSILICON];
     PhydroPP->natom[ipSILICON]  = fSiI  *PhydroPP->n[ipSILICON];
     // electron
-    PhydroPP->nel               = CEQLibGetElectronNumberDensity(PhydroPP);
+    PhydroPP->nel               = EQCLibGetElectronNumberDensity(PhydroPP);
 
-    CEQLibStatus status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(PhydroPP,1.e-3);
-    if(status != CEQ_SUCCESS) return status;
-    PhydroPP->Rho = CEQLibGetTotalMassDensity(PhydroPP);
-    PhydroPP->U = CEQLibConvertTtoU(PhydroPP);
-    return CEQ_SUCCESS;
+    EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(PhydroPP,1.e-3);
+    if(status != EQC_SUCCESS) return status;
+    PhydroPP->Rho = EQCLibGetTotalMassDensity(PhydroPP);
+    PhydroPP->U = EQCLibConvertTtoU(PhydroPP);
+    return EQC_SUCCESS;
 }
 
 static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char *fname){
     
-    //CEQLibInitialization(1);
+    //EQCLibInitialization(1);
    
     int Nsample = 100;
     double dt = 1.e+3*YEAR_CGS; // [sec] 
@@ -119,22 +119,22 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
         return;
     }
     for(int i=0; i<Nsample; i++){
-        StructCEQData PhydroPP = {0};
+        StructEQCData PhydroPP = {0};
 
         PhydroPP.dt     = dt;
         PhydroPP.Du     = 0.0;
         PhydroPP.n[ipHYDROGEN] = pow(10.0,lognHmin + i*dlognH);
         PhydroPP.T             = Tinit;    // [K]
         PhydroPP.NLyn          = NLyn;
-        CEQLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,X0,&PhydroPP);
-        if(status != CEQ_SUCCESS){
+        EQCLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,X0,&PhydroPP);
+        if(status != EQC_SUCCESS){
             fprintf(stderr,"Wolfire initial state failed: %s index=%d nH=%g status=%d\n",
                     fname,i,PhydroPP.n[ipHYDROGEN],status);
             wolfireFailures++;
             continue;
         }
 
-        //if(CEQLibRunParameters.UseDebugMode==true){
+        //if(EQCLibRunParameters.UseDebugMode==true){
             fprintf(stderr,"Index=%d: \n",i);
             fprintf(stderr," T = %e" ,PhydroPP.T);
             fprintf(stderr," nH = %e",PhydroPP.n[ipHYDROGEN]);
@@ -152,8 +152,8 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
                 PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
         for(int it=0; t<500.0*MEGAYEAR_CGS; it++){
             
-            status = CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4,&PhydroPP.Du);
-            if(status != CEQ_SUCCESS) break;
+            status = EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4,&PhydroPP.Du);
+            if(status != EQC_SUCCESS) break;
             PhydroPP.U += PhydroPP.dt*PhydroPP.Du;
             t += PhydroPP.dt;
 
@@ -161,7 +161,7 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
             double L_net = fabs(PhydroPP.L_tot - PhydroPP.H_tot)/PhydroPP.Rho;
             if(L_net*PhydroPP.dt<1.e-5*PhydroPP.U)   break;
         }
-        if(status != CEQ_SUCCESS){
+        if(status != EQC_SUCCESS){
             fprintf(stderr,"Wolfire step failed: %s index=%d nH=%g T=%g t=%g Myr status=%d\n",
                     fname,i,PhydroPP.n[ipHYDROGEN],PhydroPP.T,t/MEGAYEAR_CGS,status);
             wolfireFailures++;
@@ -170,7 +170,7 @@ static void main_WolfireTestBody(double G0, double Nt, double Z, double X0, char
         fprintf(stderr," ==> t = %f Myr: (U,T) = (%e,%e) (mu,gamm)=(%f,%f)\n",
                 t/MEGAYEAR_CGS,PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
 
-        if(CEQLibRunParameters.UseDebugMode==true){
+        if(EQCLibRunParameters.UseDebugMode==true){
             fprintf(stderr," ==>");
             fprintf(stderr," ne/nH = %e ",PhydroPP.nel             /PhydroPP.n[ipHYDROGEN]);
             fprintf(stderr," Hii/H = %e ",PhydroPP.nion[ipHYDROGEN]/PhydroPP.n[ipHYDROGEN]);
@@ -300,17 +300,17 @@ int main_WolfireTest(void){
         
     fprintf(stderr,"#%s():Line%d:%s\n",__FUNCTION__,__LINE__,__FILE__);
     
-    CEQLibSetRunParamDebugMode(true);
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(true);
-    CEQLibSetRunParamGrainSurfaceProcesses(true);
-    CEQLibSetRunParamCosmicRayIonization(true);
-    CEQLibSetRunParamSoftXrayIonization(true);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    CEQLibSetRunParamH2Formation(false,1.e0);
-    CEQLibSetRunParamCOFormation(false,1.e0);
-    
-    CEQLibInitialization(1);
+    EQCLibSetRunParamDebugMode(true);
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamDustAttenuation(true);
+    EQCLibSetRunParamGrainSurfaceProcesses(true);
+    EQCLibSetRunParamCosmicRayIonization(true);
+    EQCLibSetRunParamSoftXrayIonization(true);
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    EQCLibSetRunParamH2Formation(false,1.e0);
+    EQCLibSetRunParamCOFormation(false,1.e0);
+
+    EQCLibInitialization(1);
    
     char fname[100];
     //FILE *out   = fopen("./out/PostProcessMap.dat","w");
@@ -472,16 +472,16 @@ int main_WolfireTest(void){
     
 int main_WolfireMilkyWayTest(void){
     
-    CEQLibSetRunParamDebugMode(true);
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(true);
-    CEQLibSetRunParamGrainSurfaceProcesses(true);
-    CEQLibSetRunParamCosmicRayIonization(true);
-    CEQLibSetRunParamSoftXrayIonization(true);
-    CEQLibSetRunParamH2Formation(false,1.e0);
-    CEQLibSetRunParamCOFormation(false,1.e0);
+    EQCLibSetRunParamDebugMode(true);
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamDustAttenuation(true);
+    EQCLibSetRunParamGrainSurfaceProcesses(true);
+    EQCLibSetRunParamCosmicRayIonization(true);
+    EQCLibSetRunParamSoftXrayIonization(true);
+    EQCLibSetRunParamH2Formation(false,1.e0);
+    EQCLibSetRunParamCOFormation(false,1.e0);
     
-    CEQLibInitialization(1);
+    EQCLibInitialization(1);
 
     //// Milky Way
     //G0 = 10.0*G0_Draine;
@@ -495,17 +495,17 @@ int main_WolfireMilkyWayTest(void){
 
 int main_HIIregionTest(void){
     
-    CEQLibSetRunParamDebugMode(true);
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(false);
-    CEQLibSetRunParamGrainSurfaceProcesses(true);
-    CEQLibSetRunParamCosmicRayIonization(true);
-    CEQLibSetRunParamSoftXrayIonization(true);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    CEQLibSetRunParamH2Formation(false,1.e0);
-    CEQLibSetRunParamCOFormation(false,1.e0);
-    
-    CEQLibInitialization(1);
+    EQCLibSetRunParamDebugMode(true);
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamDustAttenuation(false);
+    EQCLibSetRunParamGrainSurfaceProcesses(true);
+    EQCLibSetRunParamCosmicRayIonization(true);
+    EQCLibSetRunParamSoftXrayIonization(true);
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    EQCLibSetRunParamH2Formation(false,1.e0);
+    EQCLibSetRunParamCOFormation(false,1.e0);
+
+    EQCLibInitialization(1);
    
     char fname[100];
     double G0 = G0_Draine;
@@ -532,7 +532,7 @@ int main_HIIregionTest(void){
     double NLyn = 1.e+49/(4.0*PI*SQ(distance)); // [1/s/cm^2]
 
     double dt = 1.e+3*YEAR_CGS; // [sec] 
-    StructCEQData PhydroPP;
+    StructEQCData PhydroPP;
     FILE *out   = fopen(fname,"w");
     for(int inH =0; inH <Nsample_nH ; inH ++){
     for(int itmp=0; itmp<Nsample_tmp; itmp++){
@@ -548,8 +548,8 @@ int main_HIIregionTest(void){
         PhydroPP.n[ipHYDROGEN] = pow(10.0,lognHmin + inH *dlognH);
         PhydroPP.T             = pow(10.0,logTmin  + itmp*dlogT );
         PhydroPP.NLyn          = NLyn;
-        CEQLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,X0,&PhydroPP);
-        if(status != CEQ_SUCCESS){
+        EQCLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,X0,&PhydroPP);
+        if(status != EQC_SUCCESS){
             fprintf(stderr,"Initial state failed: %s index=%d status=%d\n",fname,i,status);
             fclose(out);
             return EXIT_FAILURE;
@@ -571,12 +571,12 @@ int main_HIIregionTest(void){
         //        PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
         //for(int it=0; PhydroPP.t<500.0*MEGAYEAR_CGS; it++){
         //    
-        //    PhydroPP.Du = CEQLibEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4);
+        //    PhydroPP.Du = EQCLibEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4);
         //    PhydroPP.U += PhydroPP.dt*PhydroPP.Du;
         //    PhydroPP.t += PhydroPP.dt;
     
-        //    //CEQLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
-        //    //CEQLibCalculateCoolingHeatingRates(PhydroPP);
+        //    //EQCLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
+        //    //EQCLibCalculateCoolingHeatingRates(PhydroPP);
 
         //    // if L_net*dt << U, the gas reaches thermal equilibrium
         //    double L_net = fabs(PhydroPP.L_tot - PhydroPP.H_tot)/PhydroPP.Rho;
@@ -585,7 +585,7 @@ int main_HIIregionTest(void){
         //fprintf(stderr," ==> t = %f Myr: (U,T) = (%e,%e) (mu,gamm)=(%f,%f)\n",
         //        PhydroPP.t/MEGAYEAR_CGS,PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
 
-        if(CEQLibRunParameters.UseDebugMode==true){
+        if(EQCLibRunParameters.UseDebugMode==true){
             fprintf(stderr," ==>");
             fprintf(stderr," ne/nH = %e ",PhydroPP.nel             /PhydroPP.n[ipHYDROGEN]);
             fprintf(stderr," Hii/H = %e ",PhydroPP.nion[ipHYDROGEN]/PhydroPP.n[ipHYDROGEN]);
@@ -731,17 +731,17 @@ int main_CoolingFunctionTest(void){
     char fname[100];
     
     ///////////// CIE Cooling Fuction
-    CEQLibSetRunParamDebugMode(true);
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(false);
-    CEQLibSetRunParamGrainSurfaceProcesses(false);
-    CEQLibSetRunParamCosmicRayIonization(false);
-    CEQLibSetRunParamSoftXrayIonization(false);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    CEQLibSetRunParamH2Formation(false,1.e0);
-    CEQLibSetRunParamCOFormation(false,1.e0);
-    
-    CEQLibInitialization(1);
+    EQCLibSetRunParamDebugMode(true);
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamDustAttenuation(false);
+    EQCLibSetRunParamGrainSurfaceProcesses(false);
+    EQCLibSetRunParamCosmicRayIonization(false);
+    EQCLibSetRunParamSoftXrayIonization(false);
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    EQCLibSetRunParamH2Formation(false,1.e0);
+    EQCLibSetRunParamCOFormation(false,1.e0);
+
+    EQCLibInitialization(1);
 
     double X0 = 1.0;
 
@@ -764,17 +764,17 @@ int main_CoolingFunctionTest(void){
     }
    
     ///////////// PDR Cooling Function
-    CEQLibSetRunParamDebugMode(true);
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamDustAttenuation(false);
-    CEQLibSetRunParamGrainSurfaceProcesses(false);
-    CEQLibSetRunParamCosmicRayIonization(true);
-    CEQLibSetRunParamSoftXrayIonization(true);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    CEQLibSetRunParamH2Formation(true,1.e0);
-    CEQLibSetRunParamCOFormation(false,1.e0);
-    
-    CEQLibInitialization(1);
+    EQCLibSetRunParamDebugMode(true);
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamDustAttenuation(false);
+    EQCLibSetRunParamGrainSurfaceProcesses(false);
+    EQCLibSetRunParamCosmicRayIonization(true);
+    EQCLibSetRunParamSoftXrayIonization(true);
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    EQCLibSetRunParamH2Formation(true,1.e0);
+    EQCLibSetRunParamCOFormation(false,1.e0);
+
+    EQCLibInitialization(1);
 
     for(int iz=0; iz<nZ; iz++){
         double Z  = ModelZ[iz]*Zsol; 
@@ -810,7 +810,7 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
     double NLyn = 0.e0;
 
     double dt = 1.e+3*YEAR_CGS; // [sec] 
-    StructCEQData PhydroPP;
+    StructEQCData PhydroPP;
     FILE *out   = fopen(fname,"w");
     for(int itmp=0; itmp<Nsample_tmp; itmp++){
         int i = itmp;
@@ -826,8 +826,8 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
         PhydroPP.n[ipHYDROGEN] = nH; //pow(10.0,lognHmin + inH *dlognH);
         PhydroPP.T             = pow(10.0,logTmin  + itmp*dlogT );
         PhydroPP.NLyn          = NLyn;
-        CEQLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,X0,&PhydroPP);
-        if(status != CEQ_SUCCESS){
+        EQCLibStatus status = SetInitialHydroDataWolfireTest(G0,Nt,Z,X0,&PhydroPP);
+        if(status != EQC_SUCCESS){
             fprintf(stderr,"Initial state failed: %s index=%d status=%d\n",fname,i,status);
             fclose(out);
             return;
@@ -849,12 +849,12 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
         //        PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
         //for(int it=0; PhydroPP.t<500.0*MEGAYEAR_CGS; it++){
         //    
-        //    PhydroPP.Du = CEQLibEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4);
+        //    PhydroPP.Du = EQCLibEnergyEquationSolverChemcalEquilibriumCoolingHeating(&PhydroPP,1.e-4);
         //    PhydroPP.U += PhydroPP.dt*PhydroPP.Du;
         //    PhydroPP.t += PhydroPP.dt;
     
-        //    //CEQLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
-        //    //CEQLibCalculateCoolingHeatingRates(PhydroPP);
+        //    //EQCLibChemicalReactionEquilibrium(PhydroPP,1.e-3);
+        //    //EQCLibCalculateCoolingHeatingRates(PhydroPP);
 
         //    // if L_net*dt << U, the gas reaches thermal equilibrium
         //    double L_net = fabs(PhydroPP.L_tot - PhydroPP.H_tot)/PhydroPP.Rho;
@@ -863,7 +863,7 @@ static void main_CoolingFunctionTestBody(double nH, double G0, double Nt, double
         //fprintf(stderr," ==> t = %f Myr: (U,T) = (%e,%e) (mu,gamm)=(%f,%f)\n",
         //        PhydroPP.t/MEGAYEAR_CGS,PhydroPP.U,PhydroPP.T,PhydroPP.MeanMolecularWeight,PhydroPP.Gamma);
 
-        if(CEQLibRunParameters.UseDebugMode==true){
+        if(EQCLibRunParameters.UseDebugMode==true){
             fprintf(stderr," ==>");
             fprintf(stderr," ne/nH = %e ",PhydroPP.nel             /PhydroPP.n[ipHYDROGEN]);
             fprintf(stderr," Hii/H = %e ",PhydroPP.nion[ipHYDROGEN]/PhydroPP.n[ipHYDROGEN]);

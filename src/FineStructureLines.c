@@ -390,9 +390,9 @@ void InitializeFineStructureLines(int Check){
         double nOI = 1.0, nOI0, nOI1, nOI2;
         double nSiII = 1.0, nSiII0, nSiII1, nSiIIcrit;
         double CoolingOI063um, CoolingOI044um, CoolingOI146um;
-        FILE *outCII  = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestCII.dat","w");
-        FILE *outOI   = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestOI.dat","w");
-        FILE *outSiII = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestSiII.dat","w");
+        FILE *outCII  = fopen(EQC_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestCII.dat","w");
+        FILE *outOI   = fopen(EQC_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestOI.dat","w");
+        FILE *outSiII = fopen(EQC_DIAGNOSTIC_DIRECTORY "/FineStructureLineTestSiII.dat","w");
         for(int i=0;i<nRho;i++){
             double nH  = pow(10.0,-1+i*0.1);
             double nel = xe*nH;
@@ -593,7 +593,7 @@ double CoolingCI370um(double nCI, double T, double nel, double nHII, double nHI,
 }
 
 // Fine structure transition between CII(^2P1/2-^2P3/2)
-double CoolingCII158um(StructCEQData *PhydroPP){
+double CoolingCII158um(StructEQCData *PhydroPP){
     double nCII = PhydroPP->nion [ipCARBON  ];
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
@@ -728,7 +728,7 @@ static double CoolingOIDetail(double nOI, double T, double nel, double nHII, dou
     return net063um + net044um + net146um;
 }
 
-double CoolingOI63um(StructCEQData *PhydroPP){
+double CoolingOI63um(StructEQCData *PhydroPP){
     double nHII = PhydroPP->nion [ipHYDROGEN];
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
@@ -740,7 +740,7 @@ double CoolingOI63um(StructCEQData *PhydroPP){
     return CoolingOI063um;
 }
 
-double CoolingOI44um(StructCEQData *PhydroPP){
+double CoolingOI44um(StructEQCData *PhydroPP){
     double nHII = PhydroPP->nion [ipHYDROGEN];
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
@@ -752,7 +752,7 @@ double CoolingOI44um(StructCEQData *PhydroPP){
     return CoolingOI044um;
 }
 
-double CoolingOI146um(StructCEQData *PhydroPP){
+double CoolingOI146um(StructEQCData *PhydroPP){
     double nHII = PhydroPP->nion [ipHYDROGEN];
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
@@ -796,7 +796,7 @@ double CoolingSiI68um(double nSiI, double T, double nHI, double nHII){
 }
 
 // Fine structure transition between ^2P1/2-^2P3/2
-double CoolingSiII35um(StructCEQData *PhydroPP){
+double CoolingSiII35um(StructEQCData *PhydroPP){
     double nSiII = PhydroPP->nion [ipSILICON ];
     double nHI   = PhydroPP->natom[ipHYDROGEN];
     double nel   = PhydroPP->nel; 

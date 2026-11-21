@@ -8,17 +8,17 @@
 
 static const double logTMin = 3.5, logTMax = 4.5;
 
-static bool Evaluate(HIIRegion region, double temperature, StructCEQData *state)
+static bool Evaluate(HIIRegion region, double temperature, StructEQCData *state)
 {
     *state = HIIRegionGasState(region, temperature);
-    const CEQLibStatus status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(state, 1.0e-9);
-    if(status == CEQ_SUCCESS) return true;
+    const EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(state, 1.0e-9);
+    if(status == EQC_SUCCESS) return true;
     fprintf(stderr, "H II chemistry failed at n_H=%g, Z/Z_sun=%g, log U=%g, T=%g K (status %d)\n",
             region.nH, region.metallicity, region.logIonization, temperature, status);
     return false;
 }
 
-static bool FindThermalEquilibrium(HIIRegion region, StructCEQData *state)
+static bool FindThermalEquilibrium(HIIRegion region, StructEQCData *state)
 {
     /* Select a crossing from net heating to net cooling at fixed density. */
     const int intervals = 40;
@@ -52,7 +52,7 @@ static double Fraction(double density, double total)
     return total > 0.0 ? density/total : NAN;
 }
 
-static void WriteSample(FILE *file, HIIRegion region, const StructCEQData *s)
+static void WriteSample(FILE *file, HIIRegion region, const StructEQCData *s)
 {
     const double heatingH = s->natom[ipHYDROGEN] * HeatingHIPhotoionization(s->NLyn);
     const double heatingHe = s->natom[ipHELIUM] * HeatingHeIPhotoionization(s->NLyn)
@@ -94,7 +94,7 @@ static double HeliumIIRecombination(double temperature)
     return HeIIRecombinationRate(temperature) + HeIIDielectronicRecombinationRate(temperature);
 }
 
-static bool WriteReactions(FILE *file, HIIRegion region, const StructCEQData *s, const char *sample)
+static bool WriteReactions(FILE *file, HIIRegion region, const StructEQCData *s, const char *sample)
 {
     /* Evaluate n_i Gamma_i, n_i n_e C_i, n_{i+1} n_e alpha_{i+1} and the charge-transfer
        fluxes using the same rate coefficients as the solver. */
@@ -137,13 +137,13 @@ static bool WriteReactions(FILE *file, HIIRegion region, const StructCEQData *s,
     return true;
 }
 
-static bool CheckNeutralSeed(HIIRegion region, const StructCEQData *equilibrium)
+static bool CheckNeutralSeed(HIIRegion region, const StructEQCData *equilibrium)
 {
     /* A nearly neutral seed takes the photoionized electron-density path;
        the ionized seed of the equilibrium solve uses the general search. */
-    StructCEQData seeded = HIIRegionGasState(region, equilibrium->T);
+    StructEQCData seeded = HIIRegionGasState(region, equilibrium->T);
     seeded.nel = 1.0e-3*region.nH;
-    if(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&seeded, 1.0e-9) == CEQ_SUCCESS &&
+    if(EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&seeded, 1.0e-9) == EQC_SUCCESS &&
        fabs(seeded.nel-equilibrium->nel) <= 1.0e-8*equilibrium->nel)
         return true;
     fprintf(stderr, "Neutral seed reached a different electron density at n_H=%g, Z/Z_sun=%g, log U=%g\n",
@@ -157,7 +157,7 @@ static bool RunModels(FILE *equilibrium, FILE *thermal, FILE *reactions)
     WriteSampleHeader(thermal);
     fputs("sample,nH,Z_solar,log_U,T,ion,photoionization,collisional_ionization,recombination,"
           "charge_transfer_ionization,charge_transfer_recombination\n", reactions);
-    StructCEQData state;
+    StructEQCData state;
     const double densities[] = {1.0, 10.0, 100.0, 1000.0};
     const double metallicities[] = {0.0, 0.1, 1.0};
     for(size_t i = 0; i < sizeof(densities)/sizeof(densities[0]); i++){
@@ -189,7 +189,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s PEGASE2_DIRECTORY\n", argv[0]);
         return EXIT_FAILURE;
     }
-    if(InitializeHIIRegionFixture(argv[1]) != CEQ_SUCCESS) return EXIT_FAILURE;
+    if(InitializeHIIRegionFixture(argv[1]) != EQC_SUCCESS) return EXIT_FAILURE;
 
     const char *paths[] = {"equilibrium.csv", "thermal_curve.csv", "reactions.csv"};
     FILE *files[sizeof(paths)/sizeof(paths[0])] = {NULL};

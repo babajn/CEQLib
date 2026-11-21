@@ -1,4 +1,4 @@
-"""Run Cloudy C23.01 on the CEQLib dust-free H II equilibrium grid."""
+"""Run Cloudy C23.01 on the EQCLib dust-free H II equilibrium grid."""
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor

@@ -30,32 +30,32 @@ enum {
     BlockCount = 7
 };
 
-typedef CEQLibStatus (*UpdateGas)(StructCEQData *);
+typedef EQCLibStatus (*UpdateGas)(StructEQCData *);
 
-static CEQLibStatus SolveChemistry(StructCEQData *state)
+static EQCLibStatus SolveChemistry(StructEQCData *state)
 {
-    return CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(state, chemistryAccuracy);
+    return EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(state, chemistryAccuracy);
 }
 
-static CEQLibStatus AdvanceEnergy(StructCEQData *state)
+static EQCLibStatus AdvanceEnergy(StructEQCData *state)
 {
-    const CEQLibStatus status =
-        CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(state, energyAccuracy, &state->Du);
-    if(status == CEQ_SUCCESS) state->U += state->dt * state->Du;
+    const EQCLibStatus status =
+        EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(state, energyAccuracy, &state->Du);
+    if(status == EQC_SUCCESS) state->U += state->dt * state->Du;
     return status;
 }
 
-static bool CheckStatus(CEQLibStatus status, const StructCEQData *state, const char *operation,
+static bool CheckStatus(EQCLibStatus status, const StructEQCData *state, const char *operation,
                         enum Illumination mode)
 {
-    if(status == CEQ_SUCCESS) return true;
+    if(status == EQC_SUCCESS) return true;
     fprintf(stderr, "%s / %s failed: status=%d n_H=%g Z/Z_sun=%g T=%g K NLyn=%g dt=%g yr\n",
             operation, illuminationName[mode], status, state->n[ipHYDROGEN],
             state->Z/SOLAR_METALLICITY, state->T, state->NLyn, state->dt/YEAR_CGS);
     return false;
 }
 
-static bool PrepareSamples(StructCEQData states[IlluminationCount][SampleCount])
+static bool PrepareSamples(StructEQCData states[IlluminationCount][SampleCount])
 {
     int index = 0;
     for(int d = 0; d < DensityCount; d++)
@@ -63,15 +63,15 @@ static bool PrepareSamples(StructCEQData states[IlluminationCount][SampleCount])
     for(int u = 0; u < IonizationCount; u++)
     for(int t = 0; t < TemperatureCount; t++, index++){
         const HIIRegion region = {densities[d], metallicities[z], logIonizations[u]};
-        StructCEQData steady = HIIRegionGasState(region, temperatures[t]);
+        StructEQCData steady = HIIRegionGasState(region, temperatures[t]);
         for(int i = 0; i < NumberChemicalElement; i++) steady.Rho += steady.n[i]*ChemicalElementMass[i];
-        StructCEQData dark = steady;
+        StructEQCData dark = steady;
         dark.NLyn = 0.0;
         if(!CheckStatus(SolveChemistry(&dark), &dark, "initial chemistry", NoFlux) ||
            !CheckStatus(SolveChemistry(&steady), &steady, "initial chemistry", Continuous))
             return false;
-        dark.U = CEQLibConvertTtoU(&dark);
-        steady.U = CEQLibConvertTtoU(&steady);
+        dark.U = EQCLibConvertTtoU(&dark);
+        steady.U = EQCLibConvertTtoU(&steady);
 
         states[NoFlux][index] = dark;
         states[Continuous][index] = steady;
@@ -92,7 +92,7 @@ static double ThreadCpuSeconds(void)
     return now.tv_sec + 1.0e-9 * now.tv_nsec;
 }
 
-static bool TimeUpdates(FILE *csv, StructCEQData states[IlluminationCount][SampleCount],
+static bool TimeUpdates(FILE *csv, StructEQCData states[IlluminationCount][SampleCount],
                         const char *operation, UpdateGas update, double years, int batches)
 {
     const int calls = batches * SampleCount;
@@ -103,7 +103,7 @@ static bool TimeUpdates(FILE *csv, StructCEQData states[IlluminationCount][Sampl
             const double start = ThreadCpuSeconds();
             for(int batch = 0; batch < batches; batch++){
                 for(int i = 0; i < SampleCount; i++){
-                    StructCEQData state = states[mode][i];
+                    StructEQCData state = states[mode][i];
                     state.dt = years * YEAR_CGS;
                     if(!CheckStatus(update(&state), &state, operation, mode)) return false;
                 }
@@ -123,8 +123,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s PEGASE2_DIRECTORY > hii_benchmark.csv\n", argv[0]);
         return EXIT_FAILURE;
     }
-    if(InitializeHIIRegionFixture(argv[1]) != CEQ_SUCCESS) return EXIT_FAILURE;
-    StructCEQData states[IlluminationCount][SampleCount];
+    if(InitializeHIIRegionFixture(argv[1]) != EQC_SUCCESS) return EXIT_FAILURE;
+    StructEQCData states[IlluminationCount][SampleCount];
     if(!PrepareSamples(states)) return EXIT_FAILURE;
     if(puts("operation,illumination,dt_years,block,cases,calls,cpu_us_per_call") < 0)
         return EXIT_FAILURE;

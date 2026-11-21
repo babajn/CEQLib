@@ -1,5 +1,5 @@
-#ifndef CEQLIB_TEST_HII_REGION_FIXTURE_H
-#define CEQLIB_TEST_HII_REGION_FIXTURE_H
+#ifndef EQCLIB_TEST_HII_REGION_FIXTURE_H
+#define EQCLIB_TEST_HII_REGION_FIXTURE_H
 
 #include <math.h>
 
@@ -12,11 +12,11 @@ typedef struct {
     double logIonization;
 } HIIRegion;
 
-static inline StructCEQData HIIRegionGasState(HIIRegion region, double temperature)
+static inline StructEQCData HIIRegionGasState(HIIRegion region, double temperature)
 {
     const double nH = region.nH;
     const double scaledDensity = region.metallicity * nH;
-    return (StructCEQData){
+    return (StructEQCData){
         .T = temperature,
         .Z = region.metallicity * SOLAR_METALLICITY,
         .NLyn = pow(10.0, region.logIonization) * nH * LIGHT_C_CGS,
@@ -26,13 +26,13 @@ static inline StructCEQData HIIRegionGasState(HIIRegion region, double temperatu
     };
 }
 
-static inline CEQLibStatus InitializeHIIRegionFixture(const char *pegaseDirectory)
+static inline EQCLibStatus InitializeHIIRegionFixture(const char *pegaseDirectory)
 {
     /* Dust-free gas with unattenuated stellar ionizing radiation as its only source. */
-    CEQLibSetRunParamHIIRegion(true);
-    CEQLibSetRunParamRecombinationCaseB(true);
-    CEQLibSetRunParamCIEResonanceCooling(true);
-    return CEQLibTryInitialization(0, pegaseDirectory);
+    EQCLibSetRunParamHIIRegion(true);
+    EQCLibSetRunParamRecombinationCaseB(true);
+    EQCLibSetRunParamCIEResonanceCooling(true);
+    return EQCLibTryInitialization(0, pegaseDirectory);
 }
 
 #endif

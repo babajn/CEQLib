@@ -28,7 +28,7 @@
 void InitializeCollisionalIonization(int Check){
         
     if(Check==1){
-        FILE *output = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CollisionalIonization.dat","w");
+        FILE *output = fopen(EQC_DIAGNOSTIC_DIRECTORY "/CollisionalIonization.dat","w");
         for(double logT=1.0; logT<=6.0; logT+=0.1){
             double T = pow(10.0,logT);
             fprintf(output,"%e ",T);
@@ -43,7 +43,7 @@ void InitializeCollisionalIonization(int Check){
         }
         fclose(output);
 
-        FILE *output2 = fopen(CEQ_DIAGNOSTIC_DIRECTORY "/CollisionalRecombination.dat","w");
+        FILE *output2 = fopen(EQC_DIAGNOSTIC_DIRECTORY "/CollisionalRecombination.dat","w");
         for(double logT=1.0; logT<=6.0; logT+=0.1){
             double T = pow(10.0,logT);
             fprintf(output2,"%e ",T);
@@ -265,7 +265,7 @@ double OICollisionalIonizationRate(double T){
 
 //// Recombination Rate [cm^3/s]
 double HIIRecombinationRate(double T){
-    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+    if(EQCLibRunParameters.UseRecombinationCaseB==true)
         return HIIRecombinationRateCaseB(T);
     else
         return HIIRecombinationRateCaseA(T);
@@ -283,7 +283,7 @@ double HIIRecombinationRateCaseB(double T){
     return 2.753e-14*pow(lamb,1.500)*pow(1.0+pow(0.36496*lamb,0.407),-2.242);
 }
 double HeIIRecombinationRate(double T){
-    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+    if(EQCLibRunParameters.UseRecombinationCaseB==true)
         return HeIIRecombinationRateCaseB(T);
     else
         return HeIIRecombinationRateCaseA(T);
@@ -317,7 +317,7 @@ double HeIIDielectronicRecombinationRate(double T){
     return 1.90e-3*pow(T,-1.5)*exp(-0.75*invT)*(1.e0+0.3*exp(-0.15*invT));
 }
 double HeIIIRecombinationRate(double T){
-    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+    if(EQCLibRunParameters.UseRecombinationCaseB==true)
         return HeIIIRecombinationRateCaseB(T);
     else
         return HeIIIRecombinationRateCaseA(T);
@@ -501,7 +501,7 @@ double SiIIIChargeTransferRateToHI(double T){
 //////////////////////////
 //// Collisional Ionization Cooling [erg/cc/s]
 // ref. Cen (1992)
-double CoolingCollisionalIonization(StructCEQData *PhydroPP){
+double CoolingCollisionalIonization(StructEQCData *PhydroPP){
     double nHI = PhydroPP->natom[ipHYDROGEN];
     double ne  = PhydroPP->nel; 
     double T   = PhydroPP->T;
@@ -509,7 +509,7 @@ double CoolingCollisionalIonization(StructCEQData *PhydroPP){
     return ne*nHI*zeta;
 }
 // ref. eq.(12b) of Cen (1992)
-double CoolingHeICollisionalIonization(StructCEQData *PhydroPP){
+double CoolingHeICollisionalIonization(StructEQCData *PhydroPP){
     double nHeI = PhydroPP->natom[ipHELIUM  ];
     double ne   = PhydroPP->nel; 
     double T    = PhydroPP->T;
@@ -517,7 +517,7 @@ double CoolingHeICollisionalIonization(StructCEQData *PhydroPP){
     return ne*nHeI*zeta;
 }
 // ref. eq.(12c) of Cen (1992)
-double CoolingHeIICollisionalIonization(StructCEQData *PhydroPP){
+double CoolingHeIICollisionalIonization(StructEQCData *PhydroPP){
     double nHeII  = PhydroPP->nion [ipHELIUM  ];
     double ne     = PhydroPP->nel; 
     double T      = PhydroPP->T;
@@ -530,7 +530,7 @@ double CoolingHeIICollisionalIonization(StructCEQData *PhydroPP){
 //       modified by Cen (1992)
 // electron excitation pf the excited levels in neutral H can be 
 // an important source of  energy loss. The Ly-a photons
-double CoolingCollisionalExcitation(StructCEQData *PhydroPP){
+double CoolingCollisionalExcitation(StructEQCData *PhydroPP){
     double nHI = PhydroPP->natom[ipHYDROGEN];
     double ne  = PhydroPP->nel; 
     double T   = PhydroPP->T;
@@ -540,7 +540,7 @@ double CoolingCollisionalExcitation(StructCEQData *PhydroPP){
 }
 // Collisional Excitation Cooling of HeI (n=2,3,4 triplets) [erg/cc/s]
 // ref. eq.(15c) of Cen (1992) 
-double CoolingHeICollisionalExcitation(StructCEQData *PhydroPP){
+double CoolingHeICollisionalExcitation(StructEQCData *PhydroPP){
     double nHeII = PhydroPP->nion[ipHELIUM];
     double ne    = PhydroPP->nel; 
     double T     = PhydroPP->T;
@@ -549,7 +549,7 @@ double CoolingHeICollisionalExcitation(StructCEQData *PhydroPP){
 }
 // Collisional Excitation Cooling of HeII (n=2) [erg/cc/s]
 // ref. eq.(15c) of Cen (1992) 
-double CoolingHeIICollisionalExcitation(StructCEQData *PhydroPP){
+double CoolingHeIICollisionalExcitation(StructEQCData *PhydroPP){
     double nHeII = PhydroPP->nion[ipHELIUM];
     double ne    = PhydroPP->nel; 
     double T     = PhydroPP->T;
@@ -559,32 +559,32 @@ double CoolingHeIICollisionalExcitation(StructCEQData *PhydroPP){
 
 //// Case B Recombination Cooling [erg/cc/s]
 // ref. Hui & Gnedin (1997)
-double CoolingRecombination(StructCEQData *PhydroPP){
+double CoolingRecombination(StructEQCData *PhydroPP){
     double nHII = PhydroPP->nion[ipHYDROGEN];
     double ne   = PhydroPP->nel; 
     double T    = PhydroPP->T;
     double lamb = 2.0*(T_HI)/T;
     double eta  = 0.0;
-    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+    if(EQCLibRunParameters.UseRecombinationCaseB==true)
         eta = (3.435e-30)*T*pow(lamb,1.970)*pow(1.0+pow(0.44444*lamb,0.376),-3.720);
     else
         eta = (1.778e-29)*T*pow(lamb,1.965)*pow(1.0+pow(1.84843*lamb,0.502),-2.697);
     return nHII*ne*eta;
 }
 // ref. Hui & Gnedin (1997)
-double CoolingHeIIRecombination(StructCEQData *PhydroPP){
+double CoolingHeIIRecombination(StructEQCData *PhydroPP){
     double nHeII = PhydroPP->nion[ipHELIUM];
     double ne    = PhydroPP->nel; 
     double T     = PhydroPP->T;
     double eta = 0.e0;
-    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+    if(EQCLibRunParameters.UseRecombinationCaseB==true)
         eta = (BOLTZMANN_CONSTANT_CGS)*T*HeIIRecombinationRateCaseB(T);
     else
         eta = (BOLTZMANN_CONSTANT_CGS)*T*HeIIRecombinationRateCaseA(T);
     return nHeII*ne*eta;
 }
 // ref. Hui & Gnedin (1997)
-double CoolingHeIIIRecombination(StructCEQData *PhydroPP){
+double CoolingHeIIIRecombination(StructEQCData *PhydroPP){
     double nHeIII = PhydroPP->nHeIII;
     double ne     = PhydroPP->nel;
     double T      = PhydroPP->T;
@@ -592,14 +592,14 @@ double CoolingHeIIIRecombination(StructCEQData *PhydroPP){
     double eta = 0.0;
     /* Hydrogenic scaling: Lambda_HeIII(T) = 8 Lambda_HII(T/4). The hydrogen
        fits carry a factor of T, so the He++ coefficients are twice the H ones. */
-    if(CEQLibRunParameters.UseRecombinationCaseB==true)
+    if(EQCLibRunParameters.UseRecombinationCaseB==true)
         eta = 6.870e-30*T*pow(lamb,1.970)*pow(1.0+pow(0.44444*lamb,0.376),-3.720);
     else
         eta = 3.556e-29*T*pow(lamb,1.965)*pow(1.0+pow(1.84843*lamb,0.502),-2.697);
     return nHeIII*ne*eta;
 }
 // ref. eq.(14) of Cen (1992)
-double CoolingHeIIDielectronicRecombination(StructCEQData *PhydroPP){
+double CoolingHeIIDielectronicRecombination(StructEQCData *PhydroPP){
     double nHeII = PhydroPP->nion [ipHELIUM  ];
     double ne    = PhydroPP->nel; 
     double T     = PhydroPP->T;

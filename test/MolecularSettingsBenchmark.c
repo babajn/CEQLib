@@ -32,15 +32,15 @@ enum {
 
 typedef struct {
     Condition input;
-    StructCEQData gas;
-    CEQLibStatus status;
+    StructEQCData gas;
+    EQCLibStatus status;
 } Sample;
 
 static void SetMode(Settings mode)
 {
-    CEQLibSetRunParamH2Formation(mode.h2, 1.0);
-    CEQLibSetRunParamCOFormation(mode.co, 1.0);
-    CEQLibSetRunParamChargeTransfer(mode.chargeTransfer);
+    EQCLibSetRunParamH2Formation(mode.h2, 1.0);
+    EQCLibSetRunParamCOFormation(mode.co, 1.0);
+    EQCLibSetRunParamChargeTransfer(mode.chargeTransfer);
 }
 
 static void PrepareSamples(Sample samples[ModeCount][CaseCount])
@@ -56,8 +56,8 @@ static void PrepareSamples(Sample samples[ModeCount][CaseCount])
             sample->input = (Condition){density, temperatures[t], 1.7, 1.e20*sqrt(density), logIonization[u]};
             sample->gas = GasState(sample->input);
             /* Equilibrate each model at the same T and convert with its own EOS. */
-            sample->status = CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&sample->gas, 1.e-9);
-            if(sample->status == CEQ_SUCCESS) sample->gas.U = CEQLibConvertTtoU(&sample->gas);
+            sample->status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&sample->gas, 1.e-9);
+            if(sample->status == EQC_SUCCESS) sample->gas.U = EQCLibConvertTtoU(&sample->gas);
         }
     }
 }
@@ -74,19 +74,19 @@ static double ThreadCpuSeconds(void)
 
 static void RunSample(const Sample *sample, int mode, int block, int index, double dt)
 {
-    StructCEQData gas = sample->gas;
-    CEQLibStatus status = sample->status;
+    StructEQCData gas = sample->gas;
+    EQCLibStatus status = sample->status;
     double elapsed = NAN;
     double energyFraction = NAN;
-    if(status == CEQ_SUCCESS){
+    if(status == EQC_SUCCESS){
         gas.dt = dt*YEAR_CGS;
         double du;
         const double start = ThreadCpuSeconds();
-        status = CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&gas, energyAccuracy, &du);
+        status = EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&gas, energyAccuracy, &du);
         elapsed = 1.e6*(ThreadCpuSeconds()-start);
-        if(status == CEQ_SUCCESS) energyFraction = gas.dt*du/sample->gas.U;
+        if(status == EQC_SUCCESS) energyFraction = gas.dt*du/sample->gas.U;
     }
-    const bool ok = status == CEQ_SUCCESS;
+    const bool ok = status == EQC_SUCCESS;
     printf("%s,%d,%d,%.0f,%g,%g,%g,%d,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
            modes[mode].name, block+1, index, dt, sample->input.nH, sample->input.T, sample->input.logU,
            sample->status, status, elapsed, ok ? gas.T : NAN, energyFraction,
@@ -103,8 +103,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s PEGASE2_DIRECTORY > molecular_settings.csv\n", argv[0]);
         return EXIT_FAILURE;
     }
-    if(CEQLibSetRunParamChemistryAccuracy(chemistryAccuracy) != CEQ_SUCCESS ||
-       InitializeMolecularFixture(argv[1]) != CEQ_SUCCESS)
+    if(EQCLibSetRunParamChemistryAccuracy(chemistryAccuracy) != EQC_SUCCESS ||
+       InitializeMolecularFixture(argv[1]) != EQC_SUCCESS)
         return EXIT_FAILURE;
 
     static Sample samples[ModeCount][CaseCount];
