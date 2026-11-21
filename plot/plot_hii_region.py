@@ -156,14 +156,20 @@ def plot_reactions(data, equilibrium):
         rows = np.sort(data[data["ion"] == ion], order="T")
         density_squared = rows["nH"]**2
         upper_ion = ION_LABELS[ion] + "I"
+        peak = 0.0
         for field, label, color, style in (
             ("recombination", "Electron recombination", "#555555", "-"),
             ("photoionization", "Photoionization", BLUE, "--"),
             ("collisional_ionization", "Electron-impact ionization", ORANGE, "-"),
+            ("charge_transfer_ionization", "Charge-transfer ionization", GREEN, "-."),
+            ("charge_transfer_recombination", "Charge-transfer recombination", PURPLE, ":"),
         ):
+            if field not in rows.dtype.names:
+                continue  # Results written before charge transfer was added.
             rate = np.ma.masked_less_equal(rows[field] / density_squared, 0)
             ax.plot(rows["T"] / 1e3, rate, color=color, ls=style, label=label)
-        peak = np.max(rows["recombination"] / density_squared)
+            if rate.count():
+                peak = max(peak, rate.max())
         ax.set(title=f"{ION_LABELS[ion]} ↔ {upper_ion}", yscale="log", ylim=(peak*1e-6, peak*3))
         ax.axvline(equilibrium["T"] / 1e3, color="#777777", ls=":", label=r"$T_{\rm eq}$")
         temperature_axis(ax)
@@ -171,7 +177,7 @@ def plot_reactions(data, equilibrium):
         ax.set_xlabel("")
     fig.supylabel(r"Reactions / $n_{\rm H}^2$ [cm$^3$ s$^{-1}$]", fontsize=10)
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="outside lower center", ncol=len(labels))
+    fig.legend(handles, labels, loc="outside lower center", ncol=3)
     return fig
 
 
