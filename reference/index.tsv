@@ -12,8 +12,8 @@
 現行	Ferland_1992	Ferland_1992.pdf	https://adsabs.harvard.edu/pdf/1992ApJ...387...95F	保存済み	
 現行	Burgess_Seaton_1960	Burgess_Seaton_1960.pdf	https://adsabs.harvard.edu/pdf/1960MNRAS.121..471B	保存済み	
 現行	Millar_1997	Millar_1997.pdf	https://star.pst.qub.ac.uk/~tjm/papers/rate95.ps.gz	保存済み（著者公開の PostScript から変換）	
-現行	Nahar_Pradhan_1997	Nahar_Pradhan_1997.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-pirc-cn.pdf	保存済み	炭素・窒素の論文。同梱の炭素データは ../data/NaharPradhan1997/NaharPradhan1997_C.dat。
-現行	Nahar_1999	Nahar_1999.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-pirc-oions.pdf	保存済み	酸素イオンの論文。コードの C III の係数については Nahar & Pradhan (1997) が出典候補。
+現行	Nahar_Pradhan_1997	Nahar_Pradhan_1997.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-pirc-cn.pdf	保存済み	炭素・窒素の論文。炭素の参照表はローカルの ../data/NaharPradhan1997/ に保管。
+現行	Nahar_1999	Nahar_1999.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-pirc-oions.pdf	保存済み	酸素イオンの論文。酸素の参照表はローカルの ../data/Nahar1999/ に保管。コードの C III の係数については Nahar & Pradhan (1997) が出典候補。
 現行	Nahar_2000	Nahar_2000.pdf	https://www.astronomy.ohio-state.edu/nahar.1/papers/apjs-rrc-siseq.pdf	保存済み	
 現行	Nahar_1995	Nahar_1995.pdf	https://adsabs.harvard.edu/pdf/1995ApJS..101..423N	保存済み	
 現行	Nahar_1996_erratum	Nahar_1996_erratum.pdf	https://adsabs.harvard.edu/pdf/1996ApJS..106..213N	保存済み	Nahar (1995) の訂正。集計では原論文と合わせて1件。
@@ -92,7 +92,7 @@
 代替・背景	Pavlovski_2002	Pavlovski_2002.pdf	https://adsabs.harvard.edu/pdf/2002MNRAS.337..477P	保存済み	
 関連論文	Fioc_Rocca_Volmerange_1999	Fioc_Rocca_Volmerange_1999.pdf	https://arxiv.org/pdf/astro-ph/9912179	保存済み	PEGASE.2 のスペクトルは外部入力。指定方法は ../README.md。
 関連論文	Kroupa_2001	Kroupa_2001.pdf	https://arxiv.org/pdf/astro-ph/0009005	保存済み	
-関連論文	Gnat_Sternberg_2007	Gnat_Sternberg_2007.pdf	https://arxiv.org/pdf/astro-ph/0608181	保存済み	同梱データは ../data/GnatSternberg2007/。
+関連論文	Gnat_Sternberg_2007	Gnat_Sternberg_2007.pdf	https://arxiv.org/pdf/astro-ph/0608181	保存済み	電離分率の参照表はローカルの ../data/GnatSternberg2007/ に保管。
 関連論文	Gnat_Ferland_2012	Gnat_Ferland_2012.pdf	https://arxiv.org/pdf/1111.6980	保存済み	同梱データは ../data/GnatFerland2012/。
 書籍	Spitzer_1978		https://ui.adsabs.harvard.edu/abs/1978ppim.book.....S/abstract	全文PDF 未取得	
 書籍	Osterbrock_1989		https://ui.adsabs.harvard.edu/abs/1989agna.book.....O/abstract	全文PDF 未取得	

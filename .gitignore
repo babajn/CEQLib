@@ -32,5 +32,10 @@ tags
 /data/LeBourlot+1999/interp.f
 /data/LeBourlot+1999/le_cube.data
 
+# Local ionization and recombination reference tables
+/data/GnatSternberg2007/*.dat
+/data/Nahar1999/*.dat
+/data/NaharPradhan1997/*.dat
+
 # Local gnuplot scripts
 /plot/**/*.gp
