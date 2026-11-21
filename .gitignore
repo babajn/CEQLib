@@ -28,5 +28,9 @@ tags
 # PEGASE.2 inputs are managed locally
 /data/PEGASE2/
 
+# Local Le Bourlot et al. (1999) reference files
+/data/LeBourlot+1999/interp.f
+/data/LeBourlot+1999/le_cube.data
+
 # Local gnuplot scripts
 /plot/**/*.gp
