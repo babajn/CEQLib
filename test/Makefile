@@ -40,7 +40,7 @@ HEADS = Astro.h \
 
 ALL:   start
 
-.PHONY: start ceqlib check benchmark hii hii-benchmark hii-plot wolfire-plot
+.PHONY: start ceqlib check benchmark hii hii-benchmark hii-plot co co-plot wolfire-plot
 ceqlib:
 	$(MAKE) -C $(CEQLIB_DIR) GSL_DIR=$(GSL_DIR) libCEQLib.a
 
@@ -82,11 +82,22 @@ hii-benchmark: HIIRegionBenchmark.c HIIRegionFixture.h ceqlib
 hii-plot: hii
 	$(PYTHON) ../plot/plot_hii_region.py
 
+co: MolecularTest.c ceqlib
+	mkdir -p out/co
+	$(CC) $(CFLAGS) -fno-fast-math MolecularTest.c $(LDFLAGS) -o out/molecular_test.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/co.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/molecular_test.out" "$(abspath ../data/PEGASE2)"; \
+	mv equilibrium.csv column_scan.csv "$(CURDIR)/out/co/"
+
+co-plot: co
+	$(PYTHON) ../plot/plot_co_chemistry.py
+
 wolfire-plot:
 	$(PYTHON) ../plot/plot_wolfire1995.py
 
 clean:
-	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out
+	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out
 
 tag:
 	ctags *.[c,h]

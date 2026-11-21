@@ -72,6 +72,33 @@ python3 test/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe
 
 各ゾーンの入力、ログ、集計 CSV は `test/out/hii/cloudy/` に出力します。[PlotHIIRegion.ipynb](plot/PlotHIIRegion.ipynb) は再計算の出力を優先し、出力がなければ [Cloudy C23.01 の保存済み参照結果](test/reference/cloudy_hii_c23.01.csv) を使います。参照結果で描画する場合は CEQLib の `make -C test hii` の出力があれば実行できます。Cloudy のデータ更新と計算方法は [C23 リリース論文](https://doi.org/10.22201/ia.01851101p.2023.59.02.12) と [C23.01 リリース論文](https://doi.org/10.3847/2515-5172/ad0e75) を参照してください。対応する PDF は [reference/](reference/index.tsv) に保存しています。
 
+## H₂・CO 化学の検証計算と描画
+
+```sh
+make -C test GSL_DIR="$HOME/lib/gsl" co
+```
+
+[MolecularTest.c](test/MolecularTest.c) は、H II 領域・H₂・CO・ダスト・宇宙線・軟X線・H–O 電荷交換をすべて有効にした設定で化学平衡を解き、反応収支を確かめます。次の2種類の条件を計算します。
+
+- 密度・温度・電離光子束の格子：`n_H = 1〜10⁵ cm⁻³`（0.25 dex 刻み）、`T = 30, 100, 300, 1000 K`、電離光子なしと `log10(U) = −5, −3` の252条件です。`G0 = 1.7`、全柱密度は `N_H = 2×10²¹ (n_H/100)^{1/2} cm⁻²` です。結果は `test/out/co/equilibrium.csv` に出力します。
+- 柱密度走査：電離光子なし、`T = 30 K`、`n_H = 100, 1000 cm⁻³` と `G0 = 1.7, 17` の組で、`N_H = 10¹⁹〜10²³ cm⁻²` を変えます。各点は一つ前の解から始めます。結果は `test/out/co/column_scan.csv` に出力します。
+
+各平衡状態について、H₂ と CO の生成・消滅、電荷交換を含む H と O の電離・再結合の反応量を、公開されている反応率関数から独立に計算し直します。どれかの相対差が `10⁻⁶` を超えるか、最終的な H₂ 量で CO を解き直したときに CO が `10⁻⁶` 以上変わると、試験は失敗します。CSV には存在比、各反応量（cm⁻³ s⁻¹）、相対差を出力します。
+
+Jupyter で [PlotCOChemistry.ipynb](plot/PlotCOChemistry.ipynb) を実行すると、反応収支、密度に対する分子の割合、柱密度に対する H/H₂ と C⁺/C/CO の遷移、生成と消滅の反応量を表示します。PNG を生成するには `make -C test GSL_DIR="$HOME/lib/gsl" co-plot` を実行してください。[plot_co_chemistry.py](plot/plot_co_chemistry.py) が PNG を `plot/out/co/` に保存します。
+
+### CO モデルの適用範囲
+
+CO 化学は Keto & Caselli (2008) の平衡モデル（[Glover & Clark 2012](https://doi.org/10.1111/j.1365-2966.2011.20260.x) の KC08e）です。反応は C⁺ + H₂ → CO、CO の光解離（CO → C）、C の光電離（C → C⁺）の3つだけで、宇宙線による反応と C⁺ の再結合を含みません。平衡では `x_C/x_CO = Γ_CO/Γ_C` となり、ダスト減光の指数が CO（2.5）と C（3.0）で異なるため、この比は `A_V` とともに `e^{0.5 A_V}` で増えます。
+
+- `A_V ≲ 20`：CO は KC08e の想定どおり振る舞います。柱密度走査では `A_V ≈ 3〜10` で `CO/C > 0.99` です。
+- `A_V ≳ 25`：CO が減り、C I が主になります。走査では `CO/C` が `A_V = 34` で 0.05 です。実際の高密度コアでは CO が主成分として残るので、この領域の C・CO の存在比と冷却は信頼できません。
+- 原子状炭素は全体に少なめです。Glover & Clark (2012) は、KC08 が C⁺ の再結合を含まないことを理由に、観測より小さい C/CO を報告しています。
+
+Glover & Clark (2012) は、銀河規模の計算では KC08e のような簡単なモデルで十分であり、モデル間の差は分解能による不確かさより小さいと結論しています。ASURA などで使う場合は、粒子の `A_V` が 20 を超える割合を確認してください。
+
+宇宙線による C の電離と He⁺ + CO → C⁺ + O + He を KC08e に加えるだけでは解決しません。走査の反応率を使った試算では、深部の `CO/C` は 0.8〜0.98 に保たれますが、C⁺ を除く反応が遅い C⁺ + H₂ だけなので、`A_V = 3〜50` で C⁺ が炭素の 2〜20% 残ります。実際の暗黒雲の `C⁺/C ≈ 10⁻⁴` より大きく、[C II] 冷却も過大になります。深部まで扱うには、C⁺ の再結合や CHx・OHx を含む Nelson & Langer (1999) 型のモデル（Glover & Clark 2012 の NL99）が必要です。
+
 ## Wolfire et al. (1995) の検証計算と描画
 
 ```sh
