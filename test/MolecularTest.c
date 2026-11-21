@@ -234,15 +234,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s PEGASE2_DIRECTORY\n", argv[0]);
         return EXIT_FAILURE;
     }
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamDustAttenuation(true);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamHIIRegion(true);
-    CEQLibiSetRunParamH2Formation(true, 1.0);
-    CEQLibiSetRunParamCOFormation(true, 1.0);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamHIIRegion(true);
+    CEQLibSetRunParamH2Formation(true, 1.0);
+    CEQLibSetRunParamCOFormation(true, 1.0);
     if(CEQLibTryInitialization(0, argv[1]) != CEQ_SUCCESS) return EXIT_FAILURE;
 
     FILE *grid = fopen("equilibrium.csv", "w");

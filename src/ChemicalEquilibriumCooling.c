@@ -91,53 +91,53 @@ void CEQLibInitialization(int Check){
     if(CEQLibTryInitialization(Check,NULL) != CEQ_SUCCESS) exit(EXIT_FAILURE);
 }
 
-void CEQLibiSetRunParamDebugMode(bool Use){
+void CEQLibSetRunParamDebugMode(bool Use){
     CEQLibRunParameters.UseDebugMode = Use;
 }
 
-void CEQLibiSetRunParamRecombinationCaseB(bool Use){
+void CEQLibSetRunParamRecombinationCaseB(bool Use){
     CEQLibRunParameters.UseRecombinationCaseB = Use;
 }
 
-void CEQLibiSetRunParamHIIRegion(bool Use){
+void CEQLibSetRunParamHIIRegion(bool Use){
     CEQLibRunParameters.UseHIIRegion = Use;
 }
 
-void CEQLibiSetRunParamDustAttenuation(bool Use){
+void CEQLibSetRunParamDustAttenuation(bool Use){
     CEQLibRunParameters.UseDustAttenuation = Use;
 }
 
-void CEQLibiSetRunParamGrainSurfaceProcesses(bool Use){
+void CEQLibSetRunParamGrainSurfaceProcesses(bool Use){
     CEQLibRunParameters.UseGrainSurfaceProcesses = Use;
 }
 
-void CEQLibiSetRunParamCosmicRayIonization(bool Use){
+void CEQLibSetRunParamCosmicRayIonization(bool Use){
     CEQLibRunParameters.UseCosmicRayIonization = Use;
 }
 
-void CEQLibiSetRunParamSoftXrayIonization(bool Use){
+void CEQLibSetRunParamSoftXrayIonization(bool Use){
     CEQLibRunParameters.UseSoftXrayIonization = Use;
 }
 
-void CEQLibiSetRunParamCIEResonanceCooling(bool Use){
+void CEQLibSetRunParamCIEResonanceCooling(bool Use){
     CEQLibRunParameters.UseCIEResonanceCooling = Use;
 }
 
-void CEQLibiSetRunParamH2Formation(bool Use, double Cp){
+void CEQLibSetRunParamH2Formation(bool Use, double Cp){
     CEQLibRunParameters.UseH2Formation = Use;
     CEQLibRunParameters.CpForH2 = Cp;
 }
 
-void CEQLibiSetRunParamCOFormation(bool Use, double Cp){
+void CEQLibSetRunParamCOFormation(bool Use, double Cp){
     CEQLibRunParameters.UseCOFormation = Use;
     CEQLibRunParameters.CpForCO = Cp;
 }
 
-void CEQLibiSetRunParamChargeTransfer(bool Use){
+void CEQLibSetRunParamChargeTransfer(bool Use){
     CEQLibRunParameters.UseChargeTransfer = Use;
 }
 
-CEQLibStatus CEQLibiSetRunParamChemistryAccuracy(double value){
+CEQLibStatus CEQLibSetRunParamChemistryAccuracy(double value){
     if(!isfinite(value) || value <= 0.0 || value >= 1.0) return CEQ_INVALID_INPUT;
     CEQLibRunParameters.ChemistryAccuracy = value;
     return CEQ_SUCCESS;

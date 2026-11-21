@@ -55,36 +55,36 @@ typedef enum {
    when no evaluations are running. */
 CEQLibStatus CEQLibTryInitialization(int check, const char *pegaseDirectory);
 void CEQLibInitialization(int Check);
-void CEQLibiSetRunParamDebugMode(bool Use);
-void CEQLibiSetRunParamRecombinationCaseB(bool Use);
+void CEQLibSetRunParamDebugMode(bool Use);
+void CEQLibSetRunParamRecombinationCaseB(bool Use);
 /* Use NLyn to evaluate photoionization and blend the CIE metal term with
    [O II]/[O III] cooling where H is photoionized. The explicit line term
    models only oxygen and tapers from 1.5e4 to 2.5e4 K to recover CIE.
    When off, NLyn is ignored and C keeps its FUV photoionization. */
-void CEQLibiSetRunParamHIIRegion(bool Use);
+void CEQLibSetRunParamHIIRegion(bool Use);
 /* With H II regions enabled, solve O0 + H+ <-> O+ + H0 and O++ + H0 -> O+ + H+
    together with the H balance (default on). Turning it off makes H II updates
    about 20-35% faster, but leaves O III too abundant where some H I remains;
    against Cloudy, the median temperature error at solar metallicity grows
    from about 1.4% to 5.3%. */
-void CEQLibiSetRunParamChargeTransfer(bool Use);
+void CEQLibSetRunParamChargeTransfer(bool Use);
 /* Upper bound on the relative charge residual of the chemistry inside the
    implicit energy API, which uses min(value, 0.1*accuracy). The default 1e-8
    is far tighter than the energy accuracy needs. 1e-5 typically makes energy
    updates 10-25% faster and changes T by less than about 2e-5. The net-rate
    API solves at accuracy 1e-8 and so uses at most 1e-9, whatever the value.
    Returns CEQ_INVALID_INPUT unless 0 < value < 1. */
-CEQLibStatus CEQLibiSetRunParamChemistryAccuracy(double value);
-void CEQLibiSetRunParamDustAttenuation(bool Use);
-void CEQLibiSetRunParamGrainSurfaceProcesses(bool Use);
-void CEQLibiSetRunParamCosmicRayIonization(bool Use);
-void CEQLibiSetRunParamSoftXrayIonization(bool Use);
+CEQLibStatus CEQLibSetRunParamChemistryAccuracy(double value);
+void CEQLibSetRunParamDustAttenuation(bool Use);
+void CEQLibSetRunParamGrainSurfaceProcesses(bool Use);
+void CEQLibSetRunParamCosmicRayIonization(bool Use);
+void CEQLibSetRunParamSoftXrayIonization(bool Use);
 /* Extrapolate the CIE metal contribution above the table (10^8.5 K) with
    sqrt(T) scaling up to 10^9 K. Higher temperatures return CEQ_INVALID_INPUT
    from the checked cooling and heating APIs when CIE is enabled. */
-void CEQLibiSetRunParamCIEResonanceCooling(bool Use);
-void CEQLibiSetRunParamH2Formation(bool Use, double Cp);
-void CEQLibiSetRunParamCOFormation(bool Use, double Cp);
+void CEQLibSetRunParamCIEResonanceCooling(bool Use);
+void CEQLibSetRunParamH2Formation(bool Use, double Cp);
+void CEQLibSetRunParamCOFormation(bool Use, double Cp);
 
 int CEQLibCalculateCoolingHeatingRates(StructCEQData *PhydroPP);
 /* Fixed-temperature equilibrium. Negative results are CEQLibStatus errors.

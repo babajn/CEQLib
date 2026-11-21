@@ -57,7 +57,7 @@ static void CheckHeIIIRecombinationCooling(void)
     /* Hydrogenic scaling: Lambda_HeIII(T) = 8 Lambda_HII(T/4) for case A and case B. */
     const bool caseB[] = {true, false};
     for(size_t c = 0; c < sizeof(caseB)/sizeof(caseB[0]); c++){
-        CEQLibiSetRunParamRecombinationCaseB(caseB[c]);
+        CEQLibSetRunParamRecombinationCaseB(caseB[c]);
         const double temperatures[] = {1.0e4, 3.0e4, 1.0e5, 1.0e6};
         for(size_t i = 0; i < sizeof(temperatures)/sizeof(temperatures[0]); i++){
             StructCEQData helium = {.T = temperatures[i], .nel = 1.0, .nHeIII = 1.0};
@@ -67,7 +67,7 @@ static void CheckHeIIIRecombinationCooling(void)
             assert(fabs(CoolingHeIIIRecombination(&helium)-expected) <= 2.0e-3*expected);
         }
     }
-    CEQLibiSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
 }
 
 static void CheckIonizedGasEquationOfState(void)
@@ -111,25 +111,25 @@ static void CheckZeroElectronSeed(void)
     StructCEQData state = GasState(1.0,100.0,1.0e19);
     state.G0 = state.Z = state.Zd = 0.0;
     for(int i = 1; i < NumberChemicalElement; i++) state.n[i] = state.natom[i] = 0.0;
-    CEQLibiSetRunParamCosmicRayIonization(false);
+    CEQLibSetRunParamCosmicRayIonization(false);
     assert(CEQLibChemicalReactionEquilibrium(&state,1.0e-8) >= 0);
     assert(fabs(state.nel - 0.00240514) < 1.0e-7);
-    CEQLibiSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
 }
 
 static void CheckLowIonizationXraySearch(void)
 {
     StructCEQData state = {.T = 100.0, .Nt = 1.0e24, .X0 = 1.0, .nel = 1.0, .n = {1.0e3}};
-    CEQLibiSetRunParamCosmicRayIonization(false);
-    CEQLibiSetRunParamGrainSurfaceProcesses(false);
+    CEQLibSetRunParamCosmicRayIonization(false);
+    CEQLibSetRunParamGrainSurfaceProcesses(false);
     /* A seed inside the fitted X-ray range keeps that search domain. */
     assert(CEQLibChemicalReactionEquilibrium(&state,1.0e-8) == CEQ_NO_EQUILIBRIUM);
     state.nel = 0.05;
     assert(CEQLibChemicalReactionEquilibrium(&state,1.0e-8) == CEQ_SUCCESS);
     assert(state.nel > 0.0 && state.nel < 1.0e-4*state.n[ipHYDROGEN]);
     assert(fabs(state.nel-state.nion[ipHYDROGEN]) <= 1.0e-8*state.nel);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
 }
 
 static void CheckAtomicThermalNumerics(void)
@@ -484,9 +484,9 @@ static void CheckPhotoionizedOxygenCooling(void)
     assert(state.L_OII > 0.0 && state.L_OIII > 0.0);
 
     StructCEQData cie = state;
-    CEQLibiSetRunParamHIIRegion(false);
+    CEQLibSetRunParamHIIRegion(false);
     assert(CEQLibCalculateCoolingHeatingRates(&cie) == CEQ_SUCCESS);
-    CEQLibiSetRunParamHIIRegion(true);
+    CEQLibSetRunParamHIIRegion(true);
     assert(cie.L_OII == 0.0 && cie.L_OIII == 0.0 && cie.L_res > 0.0);
 
     double lines = CoolingLinesHIIregionOxygen(state.T,state.nel,state.nion[ipOXYGEN],state.nOIII);
@@ -522,8 +522,8 @@ static void CheckPhotoionizedOxygenCooling(void)
 
 static void CheckPhotoionizationTurnOn(void)
 {
-    CEQLibiSetRunParamH2Formation(false,1.0);
-    CEQLibiSetRunParamCOFormation(false,1.0);
+    CEQLibSetRunParamH2Formation(false,1.0);
+    CEQLibSetRunParamCOFormation(false,1.0);
     const double nH = 100.0;
     StructCEQData initial = GasState(nH,1.0e4,1.0e19);
     initial.G0 = initial.X0 = initial.Zd = 0.0;
@@ -562,8 +562,8 @@ static double RelativeDifference(double a, double b)
 
 static void CheckHydrogenOxygenChargeTransfer(void)
 {
-    CEQLibiSetRunParamH2Formation(false,1.0);
-    CEQLibiSetRunParamCOFormation(false,1.0);
+    CEQLibSetRunParamH2Formation(false,1.0);
+    CEQLibSetRunParamCOFormation(false,1.0);
     const double nH = 100.0, accuracy = 1.0e-10;
     StructCEQData state = GasState(nH,8000.0,1.0e19);
     state.G0 = state.X0 = state.Zd = 0.0;
@@ -625,11 +625,11 @@ static void CheckMolecularChargeTransferBalance(void)
     /* Partly ionized molecular gas, where coupling O and H used to leave H2
        about 9% out of balance because H I moved after the H2 solve. */
     const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamH2Formation(true,1.0);
-    CEQLibiSetRunParamCOFormation(true,1.0);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamH2Formation(true,1.0);
+    CEQLibSetRunParamCOFormation(true,1.0);
     const double nH = 100.0, accuracy = 1.0e-8;
     StructCEQData state = GasState(nH,60.0,1.0e21);
     state.nel = 1.0e-3*nH;
@@ -680,14 +680,14 @@ static void CheckH2ShieldingUpperTail(void)
 static void CheckCarbonBalanceAtH2ShieldingBoundary(double nH, double metallicity, double column)
 {
     const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
-    CEQLibiSetRunParamHIIRegion(true);
-    CEQLibiSetRunParamChargeTransfer(true);
-    CEQLibiSetRunParamDustAttenuation(true);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamH2Formation(true,1.0);
-    CEQLibiSetRunParamCOFormation(true,1.0);
+    CEQLibSetRunParamHIIRegion(true);
+    CEQLibSetRunParamChargeTransfer(true);
+    CEQLibSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamH2Formation(true,1.0);
+    CEQLibSetRunParamCOFormation(true,1.0);
     /* Both fixtures put the uncoupled H2 above the edge and the coupled H2 below. */
     const double upperH2Column = 1.016e22;
     const double accuracies[] = {1.e-8, 1.e-5};
@@ -729,7 +729,7 @@ static void CheckMolecularHydrogenRoundoffAccuracy(void)
     /* At the smallest tolerance the thermal solver uses (16 eps), the local H2
        search started near the root must still meet it when it reports success. */
     const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
-    CEQLibiSetRunParamH2Formation(true,1.0);
+    CEQLibSetRunParamH2Formation(true,1.0);
     const double accuracy = 16.0*DBL_EPSILON;
     const double temperatures[] = {30.0, 100.0, 1000.0};
     const double offsets[] = {1.0e-9, 1.0e-6, 1.0e-3, -1.0e-3, 0.1};
@@ -757,9 +757,9 @@ static void CheckChargeTransferSwitch(void)
     StructCEQData uncoupled = coupled;
     assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&coupled,accuracy) == CEQ_SUCCESS);
 
-    CEQLibiSetRunParamChargeTransfer(false);
+    CEQLibSetRunParamChargeTransfer(false);
     assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&uncoupled,accuracy) == CEQ_SUCCESS);
-    CEQLibiSetRunParamChargeTransfer(true);
+    CEQLibSetRunParamChargeTransfer(true);
 
     /* Without charge transfer, the O ladder balances on photo- and electron processes alone. */
     const double T = uncoupled.T, ne = uncoupled.nel;
@@ -775,7 +775,7 @@ static void CheckChemistryAccuracySetting(void)
 {
     const double invalid[] = {0.0, -1.0e-5, 1.0, NAN, INFINITY};
     for(size_t i = 0; i < sizeof(invalid)/sizeof(invalid[0]); i++)
-        assert(CEQLibiSetRunParamChemistryAccuracy(invalid[i]) == CEQ_INVALID_INPUT);
+        assert(CEQLibSetRunParamChemistryAccuracy(invalid[i]) == CEQ_INVALID_INPUT);
     assert(CEQLibRunParameters.ChemistryAccuracy == 1.0e-8);
 
     /* A looser chemistry tolerance keeps energy updates within the energy accuracy. */
@@ -788,9 +788,9 @@ static void CheckChemistryAccuracySetting(void)
         state.dt = 1.0e4*YEAR_CGS;
         StructCEQData loose = state;
         assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,accuracy,&state.Du) == CEQ_SUCCESS);
-        assert(CEQLibiSetRunParamChemistryAccuracy(1.0e-5) == CEQ_SUCCESS);
+        assert(CEQLibSetRunParamChemistryAccuracy(1.0e-5) == CEQ_SUCCESS);
         assert(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&loose,accuracy,&loose.Du) == CEQ_SUCCESS);
-        assert(CEQLibiSetRunParamChemistryAccuracy(1.0e-8) == CEQ_SUCCESS);
+        assert(CEQLibSetRunParamChemistryAccuracy(1.0e-8) == CEQ_SUCCESS);
         assert(fabs(loose.T-state.T) <= accuracy*state.T);
     }
 }
@@ -801,9 +801,9 @@ static void CheckIonizingFluxNeedsHIIRegion(void)
        even after the PEGASE2 tables are loaded. Otherwise C would lose its FUV
        photoionization and drop from C II to C I in diffuse gas. */
     const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
-    CEQLibiSetRunParamHIIRegion(false);
-    CEQLibiSetRunParamH2Formation(false,1.0);
-    CEQLibiSetRunParamCOFormation(false,1.0);
+    CEQLibSetRunParamHIIRegion(false);
+    CEQLibSetRunParamH2Formation(false,1.0);
+    CEQLibSetRunParamCOFormation(false,1.0);
     StructCEQData dark = GasState(1.0,100.0,1.0e19);
     dark.nel = 1.0e-3;
     StructCEQData lit = dark;
@@ -822,11 +822,11 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     const double unattenuated = CIFUVPhotoionizationRate(1.7,0.0);
     const double attenuated = CIFUVPhotoionizationRate(1.7,1.0);
     assert(fabs(attenuated/unattenuated-exp(-3.0)) < 1.0e-15);
-    CEQLibiSetRunParamDustAttenuation(false);
+    CEQLibSetRunParamDustAttenuation(false);
     assert(CIFUVPhotoionizationRate(1.7,1.0) == unattenuated);
-    CEQLibiSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamDustAttenuation(true);
 
-    CEQLibiSetRunParamHIIRegion(true);
+    CEQLibSetRunParamHIIRegion(true);
     assert(CEQLibTryInitialization(0,pegaseDirectory) == CEQ_SUCCESS);
     const double rate = HIPhotoIonizationRate(1.0);
     const double referenceRate = 0x1.36bcd33264bbp-58;  /* Solar PEGASE2 spectrum. */
@@ -864,21 +864,21 @@ static void CheckPhotoionization(const char *pegaseDirectory)
 int main(int argc, char **argv)
 {
     assert(argc == 2);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamDustAttenuation(true);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(false);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(false,1.0);
-    CEQLibiSetRunParamCOFormation(false,1.0);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(false);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(false,1.0);
+    CEQLibSetRunParamCOFormation(false,1.0);
     CEQLibInitialization(0);
     CheckDisabledFineStructureLines();
 
     StructCEQData probe = GasState(1.0,100.0,1.e20);
     probe.nel = 0.01*probe.n[ipHYDROGEN];
     assert(TotalCosmicRayHeatingRate(&probe) == 0.0);
-    CEQLibiSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
     const double cosmicRayHeating = TotalCosmicRayHeatingRate(&probe);
     assert(isfinite(cosmicRayHeating) && cosmicRayHeating > 0.0);
     CheckAtomicEquilibrium();
@@ -892,15 +892,15 @@ int main(int argc, char **argv)
     CheckLowMetallicityCIECooling();
     CheckHotGasTimeStepConvergence();
 
-    CEQLibiSetRunParamH2Formation(true,1.0);
-    CEQLibiSetRunParamCOFormation(true,1.0);
-    CEQLibiSetRunParamGrainSurfaceProcesses(false);
-    CEQLibiSetRunParamSoftXrayIonization(false);
+    CEQLibSetRunParamH2Formation(true,1.0);
+    CEQLibSetRunParamCOFormation(true,1.0);
+    CEQLibSetRunParamGrainSurfaceProcesses(false);
+    CEQLibSetRunParamSoftXrayIonization(false);
     CheckMolecularBranches();
     CheckOxygenLimit();
 
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
     CheckMolecularXrayLocalSearch();
     CheckEnergyAndEquationOfState();
     CheckThermalBranchAtCOBoundary();

@@ -20,7 +20,7 @@ OMP_NUM_THREADS=12 make -C test GSL_DIR="$HOME/lib/gsl" benchmark
 
 実行パラメータを設定し、並列計算を始める前に `CEQLibTryInitialization` を呼び出してください。H II 領域の計算には PEGASE2 の入力ディレクトリを指定できます。エネルギー更新では `CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating` の成功を確認してから、呼び出し側で `U += dt * Du` を適用します。
 
-H II 領域の酸素冷却を使うには、初期化前に `CEQLibiSetRunParamHIIRegion(true)` を呼び、各粒子の `NLyn` に局所の水素電離光子束を設定します。光電離ガスの CIE 金属冷却を [O II] と [O III] の冷却に徐々に置き換え、15,000〜25,000 K の間で CIE に戻します。各遷移の光学的に薄い放射率は [HIIregionLineCooling.h](src/HIIregionLineCooling.h) の `CoolingLinesOII` と `CoolingLinesOIII` で取得できます。
+H II 領域の酸素冷却を使うには、初期化前に `CEQLibSetRunParamHIIRegion(true)` を呼び、各粒子の `NLyn` に局所の水素電離光子束を設定します。光電離ガスの CIE 金属冷却を [O II] と [O III] の冷却に徐々に置き換え、15,000〜25,000 K の間で CIE に戻します。各遷移の光学的に薄い放射率は [HIIregionLineCooling.h](src/HIIregionLineCooling.h) の `CoolingLinesOII` と `CoolingLinesOIII` で取得できます。
 
 この設定では、O⁰ + H⁺ ⇄ O⁺ + H⁰ と O²⁺ + H⁰ → O⁺ + H⁺ の電荷交換も解きます。H の電離分率を1変数とし、O の電離平衡と H I・H II の反応平衡を、電荷交換を含めて同時に満たします。H₂ 生成を有効にしている場合は、H の電離分率を変えるたびに H₂ の生成と消滅の釣り合いも解き直すので、H₂、H、O の反応がすべて同時に釣り合います。
 
@@ -29,17 +29,17 @@ H II 領域の酸素冷却を使うには、初期化前に `CEQLibiSetRunParamH
 ASURA などの銀河シミュレーションでは、次の設定から始めることを勧めます。すべて `CEQLibTryInitialization` の前、並列計算を始める前に一度だけ呼びます。実行中に変えないでください。
 
 ```c
-CEQLibiSetRunParamRecombinationCaseB(true);
-CEQLibiSetRunParamDustAttenuation(true);
-CEQLibiSetRunParamGrainSurfaceProcesses(true);
-CEQLibiSetRunParamCosmicRayIonization(true);
-CEQLibiSetRunParamSoftXrayIonization(true);
-CEQLibiSetRunParamCIEResonanceCooling(true);
-CEQLibiSetRunParamHIIRegion(true);          /* 各粒子の NLyn を与える場合 */
-CEQLibiSetRunParamH2Formation(true, 1.0);
-CEQLibiSetRunParamCOFormation(true, 1.0);   /* CO が不要なら false */
-CEQLibiSetRunParamChargeTransfer(true);     /* 物理モデルを保つため有効のまま */
-CEQLibiSetRunParamChemistryAccuracy(1.0e-5);
+CEQLibSetRunParamRecombinationCaseB(true);
+CEQLibSetRunParamDustAttenuation(true);
+CEQLibSetRunParamGrainSurfaceProcesses(true);
+CEQLibSetRunParamCosmicRayIonization(true);
+CEQLibSetRunParamSoftXrayIonization(true);
+CEQLibSetRunParamCIEResonanceCooling(true);
+CEQLibSetRunParamHIIRegion(true);          /* 各粒子の NLyn を与える場合 */
+CEQLibSetRunParamH2Formation(true, 1.0);
+CEQLibSetRunParamCOFormation(true, 1.0);   /* CO が不要なら false */
+CEQLibSetRunParamChargeTransfer(true);     /* 物理モデルを保つため有効のまま */
+CEQLibSetRunParamChemistryAccuracy(1.0e-5);
 if(CEQLibTryInitialization(0, pegaseDirectory) != CEQ_SUCCESS) { /* 停止する */ }
 
 /* 各粒子・各ステップ（並列可） */
@@ -52,12 +52,12 @@ if(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e
 
 | 設定 | 速度への効果 | 結果への影響 | 推奨 |
 | --- | --- | --- | --- |
-| `CEQLibiSetRunParamChemistryAccuracy(1e-5)` | エネルギー更新が約 10〜25% 速い | 温度の変化は 2×10⁻⁵ 程度以下で、エネルギーの精度 10⁻⁴ より十分小さい | 速度優先では必ず設定 |
+| `CEQLibSetRunParamChemistryAccuracy(1e-5)` | エネルギー更新が約 10〜25% 速い | 温度の変化は 2×10⁻⁵ 程度以下で、エネルギーの精度 10⁻⁴ より十分小さい | 速度優先では必ず設定 |
 | エネルギー更新の `accuracy` 引数（`1e-4` → `1e-3`） | 約 2〜30% 速い | 1 ステップの許容誤差が 10 倍になる | 時間刻みに対する収束を確かめてから |
-| `CEQLibiSetRunParamCOFormation(false, ...)` | 分子ガスで約 2.3 倍速い（下表） | CO の存在量と輝線冷却がゼロになり、炭素と酸素の状態が変わる | CO 冷却が不要な場合 |
-| `CEQLibiSetRunParamH2Formation(false, ...)` | さらに約 1.9 倍速い | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
-| `CEQLibiSetRunParamChargeTransfer(false)` | H II 領域の更新が約 20〜35% 速い | H I が残る条件で O III が過剰になり、Cloudy との温度差（太陽金属量の中央値）が 1.4% から 5.3% に広がる | 有効のまま |
-| `CEQLibiSetRunParamHIIRegion(false)` | PEGASE2 スペクトルの読み込みと、光電離ガスの [O II]・[O III] 冷却・H–O 電荷交換を省ける | 粒子の `NLyn` は無視され（0 として扱われ）、光電離加熱と [O II]・[O III] 冷却がなくなる。炭素は FUV による光電離を使う | 電離光子束を扱わない場合 |
+| `CEQLibSetRunParamCOFormation(false, ...)` | 分子ガスで約 2.3 倍速い（下表） | CO の存在量と輝線冷却がゼロになり、炭素と酸素の状態が変わる | CO 冷却が不要な場合 |
+| `CEQLibSetRunParamH2Formation(false, ...)` | さらに約 1.9 倍速い | H₂ の生成・冷却・加熱がなくなる | 分子ガスを扱わない場合 |
+| `CEQLibSetRunParamChargeTransfer(false)` | H II 領域の更新が約 20〜35% 速い | H I が残る条件で O III が過剰になり、Cloudy との温度差（太陽金属量の中央値）が 1.4% から 5.3% に広がる | 有効のまま |
+| `CEQLibSetRunParamHIIRegion(false)` | PEGASE2 スペクトルの読み込みと、光電離ガスの [O II]・[O III] 冷却・H–O 電荷交換を省ける | 粒子の `NLyn` は無視され（0 として扱われ）、光電離加熱と [O II]・[O III] 冷却がなくなる。炭素は FUV による光電離を使う | 電離光子束を扱わない場合 |
 
 分子化学の有無による違いを、H II 領域・ダスト・宇宙線・X 線・電荷交換を有効にし、化学平衡の許容誤差を `1e-5` にした条件で測りました。`n_H = 10⁻²〜10⁴ cm⁻³`、`T = 10〜10⁷ K`、電離光子なしと `log10(U) = −5, −3` の 975 点、時間刻み 1 万年の平均です。
 
@@ -80,11 +80,11 @@ if(CEQLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&particle, 1.0e
 
 | 設定 | 既定値 | 設定例 | 効果 |
 | --- | --- | --- | --- |
-| `CEQLibiSetRunParamCOFormation` | `false` | `true, 1.0` | CO の化学平衡と輝線冷却を有効にします。第2引数は CO 生成率の倍率です。 |
-| `CEQLibiSetRunParamChargeTransfer` | `true` | `false` | H II 領域の更新が約 20〜35% 速くなります。物理モデルが変わり、H I が残る条件で O III が過剰になります。Cloudy との比較では、太陽金属量の平衡温度の差が中央値 1.4% から 5.3% に広がります。H II 領域の設定が無効なときは効果がありません。 |
-| `CEQLibiSetRunParamChemistryAccuracy` | `1e-8` | `1e-5` | 陰的なエネルギー更新の中で解く化学平衡の許容誤差の上限です。実際には `min(値, 0.1 × エネルギーの精度)` を使います。更新が約 10〜25% 速くなり、温度の変化は 2×10⁻⁵ 程度以下です。正味冷却率の API は内部で精度 1e-8 を指定するので、この設定にかかわらず 1e-9 以下で解きます。 |
+| `CEQLibSetRunParamCOFormation` | `false` | `true, 1.0` | CO の化学平衡と輝線冷却を有効にします。第2引数は CO 生成率の倍率です。 |
+| `CEQLibSetRunParamChargeTransfer` | `true` | `false` | H II 領域の更新が約 20〜35% 速くなります。物理モデルが変わり、H I が残る条件で O III が過剰になります。Cloudy との比較では、太陽金属量の平衡温度の差が中央値 1.4% から 5.3% に広がります。H II 領域の設定が無効なときは効果がありません。 |
+| `CEQLibSetRunParamChemistryAccuracy` | `1e-8` | `1e-5` | 陰的なエネルギー更新の中で解く化学平衡の許容誤差の上限です。実際には `min(値, 0.1 × エネルギーの精度)` を使います。更新が約 10〜25% 速くなり、温度の変化は 2×10⁻⁵ 程度以下です。正味冷却率の API は内部で精度 1e-8 を指定するので、この設定にかかわらず 1e-9 以下で解きます。 |
 
-CO 化学を使う場合は、`CEQLibiSetRunParamH2Formation(true, 1.0)` と `CEQLibiSetRunParamCOFormation(true, 1.0)` を設定します。CO を無効にするには `CEQLibiSetRunParamCOFormation(false, 1.0)` を呼びます。無効にすると、更新後の CO 存在量と CO 輝線冷却はゼロになり、炭素・酸素の化学状態や冷却率にも影響します。[CO モデルの適用範囲](#co-モデルの適用範囲)
+CO 化学を使う場合は、`CEQLibSetRunParamH2Formation(true, 1.0)` と `CEQLibSetRunParamCOFormation(true, 1.0)` を設定します。CO を無効にするには `CEQLibSetRunParamCOFormation(false, 1.0)` を呼びます。無効にすると、更新後の CO 存在量と CO 輝線冷却はゼロになり、炭素・酸素の化学状態や冷却率にも影響します。[CO モデルの適用範囲](#co-モデルの適用範囲)
 
 CO を無効にした `make hii-benchmark` と同じ条件で、電荷交換を無効にして化学平衡の許容誤差を `1e-5` にすると、エネルギー更新1回あたりの時間は既定値の 0.6〜0.8 倍になりました。電荷交換を加える前の版と比べても 0.3〜0.6 倍です。測定値は単一スレッドの例で、計算機によって変わります。
 

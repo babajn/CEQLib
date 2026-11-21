@@ -29,9 +29,9 @@ static inline StructCEQData HIIRegionGasState(HIIRegion region, double temperatu
 static inline CEQLibStatus InitializeHIIRegionFixture(const char *pegaseDirectory)
 {
     /* Dust-free gas with unattenuated stellar ionizing radiation as its only source. */
-    CEQLibiSetRunParamHIIRegion(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamHIIRegion(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
     return CEQLibTryInitialization(0, pegaseDirectory);
 }
 

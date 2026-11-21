@@ -113,14 +113,14 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     const bool molecules = strcmp(argv[1],"molecular") == 0;
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamDustAttenuation(true);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(molecules,1.0);
-    CEQLibiSetRunParamCOFormation(molecules,1.0);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(molecules,1.0);
+    CEQLibSetRunParamCOFormation(molecules,1.0);
     if(CEQLibTryInitialization(0,NULL) != CEQ_SUCCESS) return EXIT_FAILURE;
 
     const double timesteps[] = {10.0,1.0e4,1.0e6};

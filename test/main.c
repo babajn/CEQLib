@@ -411,16 +411,16 @@ int main_WolfireTest(void){
         
     fprintf(stderr,"#%s():Line%d:%s\n",__FUNCTION__,__LINE__,__FILE__);
     
-    CEQLibiSetRunParamDebugMode(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamHIIRegion(false);
-    CEQLibiSetRunParamDustAttenuation(true);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(false,1.e0);
-    CEQLibiSetRunParamCOFormation(false,1.e0);
+    CEQLibSetRunParamDebugMode(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamHIIRegion(false);
+    CEQLibSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(false,1.e0);
+    CEQLibSetRunParamCOFormation(false,1.e0);
     
     CEQLibInitialization(1);
    
@@ -730,15 +730,15 @@ int main_WolfireTest(void){
     
 int main_WolfireMilkyWayTest(void){
     
-    CEQLibiSetRunParamDebugMode(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamHIIRegion(false);
-    CEQLibiSetRunParamDustAttenuation(true);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamH2Formation(false,1.e0);
-    CEQLibiSetRunParamCOFormation(false,1.e0);
+    CEQLibSetRunParamDebugMode(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamHIIRegion(false);
+    CEQLibSetRunParamDustAttenuation(true);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamH2Formation(false,1.e0);
+    CEQLibSetRunParamCOFormation(false,1.e0);
     
     CEQLibInitialization(1);
 
@@ -760,16 +760,16 @@ int main_WolfireMilkyWayTest(void){
 
 int main_HIIregionTest(void){
     
-    CEQLibiSetRunParamDebugMode(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamHIIRegion(true);
-    CEQLibiSetRunParamDustAttenuation(false);
-    CEQLibiSetRunParamGrainSurfaceProcesses(true);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(false,1.e0);
-    CEQLibiSetRunParamCOFormation(false,1.e0);
+    CEQLibSetRunParamDebugMode(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamHIIRegion(true);
+    CEQLibSetRunParamDustAttenuation(false);
+    CEQLibSetRunParamGrainSurfaceProcesses(true);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(false,1.e0);
+    CEQLibSetRunParamCOFormation(false,1.e0);
     
     CEQLibInitialization(1);
    
@@ -1001,16 +1001,16 @@ int main_CoolingFunctionTest(void){
     char fname[100];
     
     ///////////// CIE Cooling Fuction
-    CEQLibiSetRunParamDebugMode(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamHIIRegion(false);
-    CEQLibiSetRunParamDustAttenuation(false);
-    CEQLibiSetRunParamGrainSurfaceProcesses(false);
-    CEQLibiSetRunParamCosmicRayIonization(false);
-    CEQLibiSetRunParamSoftXrayIonization(false);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(false,1.e0);
-    CEQLibiSetRunParamCOFormation(false,1.e0);
+    CEQLibSetRunParamDebugMode(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamHIIRegion(false);
+    CEQLibSetRunParamDustAttenuation(false);
+    CEQLibSetRunParamGrainSurfaceProcesses(false);
+    CEQLibSetRunParamCosmicRayIonization(false);
+    CEQLibSetRunParamSoftXrayIonization(false);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(false,1.e0);
+    CEQLibSetRunParamCOFormation(false,1.e0);
     
     CEQLibInitialization(1);
 
@@ -1035,16 +1035,16 @@ int main_CoolingFunctionTest(void){
     }
    
     ///////////// PDR Cooling Function
-    CEQLibiSetRunParamDebugMode(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamHIIRegion(false);
-    CEQLibiSetRunParamDustAttenuation(false);
-    CEQLibiSetRunParamGrainSurfaceProcesses(false);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(true,1.e0);
-    CEQLibiSetRunParamCOFormation(false,1.e0);
+    CEQLibSetRunParamDebugMode(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamHIIRegion(false);
+    CEQLibSetRunParamDustAttenuation(false);
+    CEQLibSetRunParamGrainSurfaceProcesses(false);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(true,1.e0);
+    CEQLibSetRunParamCOFormation(false,1.e0);
     
     CEQLibInitialization(1);
 
@@ -1064,16 +1064,16 @@ int main_CoolingFunctionTest(void){
     }
     
     ///////////// PDR Cooling Function
-    CEQLibiSetRunParamDebugMode(true);
-    CEQLibiSetRunParamRecombinationCaseB(true);
-    CEQLibiSetRunParamHIIRegion(false);
-    CEQLibiSetRunParamDustAttenuation(false);
-    CEQLibiSetRunParamGrainSurfaceProcesses(false);
-    CEQLibiSetRunParamCosmicRayIonization(true);
-    CEQLibiSetRunParamSoftXrayIonization(true);
-    CEQLibiSetRunParamCIEResonanceCooling(true);
-    CEQLibiSetRunParamH2Formation(true,1.e0);
-    CEQLibiSetRunParamCOFormation(true,1.e0);
+    CEQLibSetRunParamDebugMode(true);
+    CEQLibSetRunParamRecombinationCaseB(true);
+    CEQLibSetRunParamHIIRegion(false);
+    CEQLibSetRunParamDustAttenuation(false);
+    CEQLibSetRunParamGrainSurfaceProcesses(false);
+    CEQLibSetRunParamCosmicRayIonization(true);
+    CEQLibSetRunParamSoftXrayIonization(true);
+    CEQLibSetRunParamCIEResonanceCooling(true);
+    CEQLibSetRunParamH2Formation(true,1.e0);
+    CEQLibSetRunParamCOFormation(true,1.e0);
     
     CEQLibInitialization(1);
 
