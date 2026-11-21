@@ -27,7 +27,7 @@ H II 領域の酸素冷却を使うには、初期化前に `EQCLibSetRunParamHI
 
 ### シミュレーションで速度を優先する設定
 
-分子雲内部を分解せずに銀河全体の熱進化を追う ASURA 計算では、H₂ とダスト遮蔽を有効にし、CO は無効（既定値）にすることを勧めます。初期化前に次のように設定します。局所電離光子束 `NLyn` を渡す場合は `useLocalIonizingFlux` を `true` にします。
+分子雲内部を分解せずに銀河全体の熱進化を追う ASURA 計算では、**H₂ オン・CO オフ・H–O 電荷交換オン**を推奨します。ダスト遮蔽も有効にし、初期化前に次のように設定します。局所電離光子束 `NLyn` を渡す場合は `useLocalIonizingFlux` を `true` にします。
 
 ```c
 EQCLibSetRunParamRecombinationCaseB(true);
