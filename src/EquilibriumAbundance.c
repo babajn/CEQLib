@@ -18,6 +18,108 @@
 #define TURBULENCE_VELOCITY (3.0)   // km/s
 double b_turb = TURBULENCE_VELOCITY;    // km/s
 
+typedef enum {
+    TemperatureIonizeHI, TemperatureRecombineHIICaseA, TemperatureRecombineHIICaseB,
+    TemperatureIonizeHeI, TemperatureIonizeHeII,
+    TemperatureRecombineHeIICaseA, TemperatureRecombineHeIICaseB,
+    TemperatureRecombineHeIIICaseA, TemperatureRecombineHeIIICaseB,
+    TemperatureIonizeCI, TemperatureIonizeCII, TemperatureRecombineCII, TemperatureRecombineCIII,
+    TemperatureIonizeOI, TemperatureIonizeOII, TemperatureRecombineOII, TemperatureRecombineOIII,
+    TemperatureTransferToOII, TemperatureTransferToHI, TemperatureTransferOIII,
+    TemperatureDissociateH2Electron, TemperatureDissociateH2Atom, TemperatureDissociateH2Molecule,
+    ChemistryTemperatureTableCount,
+} ChemistryTemperatureRate;
+
+static CEQTemperatureTable chemistryTemperatureTables[ChemistryTemperatureTableCount];
+
+static double RecombineHeIICaseA(double T){
+    return HeIIRecombinationRateCaseA(T) + HeIIDielectronicRecombinationRate(T);
+}
+
+static double RecombineHeIICaseB(double T){
+    return HeIIRecombinationRateCaseB(T) + HeIIDielectronicRecombinationRate(T);
+}
+
+static double DissociateH2Electron(double T){
+    return H2DissociationCoefficients(T).electron;
+}
+
+static double DissociateH2Atom(double T){
+    return H2DissociationCoefficients(T).atomicHydrogen;
+}
+
+static double DissociateH2Molecule(double T){
+    return H2DissociationCoefficients(T).molecularHydrogen;
+}
+
+static double (*const chemistryTemperatureRates[ChemistryTemperatureTableCount])(double) = {
+    [TemperatureIonizeHI] = HICollisionalIonizationRate,
+    [TemperatureRecombineHIICaseA] = HIIRecombinationRateCaseA,
+    [TemperatureRecombineHIICaseB] = HIIRecombinationRateCaseB,
+    [TemperatureIonizeHeI] = HeICollisionalIonizationRate,
+    [TemperatureIonizeHeII] = HeIICollisionalIonizationRate,
+    [TemperatureRecombineHeIICaseA] = RecombineHeIICaseA,
+    [TemperatureRecombineHeIICaseB] = RecombineHeIICaseB,
+    [TemperatureRecombineHeIIICaseA] = HeIIIRecombinationRateCaseA,
+    [TemperatureRecombineHeIIICaseB] = HeIIIRecombinationRateCaseB,
+    [TemperatureIonizeCI] = CICollisionalIonizationRate,
+    [TemperatureIonizeCII] = CIICollisionalIonizationRate,
+    [TemperatureRecombineCII] = CIIRecombinationRate,
+    [TemperatureRecombineCIII] = CIIIRecombinationRate,
+    [TemperatureIonizeOI] = OICollisionalIonizationRate,
+    [TemperatureIonizeOII] = OIICollisionalIonizationRate,
+    [TemperatureRecombineOII] = OIIRecombinationRate,
+    [TemperatureRecombineOIII] = OIIIRecombinationRate,
+    [TemperatureTransferToOII] = OIChargeTransferRateToHII,
+    [TemperatureTransferToHI] = OIIChargeTransferRateToHI,
+    [TemperatureTransferOIII] = OIIIChargeTransferRateToHI,
+    [TemperatureDissociateH2Electron] = DissociateH2Electron,
+    [TemperatureDissociateH2Atom] = DissociateH2Atom,
+    [TemperatureDissociateH2Molecule] = DissociateH2Molecule,
+};
+
+void CEQInitializeChemistryTemperatureTables(void){
+    /* C II branches apply to the optional Glover & Jappsen fit. Protect the
+       boundaries for either build, and the clamps in O III charge transfer. */
+    static const double carbonBreaks[] = {7950.0,21140.0};
+    static const double transferBreaks[] = {100.0,1.e5};
+    for(int rate=0;rate<ChemistryTemperatureTableCount;rate++){
+        const double *breaks = NULL;
+        size_t count = 0;
+        if(rate == TemperatureRecombineCII){
+            breaks = carbonBreaks;
+            count = sizeof carbonBreaks/sizeof carbonBreaks[0];
+        }else if(rate == TemperatureTransferOIII){
+            breaks = transferBreaks;
+            count = sizeof transferBreaks/sizeof transferBreaks[0];
+        }
+        CEQFillTemperatureTable(&chemistryTemperatureTables[rate],chemistryTemperatureRates[rate],breaks,count);
+    }
+}
+
+static inline double ChemistryCoefficient(ChemistryTemperatureRate rate, double T, const CEQTemperaturePoint *point){
+    if(!point) return chemistryTemperatureRates[rate](T);
+    return CEQReadTemperatureTable(&chemistryTemperatureTables[rate],point,T,chemistryTemperatureRates[rate]);
+}
+
+H2CollisionalDissociationCoefficients CEQH2DissociationCoefficientsWithTemperatureTable(
+        double T, const CEQTemperaturePoint *point){
+    if(!point) return H2DissociationCoefficients(T);
+    H2CollisionalDissociationCoefficients coefficients = {
+        .electron = CEQReadTemperatureTable(&chemistryTemperatureTables[TemperatureDissociateH2Electron],point,T,NULL),
+        .atomicHydrogen = CEQReadTemperatureTable(&chemistryTemperatureTables[TemperatureDissociateH2Atom],point,T,NULL),
+        .molecularHydrogen = CEQReadTemperatureTable(&chemistryTemperatureTables[TemperatureDissociateH2Molecule],point,T,NULL),
+    };
+    if(!isfinite(coefficients.electron) || !isfinite(coefficients.atomicHydrogen) ||
+       !isfinite(coefficients.molecularHydrogen)){
+        const H2CollisionalDissociationCoefficients direct = H2DissociationCoefficients(T);
+        if(!isfinite(coefficients.electron)) coefficients.electron = direct.electron;
+        if(!isfinite(coefficients.atomicHydrogen)) coefficients.atomicHydrogen = direct.atomicHydrogen;
+        if(!isfinite(coefficients.molecularHydrogen)) coefficients.molecularHydrogen = direct.molecularHydrogen;
+    }
+    return coefficients;
+}
+
 
 /* Select the stationary class accessible from the neutral species whenever a
  * vanishing transition disconnects the ion ladder. */
@@ -138,14 +240,21 @@ static double HydrogenFluxResidual(double fraction, const void *parameters){
     return MolecularHydrogenResidual(balance->state,balance->h2,balance->neutralFraction,atomic,molecular);
 }
 
-static CEQMolecularHydrogenCoefficients MolecularHydrogenCoefficients(const StructEQCData *state){
+static void RefreshMolecularHydrogenCoefficients(const StructEQCData *state,
+                                                 CEQMolecularHydrogenCoefficients *h2,
+                                                 const CEQTemperaturePoint *point){
     const double dustTemperature = EffectiveDustTemperature(state);
-    return (CEQMolecularHydrogenCoefficients){
-        .formation = state->n[ipHYDROGEN]*H2FormationRate(state->T,state->Zd,dustTemperature),
-        .doppler = sqrt(SQ(12.90*sqrt(1.e-4*state->T))+SQ(b_turb)),
+    h2->formation = state->n[ipHYDROGEN]*H2FormationRate(state->T,state->Zd,dustTemperature);
+    h2->doppler = sqrt(SQ(12.90*sqrt(1.e-4*state->T))+SQ(b_turb));
+    h2->collision = CEQH2DissociationCoefficientsWithTemperatureTable(state->T,point);
+}
+
+static CEQMolecularHydrogenCoefficients MolecularHydrogenCoefficients(const StructEQCData *state){
+    CEQMolecularHydrogenCoefficients h2 = {
         .dustShielding = DustShieldingFactorFUV(state->Nt,state->Zd),
-        .collision = H2DissociationCoefficients(state->T),
     };
+    RefreshMolecularHydrogenCoefficients(state,&h2,NULL);
+    return h2;
 }
 
 /* Search outward from a previous fraction for a sign change, then refine it.
@@ -311,18 +420,27 @@ static int SolveMolecularHydrogen(const StructEQCData *state, const CEQMolecular
     return EQC_SUCCESS;
 }
 
-static CEQLadderCoefficients CarbonCoefficients(const StructEQCData *s){
+static CEQLadderCoefficients CarbonPhotoCoefficients(const StructEQCData *s){
     /* Without H II region mode, NLyn is ignored and C keeps its FUV photoionization. */
     const double NLyn = EQCLibRunParameters.UseHIIRegion ? s->NLyn : 0.0;
     return (CEQLadderCoefficients){
         .photo0 = NLyn == 0.0 ? CIFUVPhotoionizationRate(s->G0,VisualExtinction(s->Nt,s->Zd))
                               : CIPhotoionizationRate(NLyn),
-        .collision0 = CICollisionalIonizationRate(s->T),
-        .recombination1 = CIIRecombinationRate(s->T),
         .photo1 = CIIPhotoionizationRate(NLyn),
-        .collision1 = CIICollisionalIonizationRate(s->T),
-        .recombination2 = CIIIRecombinationRate(s->T),
     };
+}
+
+static void RefreshCarbonCoefficients(double T, CEQLadderCoefficients *carbon, const CEQTemperaturePoint *point){
+    carbon->collision0 = ChemistryCoefficient(TemperatureIonizeCI,T,point);
+    carbon->recombination1 = ChemistryCoefficient(TemperatureRecombineCII,T,point);
+    carbon->collision1 = ChemistryCoefficient(TemperatureIonizeCII,T,point);
+    carbon->recombination2 = ChemistryCoefficient(TemperatureRecombineCIII,T,point);
+}
+
+static CEQLadderCoefficients CarbonCoefficients(const StructEQCData *s){
+    CEQLadderCoefficients carbon = CarbonPhotoCoefficients(s);
+    RefreshCarbonCoefficients(s->T,&carbon,NULL);
+    return carbon;
 }
 
 static double COFormationCoefficient(double T){
@@ -338,47 +456,83 @@ static CEQMolecularCarbonCoefficients MolecularCarbonCoefficients(const StructEQ
     };
 }
 
-void CEQPrepareRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c){
-    const double T = s->T, NLyn = s->NLyn;
+static void InitializeRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c, bool equilibrium){
+    const double NLyn = s->NLyn;
     *c = (CEQRateCoefficients){
-        .hydrogen = {
-            .photo0 = HIPhotoIonizationRate(NLyn),
-            .collision0 = HICollisionalIonizationRate(T),
-            .recombination1 = HIIRecombinationRate(T),
-        },
-        .helium = {
-            .photo0 = HeIPhotoIonizationRate(NLyn),
-            .collision0 = HeICollisionalIonizationRate(T),
-            .recombination1 = HeIIRecombinationRate(T) + HeIIDielectronicRecombinationRate(T),
-            .photo1 = HeIIPhotoIonizationRate(NLyn),
-            .collision1 = HeIICollisionalIonizationRate(T),
-            .recombination2 = HeIIIRecombinationRate(T),
-        },
-        .carbon = CarbonCoefficients(s),
-        .oxygen = {
-            .photo0 = OIPhotoionizationRate(NLyn),
-            .collision0 = OICollisionalIonizationRate(T),
-            .recombination1 = OIIRecombinationRate(T),
-            .photo1 = OIIPhotoionizationRate(NLyn),
-            .collision1 = OIICollisionalIonizationRate(T),
-            .recombination2 = OIIIRecombinationRate(T),
-        },
-        .silicon = {
-            .photo0 = SiIPhotoionizationRate(NLyn),
-            .collision0 = SiICollisionalIonizationRate(T),
-            .recombination1 = SiIIRecombinationRate(T),
-            .photo1 = SiIIPhotoionizationRate(NLyn),
-            .collision1 = SiIICollisionalIonizationRate(T),
-            .recombination2 = SiIIIRecombinationRate(T),
-        },
-        .toOxygenII = OIChargeTransferRateToHII(T),
-        .toHydrogenI = OIIChargeTransferRateToHI(T),
-        .oxygenIIIToHydrogenI = OIIIChargeTransferRateToHI(T),
+        .hydrogen.photo0 = HIPhotoIonizationRate(NLyn),
         .hasMolecularHydrogen = EQCLibRunParameters.UseH2Formation,
     };
-    if(c->hasMolecularHydrogen) c->molecularHydrogen = MolecularHydrogenCoefficients(s);
-    if(EQCLibRunParameters.UseCOFormation && T <= 1.e4 && s->n[ipCARBON] > 0.0)
+    if(equilibrium || s->n[ipHELIUM] > 0.0){
+        c->helium.photo0 = HeIPhotoIonizationRate(NLyn);
+        c->helium.photo1 = HeIIPhotoIonizationRate(NLyn);
+    }
+    if(equilibrium || s->n[ipCARBON] > 0.0) c->carbon = CarbonPhotoCoefficients(s);
+    if(equilibrium || s->n[ipOXYGEN] > 0.0){
+        c->oxygen.photo0 = OIPhotoionizationRate(NLyn);
+        c->oxygen.photo1 = OIIPhotoionizationRate(NLyn);
+    }
+    if(equilibrium){
+        c->silicon.photo0 = SiIPhotoionizationRate(NLyn);
+        c->silicon.photo1 = SiIIPhotoionizationRate(NLyn);
+    }
+    if(c->hasMolecularHydrogen) c->molecularHydrogen.dustShielding = DustShieldingFactorFUV(s->Nt,s->Zd);
+}
+
+static void RefreshHydrogenCoefficients(double T, CEQLadderCoefficients *hydrogen, const CEQTemperaturePoint *point){
+    const bool caseB = EQCLibRunParameters.UseRecombinationCaseB;
+    hydrogen->collision0 = ChemistryCoefficient(TemperatureIonizeHI,T,point);
+    hydrogen->recombination1 = ChemistryCoefficient(caseB ? TemperatureRecombineHIICaseB : TemperatureRecombineHIICaseA,
+                                                    T,point);
+}
+
+static void RefreshRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c, bool equilibrium,
+                                    const CEQTemperaturePoint *point){
+    const double T = s->T;
+    RefreshHydrogenCoefficients(T,&c->hydrogen,point);
+    if(equilibrium || s->n[ipHELIUM] > 0.0){
+        const bool caseB = EQCLibRunParameters.UseRecombinationCaseB;
+        c->helium.collision0 = ChemistryCoefficient(TemperatureIonizeHeI,T,point);
+        c->helium.recombination1 = ChemistryCoefficient(caseB ? TemperatureRecombineHeIICaseB : TemperatureRecombineHeIICaseA,
+                                                        T,point);
+        c->helium.collision1 = ChemistryCoefficient(TemperatureIonizeHeII,T,point);
+        c->helium.recombination2 = ChemistryCoefficient(caseB ? TemperatureRecombineHeIIICaseB : TemperatureRecombineHeIIICaseA,
+                                                        T,point);
+    }
+    if(equilibrium || s->n[ipCARBON] > 0.0) RefreshCarbonCoefficients(T,&c->carbon,point);
+    if(equilibrium || s->n[ipOXYGEN] > 0.0){
+        c->oxygen.collision0 = ChemistryCoefficient(TemperatureIonizeOI,T,point);
+        c->oxygen.recombination1 = ChemistryCoefficient(TemperatureRecombineOII,T,point);
+        c->oxygen.collision1 = ChemistryCoefficient(TemperatureIonizeOII,T,point);
+        c->oxygen.recombination2 = ChemistryCoefficient(TemperatureRecombineOIII,T,point);
+        if(equilibrium || EQCLibRunParameters.UseChargeTransfer){
+            c->toOxygenII = ChemistryCoefficient(TemperatureTransferToOII,T,point);
+            c->toHydrogenI = ChemistryCoefficient(TemperatureTransferToHI,T,point);
+            c->oxygenIIIToHydrogenI = ChemistryCoefficient(TemperatureTransferOIII,T,point);
+        }
+    }
+    if(equilibrium){
+        c->silicon.collision0 = SiICollisionalIonizationRate(T);
+        c->silicon.recombination1 = SiIIRecombinationRate(T);
+        c->silicon.collision1 = SiIICollisionalIonizationRate(T);
+        c->silicon.recombination2 = SiIIIRecombinationRate(T);
+    }
+    if(c->hasMolecularHydrogen) RefreshMolecularHydrogenCoefficients(s,&c->molecularHydrogen,point);
+}
+
+void CEQPrepareRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c){
+    InitializeRateCoefficients(s,c,true);
+    RefreshRateCoefficients(s,c,true,NULL);
+    if(EQCLibRunParameters.UseCOFormation && s->T <= 1.e4 && s->n[ipCARBON] > 0.0)
         c->molecularCarbon = MolecularCarbonCoefficients(s);
+}
+
+void CEQInitializeNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c){
+    InitializeRateCoefficients(s,c,false);
+}
+
+void CEQRefreshNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c,
+                                              const CEQTemperaturePoint *point){
+    RefreshRateCoefficients(s,c,false,point);
 }
 
 CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData *s,
@@ -393,12 +547,52 @@ CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData 
 }
 
 CEQHydrogenRates CEQHydrogenIonizationRates(const StructEQCData *s){
-    const CEQRateCoefficients c = {.hydrogen = {
-        .photo0 = HIPhotoIonizationRate(s->NLyn),
-        .collision0 = HICollisionalIonizationRate(s->T),
-        .recombination1 = HIIRecombinationRate(s->T),
-    }};
+    CEQRateCoefficients c = {.hydrogen.photo0 = HIPhotoIonizationRate(s->NLyn)};
+    RefreshHydrogenCoefficients(s->T,&c.hydrogen,NULL);
     return CEQHydrogenIonizationRatesWithCoefficients(s,&c);
+}
+
+CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state, const CEQRateCoefficients *c){
+    const double ne = state->nel;
+    const double nH = state->n[ipHYDROGEN];
+    const double xe = ne/nH;
+    return (CEQIonLadderRates){
+        .ionization0 = c->helium.photo0 + ne*c->helium.collision0
+                     + state->X0*(CosmicRayIonizationRateHeI(xe) + SoftXrayIonizationRateHeI(xe,state->Nt)),
+        .recombination1 = ne*c->helium.recombination1
+                        + nH*HeIIRecombinationRateOnDust(state->T,state->G0,ne,state->Zd),
+        .ionization1 = c->helium.photo1 + ne*c->helium.collision1,
+        .recombination2 = ne*c->helium.recombination2,
+    };
+}
+
+CEQIonLadderRates CEQCarbonIonizationRates(const StructEQCData *state, const CEQRateCoefficients *coefficients){
+    const CEQLadderCoefficients c = coefficients != NULL ? coefficients->carbon : CarbonCoefficients(state);
+    const double ne = state->nel;
+    const double nH = state->n[ipHYDROGEN];
+    const double xe = ne/nH;
+    return (CEQIonLadderRates){
+        .ionization0 = c.photo0 + ne*c.collision0
+                     + state->X0*(CosmicRayIonizationRateCI(xe) + SoftXrayIonizationRateCI(xe,state->Nt)),
+        .recombination1 = ne*c.recombination1
+                        + nH*CIIRecombinationRateOnDust(state->T,state->G0,ne,state->Zd),
+        .ionization1 = c.photo1 + ne*c.collision1,
+        .recombination2 = ne*c.recombination2,
+    };
+}
+
+/* Oxygen ladder rates without charge transfer, in s^-1 per ion or atom. */
+CEQIonLadderRates CEQOxygenIonizationRates(const StructEQCData *state, const CEQRateCoefficients *c){
+    const double ne = state->nel;
+    const double nH = state->n[ipHYDROGEN];
+    return (CEQIonLadderRates){
+        .ionization0 = c->oxygen.photo0 + ne*c->oxygen.collision0
+                     + state->X0*CosmicRayIonizationRateOI(ne/nH),
+        .recombination1 = ne*c->oxygen.recombination1
+                        + nH*OIIRecombinationRateOnDust(state->T,state->G0,ne,state->Zd),
+        .ionization1 = c->oxygen.photo1 + ne*c->oxygen.collision1,
+        .recombination2 = ne*c->oxygen.recombination2,
+    };
 }
 
 typedef struct {
@@ -772,19 +966,9 @@ static double CItoCIIratio(double nH2, double T, double G0, double Ntot, double 
 }
 
 static int SolveAtomicCarbon(StructEQCData *state, double nC, const CEQRateCoefficients *coefficients){
-    const double T = state->T;
-    const double ne = state->nel;
-    const double G0 = state->G0;
-    const double Nt = state->Nt;
-    const double Zd = state->Zd;
-    const double nH = state->n[ipHYDROGEN];
-    const double xe = ne/nH;
-    const CEQLadderCoefficients c = coefficients != NULL ? coefficients->carbon : CarbonCoefficients(state);
+    const CEQIonLadderRates rates = CEQCarbonIonizationRates(state,coefficients);
     return CEQSolveIonLadder(nC,
-             c.photo0 + ne*c.collision0 + state->X0*(CosmicRayIonizationRateCI(xe) + SoftXrayIonizationRateCI(xe,Nt)),
-             ne*c.recombination1 + nH*CIIRecombinationRateOnDust(T,G0,ne,Zd),
-             c.photo1 + ne*c.collision1,
-             ne*c.recombination2,
+             rates.ionization0,rates.recombination1,rates.ionization1,rates.recombination2,
              &state->natom[ipCARBON],&state->nion[ipCARBON],&state->nCIII);
 }
 

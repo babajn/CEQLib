@@ -1,4 +1,5 @@
 #include "EQCDataStructure.h"
+#include "TemperatureTable.h"
 
 void InitializeCollisionalIonization(int Check);
 
@@ -80,4 +81,6 @@ double CoolingRecombination(StructEQCData *PhydroPP);
 double CoolingHeIIRecombination(StructEQCData *PhydroPP);
 double CoolingHeIIIRecombination(StructEQCData *PhydroPP);
 double CoolingHeIIDielectronicRecombination(StructEQCData *PhydroPP);
+void CEQInitializeAtomicCoolingTemperatureTables(void);
+void CEQAtomicCoolingWithTables(StructEQCData *state, const CEQTemperaturePoint *point);
 

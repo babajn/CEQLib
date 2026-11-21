@@ -163,18 +163,26 @@ static double SimplifiedPhotoionizationHeating(double NLyn, int iZ, int ip){
     if(NLyn==0.0 || !EQCLibRunParameters.UseHIIRegion)   return 0.e0;
     return Photoionization[iZ].heating[ip]*NLyn; // [erg/s]
 }
-double HeatingPhotoionization(StructEQCData *PhydroPP){
+static double PhotoionizationHeating(const StructEQCData *PhydroPP, bool includeSilicon){
     double NLyn = PhydroPP->NLyn;
     if(NLyn==0.e0 || !EQCLibRunParameters.UseHIIRegion)  return 0.e0;
+    const double siliconI  = includeSilicon ? PhydroPP->natom[ipSILICON]*HeatingSiIPhotoionization(NLyn) : 0.e0;
+    const double siliconII = includeSilicon ? PhydroPP->nion [ipSILICON]*HeatingSiIIPhotoionization(NLyn) : 0.e0;
     return PhydroPP->natom[ipHYDROGEN]*HeatingHIPhotoionization(NLyn)
           +PhydroPP->natom[ipHELIUM  ]*HeatingHeIPhotoionization(NLyn)
           +PhydroPP->natom[ipCARBON  ]*HeatingCIPhotoionization(NLyn)
           +PhydroPP->natom[ipOXYGEN  ]*HeatingOIPhotoionization(NLyn)
-          +PhydroPP->natom[ipSILICON ]*HeatingSiIPhotoionization(NLyn)
+          +siliconI
           +PhydroPP->nion [ipHELIUM  ]*HeatingHeIIPhotoionization(NLyn)
           +PhydroPP->nion [ipCARBON  ]*HeatingCIIPhotoionization(NLyn)
           +PhydroPP->nion [ipOXYGEN  ]*HeatingOIIPhotoionization(NLyn)
-          +PhydroPP->nion [ipSILICON ]*HeatingSiIIPhotoionization(NLyn);
+          +siliconII;
+}
+double HeatingPhotoionization(StructEQCData *PhydroPP){
+    return PhotoionizationHeating(PhydroPP,true);
+}
+double CEQHeatingPhotoionizationWithoutSilicon(const StructEQCData *state){
+    return PhotoionizationHeating(state,false);
 }
 double HeatingHIPhotoionization(double NLyn){
     return SimplifiedPhotoionizationHeating(NLyn,iZs,ipHI);

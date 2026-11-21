@@ -22,10 +22,12 @@
 #include "Xray.h"
 #include "Bremsstrahlung.h"
 #include "CoolingCIE.h"
+#include "CoolingHeatingRates.h"
 #include "HIIregionLineCooling.h"
 
 struct StructEQCLibParameters_tag EQCLibRunParameters = {
     .UseChargeTransfer = true,
+    .UseNonEquilibriumTemperatureTables = true,
     .ChemistryAccuracy = 1.e-8,
 };
 
@@ -76,6 +78,7 @@ EQCLibStatus EQCLibTryInitialization(int Check, const char *pegaseDirectory){
     InitializeHyperFineStructureLines(Check);
     InitializeSoftXrayIonization(Check);
     InitializeCoolingTableCIE(Check);
+    CEQInitializeNonEquilibriumTemperatureTables();
     
     if(Check==1)
         fprintf(stderr,"... done.\n");
@@ -135,6 +138,10 @@ void EQCLibSetRunParamCOFormation(bool Use, double Cp){
 
 void EQCLibSetRunParamChargeTransfer(bool Use){
     EQCLibRunParameters.UseChargeTransfer = Use;
+}
+
+void EQCLibSetRunParamNonEquilibriumTemperatureTables(bool use){
+    EQCLibRunParameters.UseNonEquilibriumTemperatureTables = use;
 }
 
 EQCLibStatus EQCLibSetRunParamChemistryAccuracy(double value){
@@ -306,25 +313,30 @@ static double PhotoionizedOxygenWeight(const StructEQCData *state)
     return ionizedFraction * (photoionization/(photoionization+otherIonization)) * warm*warm*(3.0-2.0*warm);
 }
 
-int EQCLibCalculateCoolingHeatingRates(StructEQCData *PhydroPP){
+static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilibrium, bool lineDiagnostics,
+                                        const CEQTemperaturePoint *point){
 
     if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return EQC_INVALID_INPUT;
 
-    PhydroPP->L_res = CoolingRateCIE(PhydroPP);
+    /* The aggregate metal CIE table cannot be decomposed by ion. */
+    PhydroPP->L_res = nonEquilibrium ? 0.0 : CoolingRateCIE(PhydroPP);
     if(!isfinite(PhydroPP->L_res)) return EQC_INVALID_INPUT;
 
     double nHI  = PhydroPP->natom[ipHYDROGEN];
     double T    = PhydroPP->T;
 
     // heating rate [erg/s/cc]
-    PhydroPP->H_PI      = HeatingPhotoionization(PhydroPP); //T,nH,ne,Z,G0,Nt);
+    /* Fixed silicon ionization in the non-equilibrium update means no Si photoionization heating. */
+    PhydroPP->H_PI      = nonEquilibrium ? CEQHeatingPhotoionizationWithoutSilicon(PhydroPP)
+                                         : HeatingPhotoionization(PhydroPP);
     PhydroPP->H_PE      = HeatingDustPhotoelectic(PhydroPP); //T,nH,ne,Z,G0,Nt);
     PhydroPP->H_CR      = TotalCosmicRayHeatingRate(PhydroPP);
     PhydroPP->H_XR      = TotalSoftXrayHeatingRate(PhydroPP);
     if(EQCLibRunParameters.UseH2Formation==true){
-        PhydroPP->H_H2  = HeatingH2Photodissociate(PhydroPP)
-                        + HeatingH2PhotomPumping(PhydroPP)
-                        + HeatingH2Formation(PhydroPP);
+        PhydroPP->H_H2  = nonEquilibrium ? CEQHeatingH2WithTables(PhydroPP,point)
+                                        : HeatingH2Photodissociate(PhydroPP)
+                                        + HeatingH2PhotomPumping(PhydroPP)
+                                        + HeatingH2Formation(PhydroPP);
     }else{
         PhydroPP->H_H2  = 0.e0;
     }
@@ -337,44 +349,63 @@ int EQCLibCalculateCoolingHeatingRates(StructEQCData *PhydroPP){
 
     // cooling rate = angular-integrated emission coefficient (= 4*pi*j) [erg/s/cc]
     PhydroPP->L_ff      = CoolingBremsstrahalung(PhydroPP);
-    PhydroPP->L_HI      = CoolingCollisionalExcitation(PhydroPP)
+    if(point){
+        CEQAtomicCoolingWithTables(PhydroPP,point);
+    }else{
+        PhydroPP->L_HI  = CoolingCollisionalExcitation(PhydroPP)
                         + CoolingCollisionalIonization(PhydroPP)
                         + CoolingRecombination(PhydroPP);
-
-    PhydroPP->L_HeI     = CoolingHeICollisionalExcitation(PhydroPP)
+        PhydroPP->L_HeI = CoolingHeICollisionalExcitation(PhydroPP)
                         + CoolingHeICollisionalIonization(PhydroPP)
                         + CoolingHeIIRecombination(PhydroPP)
                         + CoolingHeIIDielectronicRecombination(PhydroPP);
+        PhydroPP->L_HeII = CoolingHeIICollisionalExcitation(PhydroPP)
+                         + CoolingHeIICollisionalIonization(PhydroPP)
+                         + CoolingHeIIIRecombination(PhydroPP);
+    }
 
-    PhydroPP->L_HeII    = CoolingHeIICollisionalExcitation(PhydroPP)
-                        + CoolingHeIICollisionalIonization(PhydroPP)
-                        + CoolingHeIIIRecombination(PhydroPP);
-
-    PhydroPP->L_CII158  = CoolingCII158um(PhydroPP);
+    PhydroPP->L_CII158  = nonEquilibrium ? CEQCoolingCII158umWithTemperatureTable(PhydroPP,point)
+                                        : CoolingCII158um(PhydroPP);
     PhydroPP->L_CI610   = 0.0; //CoolingCI610um(nCI,T,ne,nHII,nHI,nH2);
     PhydroPP->L_CI370   = 0.0; //CoolingCI370um(nCI,T,ne,nHII,nHI,nH2);
     PhydroPP->L_OIII    = 0.e0;
     PhydroPP->L_OII     = 0.e0;
-    const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP);
-    if(!isfinite(oxygenWeight)) return EQC_INVALID_INPUT;
-    if(oxygenWeight > 0.0){
-        /* Replace the CIE metal contribution in photoionized gas without counting oxygen twice. */
-        PhydroPP->L_res *= 1.0-oxygenWeight;
-        PhydroPP->L_OII = oxygenWeight*CoolingLinesOII(T,PhydroPP->nel,PhydroPP->nion[ipOXYGEN],NULL);
-        PhydroPP->L_OIII = oxygenWeight*CoolingLinesOIII(T,PhydroPP->nel,PhydroPP->nOIII,NULL);
+    if(nonEquilibrium){
+        PhydroPP->L_OII = CEQCoolingLinesOIIWithTemperatureTable(T,PhydroPP->nel,PhydroPP->nion[ipOXYGEN],point);
+        PhydroPP->L_OIII = CEQCoolingLinesOIIIWithTemperatureTable(T,PhydroPP->nel,PhydroPP->nOIII,point);
+    }else{
+        const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP);
+        if(!isfinite(oxygenWeight)) return EQC_INVALID_INPUT;
+        if(oxygenWeight > 0.0){
+            /* Replace the CIE metal contribution in photoionized gas without counting oxygen twice. */
+            PhydroPP->L_res *= 1.0-oxygenWeight;
+            PhydroPP->L_OII = oxygenWeight*CoolingLinesOII(T,PhydroPP->nel,PhydroPP->nion[ipOXYGEN],NULL);
+            PhydroPP->L_OIII = oxygenWeight*CoolingLinesOIII(T,PhydroPP->nel,PhydroPP->nOIII,NULL);
+        }
     }
     double coolingOI44;
-    CoolingOI(PhydroPP->natom[ipOXYGEN],T,PhydroPP->nel,PhydroPP->nion[ipHYDROGEN],
-              nHI,PhydroPP->nmol[ipH2],&PhydroPP->L_OI63,&coolingOI44,&PhydroPP->L_OI146);
-    PhydroPP->L_SiII35  = CoolingSiII35um(PhydroPP); //nSiII,T,ne,nHI);
+    if(nonEquilibrium){
+        CEQCoolingNeutralOxygenWithTemperatureTable(PhydroPP->natom[ipOXYGEN],T,PhydroPP->nel,PhydroPP->nion[ipHYDROGEN],
+                                                    nHI,PhydroPP->nmol[ipH2],point,
+                                                    &PhydroPP->L_OI63,&coolingOI44,&PhydroPP->L_OI146);
+    }else{
+        CoolingOI(PhydroPP->natom[ipOXYGEN],T,PhydroPP->nel,PhydroPP->nion[ipHYDROGEN],nHI,PhydroPP->nmol[ipH2],
+                  &PhydroPP->L_OI63,&coolingOI44,&PhydroPP->L_OI146);
+    }
+    PhydroPP->L_SiII35  = nonEquilibrium && PhydroPP->nion[ipSILICON] == 0.0 ? 0.0 : CoolingSiII35um(PhydroPP);
     PhydroPP->L_DustRec = CoolingDustRecombination(PhydroPP); //T,nH,ne,Z,G0,Nt);
-    if(EQCLibRunParameters.UseH2Formation==true){
-        PhydroPP->L_H2  = 
-                        + CoolingH2RovibrationalLine(PhydroPP)
-                        + CoolingH2CollisionalDissociation(PhydroPP)
-                        ;
-    }else {
-        PhydroPP->L_H2  = 0.e0;
+    if(EQCLibRunParameters.UseH2Formation){
+        const double neutralHelium = nonEquilibrium ? PhydroPP->natom[ipHELIUM] : PhydroPP->n[ipHELIUM];
+        if(point && PhydroPP->nmol[ipH2] != 0.0){
+            PhydroPP->L_H2 = CEQCoolingH2RovibrationalLineWithTables(PhydroPP,neutralHelium,point)
+                           + CEQCoolingH2CollisionalDissociationWithCoefficients(
+                                 PhydroPP,CEQH2DissociationCoefficientsWithTemperatureTable(T,point));
+        }else{
+            PhydroPP->L_H2 = CEQCoolingH2RovibrationalLine(PhydroPP,neutralHelium)
+                           + CoolingH2CollisionalDissociation(PhydroPP);
+        }
+    }else{
+        PhydroPP->L_H2 = 0.0;
     }
     if(EQCLibRunParameters.UseCOFormation==true){
         PhydroPP->L_CO  = CoolingCORovibrationalLine(PhydroPP); //T,nCO,nH,nHI,nH2);
@@ -399,13 +430,14 @@ int EQCLibCalculateCoolingHeatingRates(StructEQCData *PhydroPP){
                         + PhydroPP->L_H2
                         + PhydroPP->L_CO;      
 
-    PhydroPP->L_Halpha   = CoolingHalphaEmission(PhydroPP);
+    if(lineDiagnostics){
+        PhydroPP->L_Halpha = CoolingHalphaEmission(PhydroPP);
+        PhydroPP->L_HI21cm = CoolingHI21cm(nHI,T);  // 4pi * line-integrated emissivity [erg/s/cc]
+        PhydroPP->k_HI21cm = AbsorptionCoefficientHI21cm(nHI,T);  // [1/cm]
+        if(!isfinite(PhydroPP->L_Halpha) || !isfinite(PhydroPP->L_HI21cm) ||
+           !isfinite(PhydroPP->k_HI21cm)) return EQC_INVALID_INPUT;
+    }
 
-    // 4pi * line-integrated emissivity [erg/s/cc]
-    PhydroPP->L_HI21cm   = CoolingHI21cm(nHI,T);  // 4*pi*j 
-    // absorption coefficient [1/cm]
-    PhydroPP->k_HI21cm   = AbsorptionCoefficientHI21cm(nHI,T);
-  
 #if 0 
     double Hphotion  = HeatingHIPhotoionization(T,nHI,Phydro[i]->Fion);
     double Hphot     = HeatingCarbonPhotoinozation(T,nCI,G0,Av,Nc,N2);
@@ -413,10 +445,22 @@ int EQCLibCalculateCoolingHeatingRates(StructEQCData *PhydroPP){
     double Lres     = ne*nH*CoolingRateCIE(logT,Metal);
 #endif
 
-    if(!isfinite(PhydroPP->H_tot) || !isfinite(PhydroPP->L_tot)
-       || !isfinite(PhydroPP->L_Halpha) || !isfinite(PhydroPP->L_HI21cm)
-       || !isfinite(PhydroPP->k_HI21cm)) return EQC_INVALID_INPUT;
+    if(!isfinite(PhydroPP->H_tot) || !isfinite(PhydroPP->L_tot)) return EQC_INVALID_INPUT;
     return EQC_SUCCESS;
+}
+
+int EQCLibCalculateCoolingHeatingRates(StructEQCData *state){
+    return CalculateCoolingHeatingRates(state,false,true,NULL);
+}
+
+int CEQCalculateNonEquilibriumCoolingHeatingRates(StructEQCData *state){
+    CEQTemperaturePoint point;
+    const bool tabulated = state != NULL && CEQLocateTemperature(state->T,&point);
+    return CalculateCoolingHeatingRates(state,true,true,tabulated ? &point : NULL);
+}
+
+int CEQCalculateNonEquilibriumEnergyRates(StructEQCData *state, const CEQTemperaturePoint *point){
+    return CalculateCoolingHeatingRates(state,true,false,point);
 }
 
 double EQCLibGetTotalNumberDensity(StructEQCData *PhydroPP){

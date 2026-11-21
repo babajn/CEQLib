@@ -7,6 +7,7 @@
 depend.inc
 tags
 /src/log
+/src/eqclib-cell
 /test.out
 /test/test.out
 

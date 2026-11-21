@@ -17,6 +17,9 @@ double CIFUVPhotoionizationRate(double G0, double Av);
 double SiIFUVPhotoionizationRate(double G0, double Av);
 
 double HeatingPhotoionization(StructEQCData *PhydroPP);
+/* The same heating without Si I and Si II. The non-equilibrium update holds
+   the silicon ionization fixed, so these photoionizations never occur there. */
+double CEQHeatingPhotoionizationWithoutSilicon(const StructEQCData *state);
 double HeatingHIPhotoionization(double NLyn);
 double HeatingHeIPhotoionization(double NLyn);
 double HeatingHeIIPhotoionization(double NLyn);

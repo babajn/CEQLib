@@ -65,6 +65,11 @@ static double q10_OI_HII(double T);
 static double q20_OI_HII(double T);
 static double q21_OI_HII(double T);
 
+enum { Transition10, Transition20, Transition21, TransitionCount };
+static CEQTemperatureTable ciiOrthoH2, ciiParaH2, ciiHI, ciiElectron;
+static CEQTemperatureTable oiOrthoH2[TransitionCount], oiParaH2[TransitionCount];
+static CEQTemperatureTable oiHI[TransitionCount], oiHII[TransitionCount];
+
 
 static double q10_SiII_HI(double T);
 static double q10_SiII_e(double T);
@@ -177,9 +182,12 @@ static double EinsteinB01_SiII035um;
 static double CoolingCIDetail(double nCI, double T, double nel, double nHII, double nHI, double nH2, 
         double *nCI0, double *nCI1, double *nCI2, double *CoolingCI610um, double *CoolingCI230um, double *CoolingCI370um);
 #endif
-static double CoolingCII158umDetail(double nCII, double T, double nel, double nHI, double nH2, double *nCII0, double *nCII1, double *ncrit);
+static double CoolingCII158umDetail(double nCII, double T, double nel, double nHI, double nH2, double background,
+                                    bool skipMolecularColliders, const CEQTemperaturePoint *point,
+                                    double *nCII0, double *nCII1, double *ncrit);
 static double CoolingOIDetail(double nOI, double T, double nel, double nHII, double nHI, double nH2,
-        double *nOI0, double *nOI1, double *nOI2, double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um);
+        bool useNonnegativePopulations, const CEQTemperaturePoint *point, double *nOI0, double *nOI1, double *nOI2,
+        double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um);
 static double CoolingSiII35umDetail(double nSiII, double T, double nel, double nHI, double *nSiII0, double *nSiII1, double *ncrit);
 
 ///// Einstein Coefficient (Stimulated Emission)
@@ -403,8 +411,9 @@ void InitializeFineStructureLines(int Check){
             fprintf(outSiII,"%e ",nHI);
             for(int it=0;it<nTmp;it++){
                 double T      = CalcTmp[it]; //20.0*(1+it);
-                CoolingCII158umDetail(nCII,T,nel,nHI,nH2,&nCII0,&nCII1,&nCIIcrit);
-                CoolingOIDetail(nOI,T,nel,nHII,nHI,nH2,&nOI0,&nOI1,&nOI2,&CoolingOI063um,&CoolingOI044um,&CoolingOI146um);
+                CoolingCII158umDetail(nCII,T,nel,nHI,nH2,IntensityCMB_CII158um,false,NULL,&nCII0,&nCII1,&nCIIcrit);
+                CoolingOIDetail(nOI,T,nel,nHII,nHI,nH2,false,NULL,&nOI0,&nOI1,&nOI2,
+                                &CoolingOI063um,&CoolingOI044um,&CoolingOI146um);
                 CoolingSiII35umDetail(nSiII,T,nel,nHI,&nSiII0,&nSiII1,&nSiIIcrit);
                 fprintf(outCII ,"%e ",nCII1/nCII0);
                 fprintf(outOI  ,"%e ",nOI1/nOI0);
@@ -593,21 +602,35 @@ double CoolingCI370um(double nCI, double T, double nel, double nHII, double nHI,
 }
 
 // Fine structure transition between CII(^2P1/2-^2P3/2)
-double CoolingCII158um(StructEQCData *PhydroPP){
-    double nCII = PhydroPP->nion [ipCARBON  ];
-    double nHI  = PhydroPP->natom[ipHYDROGEN];
-    double nH2  = PhydroPP->nmol [ipH2];
-    double nel  = PhydroPP->nel; 
-    double T    = PhydroPP->T;
+static double CoolingCII158umWithBackground(const StructEQCData *state, double background, bool nonEquilibrium,
+                                             const CEQTemperaturePoint *point){
 #ifdef FINE_STRUCUTRE_COOLING_CII
+    if(nonEquilibrium && state->nion[ipCARBON] == 0.0) return 0.0;
     double n0, n1, ncrit;
-    return CoolingCII158umDetail(nCII,T,nel,nHI,nH2,&n0,&n1,&ncrit);
+    return CoolingCII158umDetail(state->nion[ipCARBON],state->T,state->nel,
+                                 state->natom[ipHYDROGEN],state->nmol[ipH2],background,
+                                 nonEquilibrium && state->nmol[ipH2] == 0.0,point,&n0,&n1,&ncrit);
 #else
     return 0.e0;
 #endif
 }
-static double CoolingCII158umDetail(double nCII, double T, double nel, double nHI, double nH2, double *nCII0, double *nCII1, double *ncrit){
-    double I10   = IntensityCMB_CII158um;
+
+double CoolingCII158um(StructEQCData *state){
+    return CoolingCII158umWithBackground(state,IntensityCMB_CII158um,false,NULL);
+}
+
+double CEQCoolingCII158um(const StructEQCData *state){
+    return CEQCoolingCII158umWithTemperatureTable(state,NULL);
+}
+
+double CEQCoolingCII158umWithTemperatureTable(const StructEQCData *state, const CEQTemperaturePoint *point){
+    /* The Einstein B coefficients multiply spectral energy density, 4 pi J_nu / c. */
+    return CoolingCII158umWithBackground(state,(4.0*PI/LIGHT_C_CGS)*IntensityCMB_CII158um,true,point);
+}
+
+static double CoolingCII158umDetail(double nCII, double T, double nel, double nHI, double nH2, double background,
+                                    bool skipMolecularColliders, const CEQTemperaturePoint *point,
+                                    double *nCII0, double *nCII1, double *ncrit){
     double E10   = Energy_CII158um;
     double A10   = EinsteinA10_CII158um;
     double B10   = EinsteinB10_CII158um;         
@@ -616,14 +639,19 @@ static double CoolingCII158umDetail(double nCII, double T, double nel, double nH
 
     int NcolSpecies = 4;
     double ncol[] = {OrthH2Frac*nH2,ParaH2Frac*nH2,nHI          ,nel         };
-    double q10[]  = {q10_CII_oH2(T),q10_CII_pH2(T),q10_CII_HI(T),q10_CII_e(T)};
+    double q10[]  = {
+        skipMolecularColliders ? 0.0 : CEQReadTemperatureTable(&ciiOrthoH2,point,T,q10_CII_oH2),
+        skipMolecularColliders ? 0.0 : CEQReadTemperatureTable(&ciiParaH2,point,T,q10_CII_pH2),
+        CEQReadTemperatureTable(&ciiHI,point,T,q10_CII_HI),
+        CEQReadTemperatureTable(&ciiElectron,point,T,q10_CII_e),
+    };
 
     double kT = BOLTZMANN_CONSTANT_CGS*T;
     double n1 = 0.5*nCII;    // upper level [1/cc]
     double n0 = 0.5*nCII;    // lower level [1/cc]
     SolveTwoLevelSystemStatisticalEquilibrium(
         E10,g1g0,
-        I10,A10,B10,B01,
+        background,A10,B10,B01,
         NcolSpecies,ncol,q10, 
         nCII,kT,&n0,&n1);
 
@@ -634,22 +662,27 @@ static double CoolingCII158umDetail(double nCII, double T, double nel, double nH
     *ncrit = A10/C10;
 
     /// spontaneous + stimulated emissions [erg/s/cm^3]
-    double lamb = (A10 + B10*I10)*E10*n1;
+    double lamb = (A10 + B10*background)*E10*n1;
     /// absorption [erg/s/cm^3]
-    double gamm = B01*I10*E10*n0;
+    double gamm = B01*background*E10*n0;
     /// net energy loss [erg/s/cm^3]
     // if n0 > (A10+B10*I10)*n1/{(g1/g0)*B10*I10}, 
     // then the ions will absorb more energy than they emit (= heating)
     return lamb - gamm;
 }
 
-// Fine structure transition between ^3P2-^3P1
-double CoolingOI(double nOI, double T, double nel, double nHII, double nHI, double nH2, 
+static double CoolingNeutralOxygen(double nOI, double T, double nel, double nHII, double nHI, double nH2,
+        bool useNonnegativePopulations, const CEQTemperaturePoint *point,
         double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um){
 #ifdef FINE_STRUCUTRE_COOLING_OI
+    if(useNonnegativePopulations && nOI == 0.0){
+        *CoolingOI063um = *CoolingOI044um = *CoolingOI146um = 0.0;
+        return 0.0;
+    }
     double n0, n1, n2; //, ncrit;
     double L_OI063um, L_OI044um, L_OI146um;
-    double L_OI = CoolingOIDetail(nOI,T,nel,nHII,nHI,nH2,&n0,&n1,&n2,&L_OI063um,&L_OI044um,&L_OI146um);
+    double L_OI = CoolingOIDetail(nOI,T,nel,nHII,nHI,nH2,useNonnegativePopulations,point,
+                                  &n0,&n1,&n2,&L_OI063um,&L_OI044um,&L_OI146um);
     *CoolingOI063um = L_OI063um;
     *CoolingOI044um = L_OI044um;
     *CoolingOI146um = L_OI146um;
@@ -661,8 +694,25 @@ double CoolingOI(double nOI, double T, double nel, double nHII, double nHI, doub
     return 0.e0;
 #endif
 }
+
+double CoolingOI(double nOI, double T, double nel, double nHII, double nHI, double nH2,
+        double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um){
+    return CoolingNeutralOxygen(nOI,T,nel,nHII,nHI,nH2,false,NULL,CoolingOI063um,CoolingOI044um,CoolingOI146um);
+}
+
+double CEQCoolingNeutralOxygen(double nOI, double T, double nel, double nHII, double nHI, double nH2,
+        double *L63, double *L44, double *L146){
+    return CEQCoolingNeutralOxygenWithTemperatureTable(nOI,T,nel,nHII,nHI,nH2,NULL,L63,L44,L146);
+}
+
+double CEQCoolingNeutralOxygenWithTemperatureTable(double nOI, double T, double nel, double nHII,
+        double nHI, double nH2, const CEQTemperaturePoint *point, double *L63, double *L44, double *L146){
+    return CoolingNeutralOxygen(nOI,T,nel,nHII,nHI,nH2,true,point,L63,L44,L146);
+}
+
 static double CoolingOIDetail(double nOI, double T, double nel, double nHII, double nHI, double nH2,
-        double *nOI0, double *nOI1, double *nOI2, double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um){
+        bool useNonnegativePopulations, const CEQTemperaturePoint *point, double *nOI0, double *nOI1, double *nOI2,
+        double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um){
     
     double E10 = Energy_OI063um;     
     double E20 = Energy_OI044um;     
@@ -690,19 +740,39 @@ static double CoolingOIDetail(double nOI, double T, double nel, double nHII, dou
 
     int NcolSpecies = 4;
     double ncol[] = {OrthH2Frac*nH2,ParaH2Frac*nH2,nHI          ,nHII         };
-    double q10[]  = {q10_OI_oH2(T) ,q10_OI_pH2(T) ,q10_OI_HI(T) ,q10_OI_HII(T)};
-    double q20[]  = {q20_OI_oH2(T) ,q20_OI_pH2(T) ,q20_OI_HI(T) ,q20_OI_HII(T)};
-    double q21[]  = {q21_OI_oH2(T) ,q21_OI_pH2(T) ,q21_OI_HI(T) ,q21_OI_HII(T)};
+    const bool skipMolecularColliders = useNonnegativePopulations && nH2 == 0.0;
+    double q10[] = {0.0,0.0,CEQReadTemperatureTable(&oiHI[Transition10],point,T,q10_OI_HI),
+                            CEQReadTemperatureTable(&oiHII[Transition10],point,T,q10_OI_HII)};
+    double q20[] = {0.0,0.0,CEQReadTemperatureTable(&oiHI[Transition20],point,T,q20_OI_HI),
+                            CEQReadTemperatureTable(&oiHII[Transition20],point,T,q20_OI_HII)};
+    double q21[] = {0.0,0.0,CEQReadTemperatureTable(&oiHI[Transition21],point,T,q21_OI_HI),
+                            CEQReadTemperatureTable(&oiHII[Transition21],point,T,q21_OI_HII)};
+    if(!skipMolecularColliders){
+        q10[0] = CEQReadTemperatureTable(&oiOrthoH2[Transition10],point,T,q10_OI_oH2);
+        q10[1] = CEQReadTemperatureTable(&oiParaH2[Transition10],point,T,q10_OI_pH2);
+        q20[0] = CEQReadTemperatureTable(&oiOrthoH2[Transition20],point,T,q20_OI_oH2);
+        q20[1] = CEQReadTemperatureTable(&oiParaH2[Transition20],point,T,q20_OI_pH2);
+        q21[0] = CEQReadTemperatureTable(&oiOrthoH2[Transition21],point,T,q21_OI_oH2);
+        q21[1] = CEQReadTemperatureTable(&oiParaH2[Transition21],point,T,q21_OI_pH2);
+    }
 
     double kT = BOLTZMANN_CONSTANT_CGS*T;
     double n2 = 0.e0;    // uppest level [1/cc]
     double n1 = 0.5*nOI; // middle level [1/cc]
     double n0 = 0.5*nOI; // lowest level [1/cc]
-    SolveThreeLevelSystemStatisticalEquilibrium(
+    if(useNonnegativePopulations){
+        CEQSolveThreeLevelPopulations(
             E10,E20,E21,g1g0,g2g0,g2g1,I10,I20,I21,
             A10,A20,A21,B10,B20,B21,B01,B02,B12,
             NcolSpecies,ncol,q10,q20,q21,
             nOI,kT,&n0,&n1,&n2);
+    }else{
+        SolveThreeLevelSystemStatisticalEquilibrium(
+            E10,E20,E21,g1g0,g2g0,g2g1,I10,I20,I21,
+            A10,A20,A21,B10,B20,B21,B01,B02,B12,
+            NcolSpecies,ncol,q10,q20,q21,
+            nOI,kT,&n0,&n1,&n2);
+    }
 
     *nOI0 = n0;
     *nOI1 = n1;
@@ -996,6 +1066,32 @@ static double q20_OI_HII(double T){
 static double q21_OI_HII(double T){
     if(T<=2090.0)   return 2.03e-11*pow(T,0.56);
     else            return 3.43e-10*pow(T,0.19);
+}
+
+/* Only the de-excitation coefficients are tabulated. The population solves
+   use the instantaneous collider densities and radiation terms. */
+void CEQInitializeFineStructureTemperatureTables(void){
+    const double ciiAtomicBreakpoint = 2000.0;
+    CEQFillTemperatureTable(&ciiOrthoH2,q10_CII_oH2,&CIIH2FitUpperTemperature,1);
+    CEQFillTemperatureTable(&ciiParaH2,q10_CII_pH2,&CIIH2FitUpperTemperature,1);
+    CEQFillTemperatureTable(&ciiHI,q10_CII_HI,&ciiAtomicBreakpoint,1);
+    CEQFillTemperatureTable(&ciiElectron,q10_CII_e,&ciiAtomicBreakpoint,1);
+
+    const double oiHII10Breakpoints[] = {194.0, 3686.0};
+    const double oiHII20Breakpoints[] = {511.0, 7510.0};
+    const double oiHII21Breakpoint = 2090.0;
+    CEQFillTemperatureTable(&oiHII[Transition10],q10_OI_HII,oiHII10Breakpoints,2);
+    CEQFillTemperatureTable(&oiHII[Transition20],q20_OI_HII,oiHII20Breakpoints,2);
+    CEQFillTemperatureTable(&oiHII[Transition21],q21_OI_HII,&oiHII21Breakpoint,1);
+    CEQFillTemperatureTable(&oiHI[Transition10],q10_OI_HI,NULL,0);
+    CEQFillTemperatureTable(&oiHI[Transition20],q20_OI_HI,NULL,0);
+    CEQFillTemperatureTable(&oiHI[Transition21],q21_OI_HI,NULL,0);
+    CEQFillTemperatureTable(&oiOrthoH2[Transition10],q10_OI_oH2,NULL,0);
+    CEQFillTemperatureTable(&oiOrthoH2[Transition20],q20_OI_oH2,NULL,0);
+    CEQFillTemperatureTable(&oiOrthoH2[Transition21],q21_OI_oH2,NULL,0);
+    CEQFillTemperatureTable(&oiParaH2[Transition10],q10_OI_pH2,NULL,0);
+    CEQFillTemperatureTable(&oiParaH2[Transition20],q20_OI_pH2,NULL,0);
+    CEQFillTemperatureTable(&oiParaH2[Transition21],q21_OI_pH2,NULL,0);
 }
 
 //////// De-excitation Rates [cm^3/s] for [SiII] 35um

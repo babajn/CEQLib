@@ -1,5 +1,6 @@
 #include "EQCDataStructure.h"
 #include "MoleculeChemistry.h"
+#include "TemperatureTable.h"
 
 int CEQSolveIonLadder(double density, double ionization0, double recombination1,
                       double ionization1, double recombination2,
@@ -34,6 +35,14 @@ typedef struct {
     CEQMolecularCarbonCoefficients molecularCarbon;
 } CEQRateCoefficients;
 void CEQPrepareRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients);
+/* During a non-equilibrium update the radiation, columns and elemental totals
+   are fixed. Initialize their coefficients once, then refresh at each stage T. */
+void CEQInitializeChemistryTemperatureTables(void);
+void CEQInitializeNonEquilibriumRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients);
+void CEQRefreshNonEquilibriumRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients,
+                                              const CEQTemperaturePoint *point);
+H2CollisionalDissociationCoefficients CEQH2DissociationCoefficientsWithTemperatureTable(
+        double T, const CEQTemperaturePoint *point);
 
 /* H ionization rate per H atom and recombination rate per H+ [1/s],
    without charge transfer. They depend on the state's n_e, not on its ions. */
@@ -52,6 +61,12 @@ int CEQSolveHydrogenEquilibriumWithRates(StructEQCData *state, const CEQHydrogen
 typedef struct {
     double ionization0, recombination1, ionization1, recombination2;
 } CEQIonLadderRates;
+CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state,
+                                         const CEQRateCoefficients *coefficients);
+CEQIonLadderRates CEQCarbonIonizationRates(const StructEQCData *state,
+                                         const CEQRateCoefficients *coefficients);
+CEQIonLadderRates CEQOxygenIonizationRates(const StructEQCData *state,
+                                         const CEQRateCoefficients *coefficients);
 
 /* Solve the O ladder with O0/O+ <-> H+/H0 and O++ + H0 charge transfer, and
    rebalance H I/H II. With H2 formation on, every trial H ionization also

@@ -1,6 +1,8 @@
 #include "EQCDataStructure.h"
+#include "TemperatureTable.h"
 
 void InitializeFineStructureLines(int Check);
+void CEQInitializeFineStructureTemperatureTables(void);
 //double TotalFineStructureLinesCoolingRate(double T, double nel, double nHII, double nHI, double nH2, 
 //        double nCI, double nCII, double nOI, double nSiI, double nSiII);
 
@@ -10,9 +12,16 @@ double CoolingCI610um(double nCI, double T, double nel, double nHII, double nHI,
 double CoolingCI230um(double nCI, double T, double nel, double nHII, double nHI, double nH2);
 double CoolingCI370um(double nCI, double T, double nel, double nHII, double nHI, double nH2);
 double CoolingCII158um(StructEQCData *PhydroPP);
+double CEQCoolingCII158um(const StructEQCData *state);
+double CEQCoolingCII158umWithTemperatureTable(const StructEQCData *state, const CEQTemperaturePoint *point);
 
 double CoolingOI(double nOI, double T, double nel, double nHII, double nHI, double nH2, 
         double *CoolingOI063um, double *CoolingOI044um, double *CoolingOI146um);
+/* Neutral oxygen line cooling using nonnegative three-level populations. */
+double CEQCoolingNeutralOxygen(double nOI, double T, double nel, double nHII, double nHI, double nH2,
+        double *L63, double *L44, double *L146);
+double CEQCoolingNeutralOxygenWithTemperatureTable(double nOI, double T, double nel, double nHII,
+        double nHI, double nH2, const CEQTemperaturePoint *point, double *L63, double *L44, double *L146);
 double CoolingOI63um(StructEQCData *PhydroPP);
 double CoolingOI44um(StructEQCData *PhydroPP);
 double CoolingOI146um(StructEQCData *PhydroPP);

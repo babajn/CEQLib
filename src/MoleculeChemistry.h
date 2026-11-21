@@ -2,6 +2,7 @@
 #define CEQ_MOLECULE_CHEMISTRY_H
 
 #include "EQCDataStructure.h"
+#include "TemperatureTable.h"
 
 void InitializeHydrogenChemistory(int Check);
 void InitializeMoleculeChemistory(int Check);
@@ -33,12 +34,20 @@ double CoolingH2RovibrationalLineHollenbachMcKee1979(double T, double nHI, doubl
 double CoolingH2RovibrationalLineNeufeldKaufman1993(double T, double nHI, double nH2);
 double CoolingH2RovibrationalLineLeBourlot1999(double T, double nHI, double nH2);
 double CoolingH2RovibrationalLine(StructEQCData *PhydroPP);
+double CEQCoolingH2RovibrationalLine(const StructEQCData *state, double neutralHelium);
+void CEQInitializeMolecularCoolingTemperatureTables(void);
+double CEQCoolingH2RovibrationalLineWithTables(const StructEQCData *state, double neutralHelium,
+                                              const CEQTemperaturePoint *point);
 
 double CoolingH2CollisionalDissociation(StructEQCData *PhydroPP);
+double CEQCoolingH2CollisionalDissociationWithCoefficients(const StructEQCData *state,
+                                                         H2CollisionalDissociationCoefficients coefficients);
 
 double HeatingH2Photodissociate(StructEQCData *PhydroPP);
 double HeatingH2PhotomPumping(StructEQCData *PhydroPP);
 double HeatingH2Formation(StructEQCData *PhydroPP);
+double CEQHeatingH2(const StructEQCData *state);
+double CEQHeatingH2WithTables(const StructEQCData *state, const CEQTemperaturePoint *point);
 
 double COShieldingFactor(double N2, double Nco, double b5);
 /* The tabulated log10 column and log10 CO self-shielding factor. */

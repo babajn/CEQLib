@@ -296,18 +296,31 @@ static double ncrHI(double logT4){
 static double ncrH2(double logT4){
     return pow(10.0,4.845-1.3*logT4+1.62*SQ(logT4));  // [/cc] 
 }
+static double CriticalDensityHI(double T){
+    return ncrHI(log10(T)-4.0);
+}
+static double CriticalDensityH2(double T){
+    return ncrH2(log10(T)-4.0);
+}
+static CEQTemperatureTable criticalDensityHITable, criticalDensityH2Table;
+
+static double HarmonicCriticalDensity(double criticalHI, double criticalH2, double yHI, double yH2){
+    return 2.0*criticalHI*criticalH2/(criticalH2*yHI+criticalHI*yH2);
+}
 ///// Harmonic Mean of Critical Densities: 
 // ref.) Glover & MacLow, ApJ, 169, 239, (2007)
 // a weighted harmonic mean of the value for H2-H collisions given by Lepp & Shull (1983)
 // and the value for H2-H2 collisions given by Shapiro & Kang (1987).
 static double CriticalDensity(double T, double yHI, double yH2){
-    double logT4 = log10(T) - 4.0;
-    return 2.0*ncrHI(logT4)*ncrH2(logT4)/(ncrH2(logT4)*yHI+ncrHI(logT4)*yH2);
-
-    // see eq(A5)(A6) in Koyama & Inustuka (2000) 
-    //return 1.e+6*sqrt(1/T)*(1.6*yHI*exp(-SQ(400.0/T))+1.4*yH2*exp(-1.2e+4/(T+1.2e+3)));
+    const double logT4 = log10(T)-4.0;
+    return HarmonicCriticalDensity(ncrHI(logT4),ncrH2(logT4),yHI,yH2);
 }
 
+static double CriticalDensityWithTables(double T, double yHI, double yH2, const CEQTemperaturePoint *point){
+    return HarmonicCriticalDensity(
+        CEQReadTemperatureTable(&criticalDensityHITable,point,T,CriticalDensityHI),
+        CEQReadTemperatureTable(&criticalDensityH2Table,point,T,CriticalDensityH2),yHI,yH2);
+}
 
 ////////////////////////////////////////////////
 //
@@ -353,30 +366,91 @@ static double a_wHe_10_T_6000[]   = {-23.689237, 2.1892372,-0.81520438,0.2903628
 static double a_wHp_10_T_10000[]  = {-21.716699, 1.3865783,-0.37915285,0.11453688,-0.23214154, 0.058538864};
 static double a_wel_10_T_200[]    = {-34.286155,-48.537163, -77.121176,-51.352459, -15.169160, -0.98120322};
 static double a_wel_200_T_10000[] = {-22.190316, 1.5728955,-0.21335100,0.96149759,-0.91023195,  0.13749749};
-static double CoolingH2collisionLowDensityLimitBody(double logT3, double a[]){
-    double logL = 0.e0;
-    for(int k=0;k<=5;k++)    logL += a[k]*pow(logT3,k);
+static double CoolingH2collisionLowDensityLimitBody(double logT3, const double a[]){
+    double logL = a[0], power = logT3;
+    for(int k=1;k<=5;k++){
+        logL += a[k]*power;
+        power *= logT3;
+    }
     return pow(10.0,logL);  // [erg*cc/s]
 }
+
+/* Extend each Table 8 fit continuously with its upper endpoint value. */
+static double NeutralColliderLogT3(double T, double logT3){
+    return T > 6000.0 ? log10(6000.0)-3.0 : logT3;
+}
+
+static double ChargedColliderLogT3(double T, double logT3){
+    return T > 10000.0 ? 1.0 : logT3;
+}
+
+static double H2CoolingByAtomicHydrogen(double T, double logT3, double neutralLogT3){
+    if(T <= 100.0) return CoolingH2collisionLowDensityLimitBody(logT3,a_wH_10_T_100);
+    if(T <= 1000.0) return CoolingH2collisionLowDensityLimitBody(logT3,a_wH_100_T_1000);
+    return CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wH_1000_T_6000);
+}
+
+static double H2CoolingByElectrons(double T, double logT3, double chargedLogT3){
+    return T <= 200.0 ? CoolingH2collisionLowDensityLimitBody(logT3,a_wel_10_T_200)
+                      : CoolingH2collisionLowDensityLimitBody(chargedLogT3,a_wel_200_T_10000);
+}
+
+static double AtomicHydrogenColliderCooling(double T){
+    const double logT3 = log10(T)-3.0;
+    return T <= 10.0 ? 0.0 : H2CoolingByAtomicHydrogen(T,logT3,NeutralColliderLogT3(T,logT3));
+}
+
+static double MolecularHydrogenColliderCooling(double T){
+    return CoolingH2collisionLowDensityLimitBody(NeutralColliderLogT3(T,log10(T)-3.0),a_wH2_100_T_6000);
+}
+
+static double HeliumColliderCooling(double T){
+    return T <= 10.0 ? 0.0
+                     : CoolingH2collisionLowDensityLimitBody(NeutralColliderLogT3(T,log10(T)-3.0),a_wHe_10_T_6000);
+}
+
+static double IonizedHydrogenColliderCooling(double T){
+    return T <= 10.0 ? 0.0
+                     : CoolingH2collisionLowDensityLimitBody(ChargedColliderLogT3(T,log10(T)-3.0),a_wHp_10_T_10000);
+}
+
+static double ElectronColliderCooling(double T){
+    const double logT3 = log10(T)-3.0;
+    return T <= 10.0 ? 0.0 : H2CoolingByElectrons(T,logT3,ChargedColliderLogT3(T,logT3));
+}
+
+static CEQTemperatureTable h2CoolingByHITable, h2CoolingByH2Table, h2CoolingByHeTable;
+static CEQTemperatureTable h2CoolingByHIITable, h2CoolingByElectronTable;
+
+void CEQInitializeMolecularCoolingTemperatureTables(void){
+    const double atomicHydrogenBreakpoints[] = {10.0, 100.0, 1000.0, 6000.0};
+    const double molecularHydrogenBreakpoints[] = {6000.0};
+    const double heliumBreakpoints[] = {10.0, 6000.0};
+    const double ionizedHydrogenBreakpoints[] = {10.0, 10000.0};
+    const double electronBreakpoints[] = {10.0, 200.0, 10000.0};
+    CEQFillTemperatureTable(&h2CoolingByHITable,AtomicHydrogenColliderCooling,atomicHydrogenBreakpoints,4);
+    CEQFillTemperatureTable(&h2CoolingByH2Table,MolecularHydrogenColliderCooling,molecularHydrogenBreakpoints,1);
+    CEQFillTemperatureTable(&h2CoolingByHeTable,HeliumColliderCooling,heliumBreakpoints,2);
+    CEQFillTemperatureTable(&h2CoolingByHIITable,IonizedHydrogenColliderCooling,ionizedHydrogenBreakpoints,2);
+    CEQFillTemperatureTable(&h2CoolingByElectronTable,ElectronColliderCooling,electronBreakpoints,3);
+    CEQFillTemperatureTable(&criticalDensityHITable,CriticalDensityHI,NULL,0);
+    CEQFillTemperatureTable(&criticalDensityH2Table,CriticalDensityH2,NULL,0);
+}
+
 //// Glover & Abel, MNRAS, 388, 1627, (2008)
 double CoolingH2RovibrationalLineLowDensityLimitGloverAbel2008(double T, double nHII, double nHI, double nH2,
         double nHe, double ne){
     const double logT3 = log10(T)-3.0;
-    // Extend each Table 8 fit continuously with its upper endpoint value.
-    const double neutralLogT3 = T > 6000.0 ? log10(6000.0)-3.0 : logT3;
-    const double chargedLogT3 = T > 10000.0 ? 1.0 : logT3;
+    const double neutralLogT3 = NeutralColliderLogT3(T,logT3);
+    const double chargedLogT3 = ChargedColliderLogT3(T,logT3);
 
     double L_H = 0.0, L_He = 0.0, L_Hp = 0.0, L_el = 0.0;
     const double L_H2 = CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wH2_100_T_6000);
     if(T > 10.0){
-        if(T <= 100.0)        L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_10_T_100);
-        else if(T <= 1000.0)  L_H = CoolingH2collisionLowDensityLimitBody(logT3,a_wH_100_T_1000);
-        else                  L_H = CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wH_1000_T_6000);
+        L_H = H2CoolingByAtomicHydrogen(T,logT3,neutralLogT3);
         L_He = CoolingH2collisionLowDensityLimitBody(neutralLogT3,a_wHe_10_T_6000);
         L_Hp = CoolingH2collisionLowDensityLimitBody(chargedLogT3,a_wHp_10_T_10000);
-        L_el = T <= 200.0 ?
-               CoolingH2collisionLowDensityLimitBody(logT3,a_wel_10_T_200) :
-               CoolingH2collisionLowDensityLimitBody(chargedLogT3,a_wel_200_T_10000);
+        L_el = H2CoolingByElectrons(T,logT3,chargedLogT3);
     }
     // total H2 cooling [erg/s/cc]
     return nH2*(nHI*L_H + nH2*L_H2 + nHe*L_He + nHII*L_Hp + ne*L_el);
@@ -568,105 +642,108 @@ double CoolingH2RovibrationalLineLeBourlot1999(double T, double nHI, double nH2)
 }
 
 //// Cooling via Rotational & Vibrational Lines of H2 [erg/cc/s]
-double CoolingH2RovibrationalLine(StructEQCData *PhydroPP){
-    double nHII = PhydroPP->nion[ipHYDROGEN];
-    double nHI  = PhydroPP->natom[ipHYDROGEN];
-    double nH2  = PhydroPP->nmol [ipH2];
-    if(nH2==0.e0)   return 0.e0;
-    double nHe  = PhydroPP->n[ipHELIUM];
-    double ne   = PhydroPP->nel;
-    double T    = PhydroPP->T;
-    //return CoolingH2RovibrationalLineLowDensityLimitGalliPalla1998(T,nHI,nH2);
-    return CoolingH2RovibrationalLineLowDensityLimitGloverAbel2008(T,nHII,nHI,nH2,nHe,ne);    // default
-    //return CoolingH2RovibrationalLineHollenbachMcKee1979(T,nHI,nH2);
-    //return CoolingH2RovibrationalLineNeufeldKaufman1993(T,nHI,nH2);
-    //return CoolingH2RovibrationalLineLeBourlot1999(T,nHI,nH2);
+double CEQCoolingH2RovibrationalLine(const StructEQCData *state, double neutralHelium){
+    const double nH2 = state->nmol[ipH2];
+    if(nH2 == 0.0) return 0.0;
+    return CoolingH2RovibrationalLineLowDensityLimitGloverAbel2008(
+        state->T,state->nion[ipHYDROGEN],state->natom[ipHYDROGEN],nH2,neutralHelium,state->nel);
+}
+
+double CEQCoolingH2RovibrationalLineWithTables(const StructEQCData *state, double neutralHelium,
+                                              const CEQTemperaturePoint *point){
+    if(point == NULL) return CEQCoolingH2RovibrationalLine(state,neutralHelium);
+    const double nH2 = state->nmol[ipH2], T = state->T;
+    if(nH2 == 0.0) return 0.0;
+    const double nHI = state->natom[ipHYDROGEN], nHII = state->nion[ipHYDROGEN], ne = state->nel;
+    const double L_H2 = nH2*CEQReadTemperatureTable(&h2CoolingByH2Table,point,T,MolecularHydrogenColliderCooling);
+    if(T <= 10.0) return nH2*L_H2;
+    const double L_HI = nHI != 0.0
+        ? nHI*CEQReadTemperatureTable(&h2CoolingByHITable,point,T,AtomicHydrogenColliderCooling) : 0.0;
+    const double L_He = neutralHelium != 0.0
+        ? neutralHelium*CEQReadTemperatureTable(&h2CoolingByHeTable,point,T,HeliumColliderCooling) : 0.0;
+    const double L_HII = nHII != 0.0
+        ? nHII*CEQReadTemperatureTable(&h2CoolingByHIITable,point,T,IonizedHydrogenColliderCooling) : 0.0;
+    const double L_e = ne != 0.0
+        ? ne*CEQReadTemperatureTable(&h2CoolingByElectronTable,point,T,ElectronColliderCooling) : 0.0;
+    return nH2*(L_HI + L_H2 + L_He + L_HII + L_e);
+}
+
+double CoolingH2RovibrationalLine(StructEQCData *state){
+    return CEQCoolingH2RovibrationalLine(state,state->n[ipHELIUM]);
 }
 
 //// Cooling associating with H2 dissociation by collisions [erg/cc/s]
 // Following Hollenbach & McKee (1979), collisional dissociation absorb
 // the same energy as the biding energy, that is, 4.48 eV per H2.
 // see p.587 of Hollenbach & McKee (1979)
-static double CoolingH2CollisionalDissociationBody(double nHI, double nH2, double nH, double ne, double T){
-    if(nH2==0.e0)   return 0.e0;
-    return 4.48*(EV_TO_ERG)*nH2*H2CollisionalDissociationRate(T,nH,nHI,nH2,ne);
-    //double dissHI = nHI*HIcollisionCoefficient(T,nH,nHI,nH2);
-    //double dissH2 = nH2*H2collisionCoefficient(T,nH,nHI,nH2);
-    //return 4.48*(EV_TO_ERG)*nH2*(dissHI + dissH2);
-}
-double CoolingH2CollisionalDissociation(StructEQCData *PhydroPP){
-    double nHI = PhydroPP->natom[ipHYDROGEN];
-    double nH2 = PhydroPP->nmol [ipH2];
-    if(nH2==0.e0)   return 0.e0;
-    double nH  = PhydroPP->n[ipHYDROGEN];
-    double ne  = PhydroPP->nel;
-    double T   = PhydroPP->T;
-    return CoolingH2CollisionalDissociationBody(nHI,nH2,nH,ne,T);
-    //double diss = H2CollisionalDissociationRate(T,nH,nHI,nH2,0.0);
-    //return 4.48*(EV_TO_ERG)*nH2*diss;
+double CEQCoolingH2CollisionalDissociationWithCoefficients(const StructEQCData *state,
+                                                         H2CollisionalDissociationCoefficients coefficients){
+    const double nH2 = state->nmol[ipH2];
+    if(nH2 == 0.0) return 0.0;
+    return 4.48*EV_TO_ERG*nH2*H2DissociationFromCoefficients(coefficients,state->nel,state->natom[ipHYDROGEN],nH2);
 }
 
-//// Heating associating with photodissociation of H2 by FUV [erg/cc/s]
-// Following Black & Dalgarno (1977) and Glover & MacLow (2007), we assume that
-// each photodissociation deposits 0.4 eV (= 6.4 x 10^-13 erg) of heat into the gas.
-// see also  eq(3.18)(3.19) of Teilens' textbook (2005)
-double HeatingH2Photodissociate(StructEQCData *PhydroPP){
-    double nH2 = PhydroPP->nmol[ipH2];
-    double Nt  = PhydroPP->Nt;
-    double N2  = Nt*nH2/PhydroPP->n[ipHYDROGEN]; 
-    double G0  = PhydroPP->G0;
-    double Zd  = PhydroPP->Zd;
-    //double b5  = 12.90*sqrt(1.e-4*PhydroPP->T);    // eq(6.34) of Draine's textbook
-    double b5  = sqrt(SQ(12.90*sqrt(1.e-4*PhydroPP->T))+SQ(b_turb));    // eq(6.34) of Draine's textbook
-    // see eq.(44) in Glover & MacLow, ApJ, 169, 239, (2007)
-    return (6.4e-13)*H2PhotoDissociationRate(G0,Nt,N2,b5,Zd)*nH2;
+double CoolingH2CollisionalDissociation(StructEQCData *state){
+    if(state->nmol[ipH2] == 0.0) return 0.0;
+    return CEQCoolingH2CollisionalDissociationWithCoefficients(state,H2DissociationCoefficients(state->T));
 }
 
-//// Heating associating with excitaion of H2 by FUV [erg/cc/s]
-// Radiative pupmping rate that is 8.5 times larger than the photodissociation rate (Draine & Bertoldi 1996).
-// Each excitation transfers an average of 2*n/(n+ncr) [eV] = 3.2e-12*n/(n+ncr) [erg] to the gas (Appendix A of Burton et al. 1990).
-// eq.(6.46) of Hollenbach & McKee (1979)
-double HeatingH2PhotomPumping(StructEQCData *PhydroPP){
-    double nH  = PhydroPP->n[ipHYDROGEN];
-    double nHI = PhydroPP->natom[ipHYDROGEN];
-    double nH2 = PhydroPP->nmol[ipH2];
-    double Nt  = PhydroPP->Nt;
-    double N2  = Nt*nH2/nH;
-    double G0  = PhydroPP->G0;
-    double Zd  = PhydroPP->Zd;
-    double T   = PhydroPP->T;
-    //double b5  = 12.90*sqrt(1.e-4*T);    // eq(6.34) of Draine's textbook
-    double b5  = sqrt(SQ(12.90*sqrt(1.e-4*T))+SQ(b_turb));    // eq(6.34) of Draine's textbook
-    double yHI = nHI/nH;
-    double yH2 = nH2/nH;
-    // see pp.247 in Glover & MacLow, ApJ, 169, 239, (2007)
-    return (FUVPumpingHeatingFactorDB96)*(3.2e-12)*H2PhotoDissociationRate(G0,Nt,N2,b5,Zd)*nH2*nH/(nH+CriticalDensity(T,yHI,yH2));
-    //return (3.2e-12)*H2dissociationRate(G0,Nt,N2,b5,Z)*nH2*nH/(nH+CriticalDensity(T,yHI,yH2));
-    
-    // eq(A5) of Koyama & Inustuka (2000)
-    //return (31.7e-11)*H2dissociationRate(G0,Nt,N2,Z)*nH2*nH/(nH+CriticalDensity(T,yHI,yH2));
+enum {
+    H2HeatPhotodissociation = 1 << 0,
+    H2HeatPumping = 1 << 1,
+    H2HeatFormation = 1 << 2,
+};
+
+static double HeatingH2(const StructEQCData *state, unsigned int processes, const CEQTemperaturePoint *point){
+    const double nH = state->n[ipHYDROGEN];
+    const double nHI = state->natom[ipHYDROGEN];
+    const double nH2 = state->nmol[ipH2];
+    const double T = state->T;
+    double photoRate = 0.0;
+    if(processes & (H2HeatPhotodissociation | H2HeatPumping)){
+        const double N2 = state->Nt*nH2/nH;
+        const double b5 = sqrt(SQ(12.90*sqrt(1.e-4*T))+SQ(b_turb));
+        photoRate = H2PhotoDissociationRate(state->G0,state->Nt,N2,b5,state->Zd);
+    }
+    double criticalDenominator = 1.0;
+    if(processes & (H2HeatPumping | H2HeatFormation)){
+        const double yHI = nHI/nH, yH2 = nH2/nH;
+        criticalDenominator = nH+(point ? CriticalDensityWithTables(T,yHI,yH2,point) : CriticalDensity(T,yHI,yH2));
+    }
+
+    double heating = 0.0;
+    /* Eqs. (44–45) of Glover & Mac Low (2007), including FUV pumping
+       with the Draine & Bertoldi (1996) excitation-to-dissociation ratio. */
+    if(processes & H2HeatPhotodissociation)
+        heating = 6.4e-13*photoRate*nH2;
+    if(processes & H2HeatPumping)
+        heating += FUVPumpingHeatingFactorDB96*3.2e-12*photoRate*nH2*nH/criticalDenominator;
+    if(processes & H2HeatFormation){
+        const double Td = EffectiveDustTemperature(state);
+        heating += 7.2e-12*H2FormationRate(T,state->Zd,Td)*nHI*SQ(nH)/criticalDenominator;
+    }
+    return heating;
 }
 
-//// Heating associating with H2 formation on grains [erg/cc/s]
-// Hollenbach & McKee (1989)
-// eq.(6.43) of Hollenbach & McKee (1979)
-double HeatingH2Formation(StructEQCData *PhydroPP){
-    double nH  = PhydroPP->n[ipHYDROGEN];
-    double nHI = PhydroPP->natom[ipHYDROGEN];
-    double nH2 = PhydroPP->nmol[ipH2];
-    //double G0  = PhydroPP->G0;
-    double Zd  = PhydroPP->Zd;
-    double T   = PhydroPP->T;
-    double Td  = EffectiveDustTemperature(PhydroPP);
-    double yHI  = nHI/nH;
-    double yH2  = nH2/nH;
-    // see eq.(45) in Glover & MacLow, ApJ, 169, 239, (2007)
-    return (7.2e-12)*H2FormationRate(T,Zd,Td)*nHI*SQ(nH)/(nH+CriticalDensity(T,yHI,yH2));
-    
-    // eq(A5) of Koyama & Inustuka (2000)
-    //return EV_TO_ERG*H2formationRate(T,Z,Tdust)*nHI*nH*(0.2+4.2*nH/(nH+CriticalDensity(T,yHI,yH2)));
+double HeatingH2Photodissociate(StructEQCData *state){
+    return HeatingH2(state,H2HeatPhotodissociation,NULL);
 }
 
+double HeatingH2PhotomPumping(StructEQCData *state){
+    return HeatingH2(state,H2HeatPumping,NULL);
+}
+
+double HeatingH2Formation(StructEQCData *state){
+    return HeatingH2(state,H2HeatFormation,NULL);
+}
+
+double CEQHeatingH2(const StructEQCData *state){
+    return CEQHeatingH2WithTables(state,NULL);
+}
+
+double CEQHeatingH2WithTables(const StructEQCData *state, const CEQTemperaturePoint *point){
+    return HeatingH2(state,H2HeatPhotodissociation | H2HeatPumping | H2HeatFormation,point);
+}
 
 //extern double DustShieldingFactor(double Ntot, double Z, double gamma);
 

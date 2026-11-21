@@ -40,21 +40,30 @@ HEADS = Astro.h \
 
 ALL:   start
 
-.PHONY: start eqclib check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot
+.PHONY: start eqclib check cell-check benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-plot
 eqclib:
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
 start: $(OBJS) eqclib
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o test.out
 
-check: EquilibriumTest.o eqclib
+check: EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o eqclib
 	mkdir -p out
 	$(CC) $(CFLAGS) -fno-fast-math EquilibriumTest.o $(LDFLAGS) -o out/equilibrium_test.out
+	$(CC) $(CFLAGS) -fno-fast-math HydrogenChemistryTest.o $(LDFLAGS) -o out/hydrogen_chemistry_test.out
+	$(CC) $(CFLAGS) -fno-fast-math ThermochemistryModeTest.o $(LDFLAGS) -o out/thermochemistry_mode_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/check.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
-	"$(CURDIR)/out/equilibrium_test.out" "$(abspath ../data/PEGASE2)"
+	"$(CURDIR)/out/equilibrium_test.out" "$(abspath ../data/PEGASE2)"; \
+	"$(CURDIR)/out/hydrogen_chemistry_test.out" "$(abspath ../data/PEGASE2)"; \
+	"$(CURDIR)/out/thermochemistry_mode_test.out" "$(abspath ../data/PEGASE2)"
 
-EquilibriumTest.o: override CFLAGS += -fno-fast-math
+EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o: override CFLAGS += -fno-fast-math
+HydrogenChemistryTest.o ThermochemistryModeTest.o: $(EQCLIB_DIR)/ChemicalEquilibriumCooling.h
+
+cell-check: eqclib
+	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) eqclib-cell
+	$(PYTHON) CellRunnerTest.py "$(EQCLIB_DIR)/eqclib-cell"
 
 benchmark: ThermalBenchmark.c eqclib
 	mkdir -p out
@@ -107,8 +116,28 @@ molecular-settings-plot: molecular-settings-benchmark
 wolfire-plot:
 	$(PYTHON) ../plot/plot_wolfire1995.py
 
+noneq: NonEquilibriumTest.c eqclib
+	mkdir -p out/noneq
+	$(CC) $(CFLAGS) -fno-fast-math NonEquilibriumTest.c $(LDFLAGS) -o out/non_equilibrium_test.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/non_equilibrium_test.out" "$(abspath ../data/PEGASE2)"; \
+	mv evolution.csv evolution_direct.csv recombination.csv recombination_direct.csv \
+	   convergence.csv convergence_direct.csv "$(CURDIR)/out/noneq/"
+
+noneq-benchmark: NonEquilibriumBenchmark.c eqclib
+	mkdir -p out/noneq
+	$(CC) $(CFLAGS) -fno-fast-math NonEquilibriumBenchmark.c $(LDFLAGS) -o out/non_equilibrium_benchmark.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/noneq-bench.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/non_equilibrium_benchmark.out" "$(abspath ../data/PEGASE2)"; \
+	mv benchmark.csv "$(CURDIR)/out/noneq/"
+
+noneq-plot: noneq noneq-benchmark
+	$(PYTHON) ../plot/plot_noneq.py
+
 clean:
-	rm -f $(OBJS) test.out EquilibriumTest.o out/equilibrium_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out
+	rm -f $(OBJS) test.out EquilibriumTest.o HydrogenChemistryTest.o ThermochemistryModeTest.o out/equilibrium_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out
 
 tag:
 	ctags *.[c,h]

@@ -25,6 +25,9 @@ OBJS	= RandomNumberGenerator.o \
 		  NewtonRaphson.o \
 		ChemicalEquilibriumCooling.o \
 		ChemicalEquilibriumSolver.o \
+		ChemistryMode.o \
+		HydrogenChemistry.o \
+		TemperatureTable.o \
 		ThermalEquilibrium.o \
 		ChemicalElements.o \
 		EquilibriumAbundance.o \
@@ -47,6 +50,9 @@ SRCS 	= RandomNumberGenerator.c \
 		  NewtonRaphson.c \
 		ChemicalEquilibriumCooling.c \
 		ChemicalEquilibriumSolver.c \
+		ChemistryMode.c \
+		HydrogenChemistry.c \
+		TemperatureTable.c \
 		ThermalEquilibrium.c \
 		ChemicalElements.c \
 		EquilibriumAbundance.c \
@@ -80,6 +86,7 @@ HEADS = Astro.h \
 		Xray.h \
 		Bremsstrahlung.h \
 		CoolingCIE.h \
+		CoolingHeatingRates.h \
 		HIIregionLineCooling.h \
 		HIIregionOxygenData.h \
 		FineStructureLines.h \
@@ -92,14 +99,17 @@ all:	depend libEQCLib.a
 
 .PHONY: clean
 clean:
-	rm *.o *.s *.a *.swp depend.inc libEQCLib.a -f
+	rm *.o *.s *.a *.swp depend.inc libEQCLib.a eqclib-cell -f
 
 libEQCLib.a: $(OBJS)
 	$(AR) -r $@ $^
 	ranlib $@
 
+eqclib-cell: CellRunner.o libEQCLib.a
+	$(CC) $(CFLAGS) $^ -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas -lm -o $@
+
 # These modules check for non-finite values or return NaN for invalid trials.
-ChemicalEquilibriumCooling.o ChemicalEquilibriumSolver.o ThermalEquilibrium.o \
+CellRunner.o ChemicalEquilibriumCooling.o ChemicalEquilibriumSolver.o ChemistryMode.o HydrogenChemistry.o TemperatureTable.o ThermalEquilibrium.o \
 EquilibriumAbundance.o MoleculeChemistry.o GrainSurfaceChemistry.o Xray.o PhotochemicalGasPhaseChemistry.o \
 CoolingCIE.o CosmicRay.o HIIregionLineCooling.o: override CFLAGS += -fno-fast-math
 
@@ -111,8 +121,8 @@ tag:
 .PHONY: depend
 depend: depend.inc
 
-depend.inc: $(OBJS:.o=.c) $(wildcard *.h) Makefile
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MM $(OBJS:.o=.c) > $@.tmp && mv $@.tmp $@
+depend.inc: $(OBJS:.o=.c) CellRunner.c $(wildcard *.h) Makefile
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MM $(OBJS:.o=.c) CellRunner.c > $@.tmp && mv $@.tmp $@
 
 ifneq ($(MAKECMDGOALS),clean)
 -include depend.inc

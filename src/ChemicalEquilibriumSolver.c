@@ -44,24 +44,6 @@ static bool UsesChargeTransfer(void)
     return EQCLibRunParameters.UseHIIRegion && EQCLibRunParameters.UseChargeTransfer;
 }
 
-/* These rates stay fixed when only the CO abundance changes at a trial n_e. */
-static CEQIonLadderRates OxygenRates(const StructEQCData *state, const CEQRateCoefficients *c)
-{
-    const double ne = state->nel;
-    const double nH = state->n[ipHYDROGEN];
-    const double xe = ne/nH;
-    const double T = state->T;
-    const double X0 = state->X0;
-    const double G0 = state->G0;
-    const double Zd = state->Zd;
-    return (CEQIonLadderRates){
-        .ionization0 = c->oxygen.photo0 + ne*c->oxygen.collision0 + X0*CosmicRayIonizationRateOI(xe),
-        .recombination1 = ne*c->oxygen.recombination1 + nH*OIIRecombinationRateOnDust(T,G0,ne,Zd),
-        .ionization1 = c->oxygen.photo1 + ne*c->oxygen.collision1,
-        .recombination2 = ne*c->oxygen.recombination2,
-    };
-}
-
 /* In H II region mode, couple O and H through charge transfer unless it is turned off. */
 static int SolveOxygen(StructEQCData *state, const CEQHydrogenRates *hydrogen,
                        const CEQIonLadderRates *oxygen, const CEQRateCoefficients *c, double accuracy)
@@ -86,16 +68,13 @@ static int SolveOtherIons(StructEQCData *state, const CEQHydrogenRates *hydrogen
     const double Nt = state->Nt;
     const double Zd = state->Zd;
 
+    const CEQIonLadderRates helium = CEQHeliumIonizationRates(state,c);
     int status = CEQSolveIonLadder(state->n[ipHELIUM],
-        c->helium.photo0 + ne*c->helium.collision0
-            + X0*(CosmicRayIonizationRateHeI(xe) + SoftXrayIonizationRateHeI(xe,Nt)),
-        ne*c->helium.recombination1 + nH*HeIIRecombinationRateOnDust(T,G0,ne,Zd),
-        c->helium.photo1 + ne*c->helium.collision1,
-        ne*c->helium.recombination2,
+        helium.ionization0, helium.recombination1, helium.ionization1, helium.recombination2,
         &state->natom[ipHELIUM], &state->nion[ipHELIUM], &state->nHeIII);
     if(status != EQC_SUCCESS) return status;
 
-    *oxygen = OxygenRates(state,c);
+    *oxygen = CEQOxygenIonizationRates(state,c);
     status = SolveOxygen(state,hydrogen,oxygen,c,accuracy);
     if(status != EQC_SUCCESS) return status;
 

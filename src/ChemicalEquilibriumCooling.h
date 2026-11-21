@@ -8,6 +8,10 @@
 #include <gsl/gsl_interp.h>
 #include <gsl/gsl_spline.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //#include "ChemicalEquilibriumCooling.h"
 //#include "EquilibriumAbundance.h"
 //#include "CollisionalGasPhaseChemistry.h"
@@ -36,6 +40,7 @@ extern struct StructEQCLibParameters_tag{
     bool UseCOFormation;
     bool UseHIIRegion;
     bool UseChargeTransfer;
+    bool UseNonEquilibriumTemperatureTables;
     double CpForH2;
     double CpForCO;
     double ChemistryAccuracy;
@@ -48,6 +53,20 @@ typedef enum {
     EQC_NO_CONVERGENCE = -3,
     EQC_INITIALIZATION_FAILED = -4
 } EQCLibStatus;
+
+typedef enum {
+    EQC_CHEMISTRY_EQUILIBRIUM = 0,
+    EQC_CHEMISTRY_NONEQUILIBRIUM
+} EQCLibChemistryMode;
+
+/* Parse a trimmed value from a host application's configuration. */
+EQCLibStatus EQCLibTryParseChemistryMode(const char *value, EQCLibChemistryMode *mode);
+/* Read 'chemistry_mode = equilibrium' or 'chemistry_mode = nonequilibrium'.
+   Other settings belong to the host, and # introduces a line comment.
+   A NULL path or a file without the key selects equilibrium. I/O failures
+   return EQC_INITIALIZATION_FAILED and invalid or duplicate entries return
+   EQC_INVALID_INPUT. Both config functions leave mode intact on failure. */
+EQCLibStatus EQCLibTryLoadChemistryMode(const char *path, EQCLibChemistryMode *mode);
 
 /* Initialize before evaluating rates. Set H II regions before initialization
    to load spectra from pegaseDirectory, or from ../data/PEGASE2 if it is NULL.
@@ -62,12 +81,18 @@ void EQCLibSetRunParamRecombinationCaseB(bool Use);
    models only oxygen and tapers from 1.5e4 to 2.5e4 K to recover CIE.
    When off, NLyn is ignored and C keeps its FUV photoionization. */
 void EQCLibSetRunParamHIIRegion(bool Use);
-/* With H II regions enabled, solve O0 + H+ <-> O+ + H0 and O++ + H0 -> O+ + H+
-   together with the H balance (default on). Turning it off makes H II updates
+/* Enable O0 + H+ <-> O+ + H0 and O++ + H0 -> O+ + H+ (default on).
+   The equilibrium solver uses these reactions when H II regions are enabled.
+   Turning them off makes equilibrium H II updates
    about 20-35% faster, but leaves O III too abundant where some H I remains;
    against Cloudy, the median temperature error at solar metallicity grows
-   from about 1.4% to 5.3%. */
+   from about 1.4% to 5.3%. The thermochemistry solver uses them whenever
+   oxygen is present and this parameter is enabled. */
 void EQCLibSetRunParamChargeTransfer(bool Use);
+/* Interpolate smooth temperature-only coefficients in the non-equilibrium
+   updates (default on). False evaluates the original rate formulas directly.
+   Change the setting only while no evaluations are running. */
+void EQCLibSetRunParamNonEquilibriumTemperatureTables(bool use);
 /* Upper bound on the relative charge residual of the chemistry inside the
    implicit energy API, which uses min(value, 0.1*accuracy). The default 1e-8
    is far tighter than the energy accuracy needs. 1e-5 typically makes energy
@@ -92,6 +117,35 @@ int EQCLibCalculateCoolingHeatingRates(StructEQCData *PhydroPP);
    A zero CO seed chooses the lowest admissible CO density on a cold start.
    A failed solve leaves the input state intact. */
 int EQCLibChemicalReactionEquilibrium(StructEQCData *PhydroPP, const double Accuracy);
+/* Advance pure hydrogen chemistry by state->dt seconds at fixed T, total
+   hydrogen density and radiation fields. Start from nion[ipHYDROGEN] and
+   nmol[ipH2] in cm^-3. H I and electron densities are derived from nuclear
+   and charge conservation. Set the other elements and CO to zero, and
+   enable H2 formation for molecular gas. accuracy controls the integration
+   error in the abundances per hydrogen nucleus (0 < accuracy < 1).
+   Only the hydrogen species and nel are updated on success. A zero dt is
+   a no-op. Initialize the library before calling this function. */
+EQCLibStatus EQCLibTryAdvanceHydrogenChemistry(StructEQCData *state, double accuracy);
+/* Advance hydrogen, optional helium, atomic carbon and oxygen, and specific thermal energy
+   U [erg/g] over state->dt seconds at fixed Rho [g/cm^3] and radiation fields.
+   Supply positive U, Rho and hydrogen nuclear density. For He, C and O, give the
+   respective totals and singly ionized densities in n and nion, and doubly
+   ionized densities in nHeIII, nCIII and nOIII (all in cm^-3). For optional
+   silicon, hold nion[ipSILICON] and nSiIII fixed and derive Si I from
+   n[ipSILICON]. Its charge and [Si II] 35 um cooling are included.
+   Nonzero CO density, or enabled CO formation with a positive timestep,
+   returns EQC_INVALID_INPUT.
+   Reconstruct T from U and the initial species, and nel from their charge.
+   On success, update U, the species, T, the equation of state, and instantaneous
+   thermal rates, including [C II] 158 um, [O II] and [O III].
+   A zero dt is a no-op. Errors leave the input state intact. */
+EQCLibStatus EQCLibTryAdvanceHydrogenThermochemistry(StructEQCData *state, double accuracy);
+/* Update U, temperature, composition and thermal rates over state->dt seconds
+   with the selected solver. Du is the mean change in specific energy per
+   second during the step. The caller takes the updated U directly. Use the
+   chosen solver's initial-state requirements and carry its accepted species
+   into the next step. A zero dt is a no-op. Errors leave state intact. */
+EQCLibStatus EQCLibTryAdvanceCell(StructEQCData *state, double accuracy, EQCLibChemistryMode mode);
 /* The checked calls publish outputs and state only when they succeed. */
 EQCLibStatus EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(StructEQCData *state, double accuracy);
 EQCLibStatus EQCLibTryNetCoolingRateChemcalEquilibrium(StructEQCData *state, double *rate);
@@ -112,5 +166,9 @@ double EQCLibConvertTtoU(StructEQCData *PhydroPP);
 double EQCLibConvertUtoT(StructEQCData *PhydroPP);
 double EQCApproximateDustToGasRatio(double T);
 double EQCApproximateDustTemperature(double Nt, double G0);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

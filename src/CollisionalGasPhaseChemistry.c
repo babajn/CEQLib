@@ -501,28 +501,16 @@ double SiIIIChargeTransferRateToHI(double T){
 //////////////////////////
 //// Collisional Ionization Cooling [erg/cc/s]
 // ref. Cen (1992)
-double CoolingCollisionalIonization(StructEQCData *PhydroPP){
-    double nHI = PhydroPP->natom[ipHYDROGEN];
-    double ne  = PhydroPP->nel; 
-    double T   = PhydroPP->T;
-    double zeta = (1.27e-21)*sqrt(T)*exp(-T_HI/T)/(1.0+sqrt(1.e-5*T));
-    return ne*nHI*zeta;
+static double HydrogenIonizationCooling(double T){
+    return 1.27e-21*sqrt(T)*exp(-T_HI/T)/(1.0+sqrt(1.e-5*T));
 }
 // ref. eq.(12b) of Cen (1992)
-double CoolingHeICollisionalIonization(StructEQCData *PhydroPP){
-    double nHeI = PhydroPP->natom[ipHELIUM  ];
-    double ne   = PhydroPP->nel; 
-    double T    = PhydroPP->T;
-    double zeta = (9.38e-22)*sqrt(T)*exp(-T_HeI/T)/(1.0+sqrt(1.e-5*T));
-    return ne*nHeI*zeta;
+static double NeutralHeliumIonizationCooling(double T){
+    return 9.38e-22*sqrt(T)*exp(-T_HeI/T)/(1.0+sqrt(1.e-5*T));
 }
 // ref. eq.(12c) of Cen (1992)
-double CoolingHeIICollisionalIonization(StructEQCData *PhydroPP){
-    double nHeII  = PhydroPP->nion [ipHELIUM  ];
-    double ne     = PhydroPP->nel; 
-    double T      = PhydroPP->T;
-    double zeta = (4.95e-22)*sqrt(T)*exp(-T_HeII/T)/(1.0+sqrt(1.e-5*T));
-    return ne*nHeII*zeta;
+static double SinglyIonizedHeliumIonizationCooling(double T){
+    return 4.95e-22*sqrt(T)*exp(-T_HeII/T)/(1.0+sqrt(1.e-5*T));
 }
 
 //// Collisional Excitation Cooling [erg/cc/s]
@@ -530,82 +518,159 @@ double CoolingHeIICollisionalIonization(StructEQCData *PhydroPP){
 //       modified by Cen (1992)
 // electron excitation pf the excited levels in neutral H can be 
 // an important source of  energy loss. The Ly-a photons
-double CoolingCollisionalExcitation(StructEQCData *PhydroPP){
-    double nHI = PhydroPP->natom[ipHYDROGEN];
-    double ne  = PhydroPP->nel; 
-    double T   = PhydroPP->T;
-    double psi = (7.5e-19)*exp(-118348.0/T)/(1.0+sqrt(1.e-5*T));
-    //double psi = (7.3e-19)*exp(-118400.0/T); eq.(6-12) of Spitzer
-    return ne*nHI*psi;
+static double HydrogenExcitationCooling(double T){
+    return 7.5e-19*exp(-118348.0/T)/(1.0+sqrt(1.e-5*T));
 }
 // Collisional Excitation Cooling of HeI (n=2,3,4 triplets) [erg/cc/s]
 // ref. eq.(15c) of Cen (1992) 
-double CoolingHeICollisionalExcitation(StructEQCData *PhydroPP){
-    double nHeII = PhydroPP->nion[ipHELIUM];
-    double ne    = PhydroPP->nel; 
-    double T     = PhydroPP->T;
-    double psi = (9.10e-27)*pow(T,-0.1687)*exp(-13179.0/T)/(1.0+sqrt(1.e-5*T));
-    return SQ(ne)*nHeII*psi;
+static double HeliumIExcitationCooling(double T){
+    return 9.10e-27*pow(T,-0.1687)*exp(-13179.0/T)/(1.0+sqrt(1.e-5*T));
 }
 // Collisional Excitation Cooling of HeII (n=2) [erg/cc/s]
 // ref. eq.(15c) of Cen (1992) 
-double CoolingHeIICollisionalExcitation(StructEQCData *PhydroPP){
-    double nHeII = PhydroPP->nion[ipHELIUM];
-    double ne    = PhydroPP->nel; 
-    double T     = PhydroPP->T;
-    double psi = (5.54e-17)*pow(T,-0.397)*exp(-473638.0/T)/(1.0+sqrt(1.e-5*T));
-    return ne*nHeII*psi;
+static double HeliumIIExcitationCooling(double T){
+    return 5.54e-17*pow(T,-0.397)*exp(-473638.0/T)/(1.0+sqrt(1.e-5*T));
 }
 
-//// Case B Recombination Cooling [erg/cc/s]
 // ref. Hui & Gnedin (1997)
-double CoolingRecombination(StructEQCData *PhydroPP){
-    double nHII = PhydroPP->nion[ipHYDROGEN];
-    double ne   = PhydroPP->nel; 
-    double T    = PhydroPP->T;
-    double lamb = 2.0*(T_HI)/T;
-    double eta  = 0.0;
-    if(EQCLibRunParameters.UseRecombinationCaseB==true)
-        eta = (3.435e-30)*T*pow(lamb,1.970)*pow(1.0+pow(0.44444*lamb,0.376),-3.720);
-    else
-        eta = (1.778e-29)*T*pow(lamb,1.965)*pow(1.0+pow(1.84843*lamb,0.502),-2.697);
-    return nHII*ne*eta;
+static double HydrogenRecombinationCoolingCaseA(double T){
+    const double lambda = 2.0*T_HI/T;
+    return 1.778e-29*T*pow(lambda,1.965)*pow(1.0+pow(1.84843*lambda,0.502),-2.697);
+}
+
+static double HydrogenRecombinationCoolingCaseB(double T){
+    const double lambda = 2.0*T_HI/T;
+    return 3.435e-30*T*pow(lambda,1.970)*pow(1.0+pow(0.44444*lambda,0.376),-3.720);
 }
 // ref. Hui & Gnedin (1997)
-double CoolingHeIIRecombination(StructEQCData *PhydroPP){
-    double nHeII = PhydroPP->nion[ipHELIUM];
-    double ne    = PhydroPP->nel; 
-    double T     = PhydroPP->T;
-    double eta = 0.e0;
-    if(EQCLibRunParameters.UseRecombinationCaseB==true)
-        eta = (BOLTZMANN_CONSTANT_CGS)*T*HeIIRecombinationRateCaseB(T);
-    else
-        eta = (BOLTZMANN_CONSTANT_CGS)*T*HeIIRecombinationRateCaseA(T);
-    return nHeII*ne*eta;
+static double HeliumIIRecombinationCoolingCaseA(double T){
+    return BOLTZMANN_CONSTANT_CGS*T*HeIIRecombinationRateCaseA(T);
 }
-// ref. Hui & Gnedin (1997)
-double CoolingHeIIIRecombination(StructEQCData *PhydroPP){
-    double nHeIII = PhydroPP->nHeIII;
-    double ne     = PhydroPP->nel;
-    double T      = PhydroPP->T;
-    double lamb = 2.0*(T_HeII)/T;
-    double eta = 0.0;
-    /* Hydrogenic scaling: Lambda_HeIII(T) = 8 Lambda_HII(T/4). The hydrogen
-       fits carry a factor of T, so the He++ coefficients are twice the H ones. */
-    if(EQCLibRunParameters.UseRecombinationCaseB==true)
-        eta = 6.870e-30*T*pow(lamb,1.970)*pow(1.0+pow(0.44444*lamb,0.376),-3.720);
-    else
-        eta = 3.556e-29*T*pow(lamb,1.965)*pow(1.0+pow(1.84843*lamb,0.502),-2.697);
-    return nHeIII*ne*eta;
+
+static double HeliumIIRecombinationCoolingCaseB(double T){
+    return BOLTZMANN_CONSTANT_CGS*T*HeIIRecombinationRateCaseB(T);
 }
+
+/* Hui & Gnedin (1997). Lambda_HeIII(T) = 8 Lambda_HII(T/4) in the
+   hydrogenic scaling. The fits carry a factor of T. */
+static double HeliumIIIRecombinationCoolingCaseA(double T){
+    const double lambda = 2.0*T_HeII/T;
+    return 3.556e-29*T*pow(lambda,1.965)*pow(1.0+pow(1.84843*lambda,0.502),-2.697);
+}
+
+static double HeliumIIIRecombinationCoolingCaseB(double T){
+    const double lambda = 2.0*T_HeII/T;
+    return 6.870e-30*T*pow(lambda,1.970)*pow(1.0+pow(0.44444*lambda,0.376),-3.720);
+}
+
 // ref. eq.(14) of Cen (1992)
-double CoolingHeIIDielectronicRecombination(StructEQCData *PhydroPP){
-    double nHeII = PhydroPP->nion [ipHELIUM  ];
-    double ne    = PhydroPP->nel; 
-    double T     = PhydroPP->T;
-    double w = 0.75*(BOLTZMANN_CONSTANT_CGS)*T_HeII*HeIIDielectronicRecombinationRate(T);
-    //double invT = 1.e0/T;
-    //double w = 1.24e-13*pow(T,-1.5)*exp(-4.7e+5*invT)*(1.e0+0.3*exp(-9.4e+4*invT));
-    return ne*nHeII*w;
+static double HeliumIIDielectronicRecombinationCooling(double T){
+    return 0.75*BOLTZMANN_CONSTANT_CGS*T_HeII*HeIIDielectronicRecombinationRate(T);
+}
+
+double CoolingCollisionalIonization(StructEQCData *state){
+    return state->nel*state->natom[ipHYDROGEN]*HydrogenIonizationCooling(state->T);
+}
+
+double CoolingHeICollisionalIonization(StructEQCData *state){
+    return state->nel*state->natom[ipHELIUM]*NeutralHeliumIonizationCooling(state->T);
+}
+
+double CoolingHeIICollisionalIonization(StructEQCData *state){
+    return state->nel*state->nion[ipHELIUM]*SinglyIonizedHeliumIonizationCooling(state->T);
+}
+
+double CoolingCollisionalExcitation(StructEQCData *state){
+    return state->nel*state->natom[ipHYDROGEN]*HydrogenExcitationCooling(state->T);
+}
+
+double CoolingHeICollisionalExcitation(StructEQCData *state){
+    return SQ(state->nel)*state->nion[ipHELIUM]*HeliumIExcitationCooling(state->T);
+}
+
+double CoolingHeIICollisionalExcitation(StructEQCData *state){
+    return state->nel*state->nion[ipHELIUM]*HeliumIIExcitationCooling(state->T);
+}
+
+double CoolingRecombination(StructEQCData *state){
+    const double eta = EQCLibRunParameters.UseRecombinationCaseB ? HydrogenRecombinationCoolingCaseB(state->T)
+                                                               : HydrogenRecombinationCoolingCaseA(state->T);
+    return state->nion[ipHYDROGEN]*state->nel*eta;
+}
+
+double CoolingHeIIRecombination(StructEQCData *state){
+    const double eta = EQCLibRunParameters.UseRecombinationCaseB ? HeliumIIRecombinationCoolingCaseB(state->T)
+                                                               : HeliumIIRecombinationCoolingCaseA(state->T);
+    return state->nion[ipHELIUM]*state->nel*eta;
+}
+
+double CoolingHeIIIRecombination(StructEQCData *state){
+    const double eta = EQCLibRunParameters.UseRecombinationCaseB ? HeliumIIIRecombinationCoolingCaseB(state->T)
+                                                               : HeliumIIIRecombinationCoolingCaseA(state->T);
+    return state->nHeIII*state->nel*eta;
+}
+
+double CoolingHeIIDielectronicRecombination(StructEQCData *state){
+    return state->nel*state->nion[ipHELIUM]*HeliumIIDielectronicRecombinationCooling(state->T);
+}
+
+/* Combine coefficients only when they multiply the same collider and ion densities. */
+static double NeutralHydrogenCooling(double T){
+    return HydrogenExcitationCooling(T)+HydrogenIonizationCooling(T);
+}
+
+static double SinglyIonizedHeliumCooling(double T){
+    return HeliumIIExcitationCooling(T)+SinglyIonizedHeliumIonizationCooling(T);
+}
+
+static double TotalHeliumIIRecombinationCoolingCaseA(double T){
+    return HeliumIIRecombinationCoolingCaseA(T)+HeliumIIDielectronicRecombinationCooling(T);
+}
+
+static double TotalHeliumIIRecombinationCoolingCaseB(double T){
+    return HeliumIIRecombinationCoolingCaseB(T)+HeliumIIDielectronicRecombinationCooling(T);
+}
+
+static CEQTemperatureTable neutralHydrogenCoolingTable, hydrogenRecombinationCoolingTable[2];
+static CEQTemperatureTable neutralHeliumIonizationCoolingTable, neutralHeliumExcitationCoolingTable;
+static CEQTemperatureTable singlyIonizedHeliumCoolingTable, heliumIIRecombinationCoolingTable[2];
+static CEQTemperatureTable heliumIIIRecombinationCoolingTable[2];
+
+void CEQInitializeAtomicCoolingTemperatureTables(void){
+    CEQFillTemperatureTable(&neutralHydrogenCoolingTable,NeutralHydrogenCooling,NULL,0);
+    CEQFillTemperatureTable(&hydrogenRecombinationCoolingTable[0],HydrogenRecombinationCoolingCaseA,NULL,0);
+    CEQFillTemperatureTable(&hydrogenRecombinationCoolingTable[1],HydrogenRecombinationCoolingCaseB,NULL,0);
+    CEQFillTemperatureTable(&neutralHeliumIonizationCoolingTable,NeutralHeliumIonizationCooling,NULL,0);
+    CEQFillTemperatureTable(&neutralHeliumExcitationCoolingTable,HeliumIExcitationCooling,NULL,0);
+    CEQFillTemperatureTable(&singlyIonizedHeliumCoolingTable,SinglyIonizedHeliumCooling,NULL,0);
+    CEQFillTemperatureTable(&heliumIIRecombinationCoolingTable[0],TotalHeliumIIRecombinationCoolingCaseA,NULL,0);
+    CEQFillTemperatureTable(&heliumIIRecombinationCoolingTable[1],TotalHeliumIIRecombinationCoolingCaseB,NULL,0);
+    CEQFillTemperatureTable(&heliumIIIRecombinationCoolingTable[0],HeliumIIIRecombinationCoolingCaseA,NULL,0);
+    CEQFillTemperatureTable(&heliumIIIRecombinationCoolingTable[1],HeliumIIIRecombinationCoolingCaseB,NULL,0);
+}
+
+void CEQAtomicCoolingWithTables(StructEQCData *state, const CEQTemperaturePoint *point){
+    const double T = state->T, ne = state->nel;
+    const bool caseB = EQCLibRunParameters.UseRecombinationCaseB;
+    const double nHI = state->natom[ipHYDROGEN], nHII = state->nion[ipHYDROGEN];
+    const double nHeI = state->natom[ipHELIUM], nHeII = state->nion[ipHELIUM], nHeIII = state->nHeIII;
+    state->L_HI = state->L_HeI = state->L_HeII = 0.0;
+    if(ne == 0.0) return;
+    if(nHI != 0.0)
+        state->L_HI = ne*nHI*CEQReadTemperatureTable(&neutralHydrogenCoolingTable,point,T,NeutralHydrogenCooling);
+    if(nHII != 0.0)
+        state->L_HI += nHII*ne*CEQReadTemperatureTable(&hydrogenRecombinationCoolingTable[caseB],point,T,
+                                                      caseB ? HydrogenRecombinationCoolingCaseB : HydrogenRecombinationCoolingCaseA);
+    if(nHeI != 0.0)
+        state->L_HeI = ne*nHeI*CEQReadTemperatureTable(&neutralHeliumIonizationCoolingTable,point,T,NeutralHeliumIonizationCooling);
+    if(nHeII != 0.0){
+        state->L_HeI += SQ(ne)*nHeII*CEQReadTemperatureTable(&neutralHeliumExcitationCoolingTable,point,T,HeliumIExcitationCooling)
+                       + nHeII*ne*CEQReadTemperatureTable(&heliumIIRecombinationCoolingTable[caseB],point,T,
+                                                         caseB ? TotalHeliumIIRecombinationCoolingCaseB : TotalHeliumIIRecombinationCoolingCaseA);
+        state->L_HeII = ne*nHeII*CEQReadTemperatureTable(&singlyIonizedHeliumCoolingTable,point,T,SinglyIonizedHeliumCooling);
+    }
+    if(nHeIII != 0.0)
+        state->L_HeII += nHeIII*ne*CEQReadTemperatureTable(&heliumIIIRecombinationCoolingTable[caseB],point,T,
+                                                          caseB ? HeliumIIIRecombinationCoolingCaseB : HeliumIIIRecombinationCoolingCaseA);
 }
 

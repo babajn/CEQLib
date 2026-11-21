@@ -55,8 +55,8 @@ typedef struct StructEQCData_tag{
     double L_CII158;  
     double L_CI610;
     double L_CI370;
-    double L_OIII;      // [O III] line cooling included in L_tot, with H II weighting
-    double L_OII;       // [O II] line cooling included in L_tot, with H II weighting
+    double L_OIII;      // [O III] line cooling included in L_tot
+    double L_OII;       // [O II] line cooling included in L_tot
     double L_OI63;      // [O I]63um 
     double L_OI146;     // [O I]146um
     double L_SiII35;

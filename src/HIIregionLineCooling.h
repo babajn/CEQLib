@@ -2,6 +2,7 @@
 #define CEQ_HII_REGION_LINE_COOLING_H
 
 #include "EQCDataStructure.h"
+#include "TemperatureTable.h"
 
 enum { OxygenLevelCount = 5 };
 
@@ -17,6 +18,10 @@ double CoolingLinesOII(double T, double ne, double nOII,
 double CoolingLinesOIII(double T, double ne, double nOIII,
                         double lines[OxygenLevelCount][OxygenLevelCount]);
 double CoolingLinesHIIregionOxygen(double T, double ne, double nOII, double nOIII);
+
+void CEQInitializeOxygenCoolingTemperatureTables(void);
+double CEQCoolingLinesOIIWithTemperatureTable(double T, double ne, double nOII, const CEQTemperaturePoint *point);
+double CEQCoolingLinesOIIIWithTemperatureTable(double T, double ne, double nOIII, const CEQTemperaturePoint *point);
 
 double CoolingHalphaEmission(StructEQCData *PhydroPP);
 

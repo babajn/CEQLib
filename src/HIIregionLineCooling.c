@@ -8,6 +8,30 @@
 #include "HIIregionLineCooling.h"
 #include "HIIregionOxygenData.h"
 
+static CEQTemperatureTable oxygenIIAdjacentFactors[OxygenLevelCount-1];
+static CEQTemperatureTable oxygenIIIAdjacentFactors[OxygenLevelCount-1];
+
+static double BoltzmannFactor(double T, const void *context)
+{
+    const double gap = *(const double *)context;
+    return exp(-(gap/BOLTZMANN_CONSTANT_CGS)/T);
+}
+
+static double AdjacentGap(const OxygenLevel levels[], int upper)
+{
+    return PLANK_H_CGS*LIGHT_C_CGS*(levels[upper].wavenumber-levels[upper-1].wavenumber);
+}
+
+void CEQInitializeOxygenCoolingTemperatureTables(void)
+{
+    for(int upper=1; upper<OxygenLevelCount; upper++){
+        const double gapII = AdjacentGap(OxygenII.levels,upper);
+        const double gapIII = AdjacentGap(OxygenIII.levels,upper);
+        CEQFillTemperatureTableWithContext(&oxygenIIAdjacentFactors[upper-1],BoltzmannFactor,&gapII,NULL,0);
+        CEQFillTemperatureTableWithContext(&oxygenIIIAdjacentFactors[upper-1],BoltzmannFactor,&gapIII,NULL,0);
+    }
+}
+
 void InitializeCoolingLinesHIIregion(int Check)
 {
     (void)Check;
@@ -47,6 +71,7 @@ static bool SolveOxygenLevels(double balance[OxygenLevelCount][OxygenLevelCount]
 }
 
 static double CoolingOxygenIon(const OxygenIonData *ion, double T, double ne, double density,
+                               const CEQTemperaturePoint *point, const CEQTemperatureTable adjacentFactors[],
                                double lines[OxygenLevelCount][OxygenLevelCount])
 {
     if(!isfinite(T) || T <= 0.0 || !isfinite(ne) || ne < 0.0 ||
@@ -65,22 +90,43 @@ static double CoolingOxygenIon(const OxygenIonData *ion, double T, double ne, do
     /* Scale all transition rates together to keep large electron densities finite. */
     const double scale = fmax(1.0,ne);
     const double electronRate = (ne/scale) * 8.629e-6/sqrt(T);
+    const OxygenLevel *levels = ion->levels;
+    /* Adjacent Boltzmann factors multiply to give larger level gaps.
+       Below the tabulated range, evaluate each gap directly to preserve
+       rounding when the factors become subnormal. */
+    const bool useProducts = T > 100.0;
+    double boltzmann[OxygenLevelCount][OxygenLevelCount];
+    if(useProducts){
+        for(int upper = 1; upper < OxygenLevelCount; upper++){
+            double adjacent = point ? CEQReadTemperatureTable(&adjacentFactors[upper-1],point,T,NULL) : NAN;
+            if(!isfinite(adjacent)){
+                const double gap = AdjacentGap(levels,upper);
+                adjacent = exp(-(gap/BOLTZMANN_CONSTANT_CGS)/T);
+            }
+            boltzmann[upper][upper-1] = adjacent;
+            for(int lower = 0; lower < upper-1; lower++)
+                boltzmann[upper][lower] = adjacent*boltzmann[upper-1][lower];
+        }
+    }
     double balance[OxygenLevelCount][OxygenLevelCount] = {{0.0}};
     double energies[OxygenTransitionCount];
     for(size_t i = 0; i < OxygenTransitionCount; i++){
         const OxygenTransition *transition = &ion->transitions[i];
         const unsigned int upper = transition->upper;
         const unsigned int lower = transition->lower;
-        const OxygenLevel *levels = ion->levels;
         const double energy = PLANK_H_CGS*LIGHT_C_CGS*(levels[upper].wavenumber-levels[lower].wavenumber);
         const double *strength = transition->collisionStrength;
         const double collision = electronRate*(strength[index] + fraction*(strength[index + 1]-strength[index]));
-        const double upward = collision/levels[lower].statisticalWeight * exp(-(energy/BOLTZMANN_CONSTANT_CGS)/T);
+        const double factor = useProducts ? boltzmann[upper][lower] : exp(-(energy/BOLTZMANN_CONSTANT_CGS)/T);
+        const double upward = collision/levels[lower].statisticalWeight * factor;
         const double downward = collision/levels[upper].statisticalWeight + transition->spontaneousRate/scale;
 
-        balance[lower][lower] += upward;
+        /* The solver fixes the ground population, so its row is unused. */
+        if(lower > 0){
+            balance[lower][lower] += upward;
+            balance[lower][upper] -= downward;
+        }
         balance[upper][upper] += downward;
-        balance[lower][upper] -= downward;
         balance[upper][lower] -= upward;
         energies[i] = energy;
     }
@@ -101,13 +147,23 @@ static double CoolingOxygenIon(const OxygenIonData *ion, double T, double ne, do
 double CoolingLinesOII(double T, double ne, double nOII,
                        double lines[OxygenLevelCount][OxygenLevelCount])
 {
-    return CoolingOxygenIon(&OxygenII,T,ne,nOII,lines);
+    return CoolingOxygenIon(&OxygenII,T,ne,nOII,NULL,NULL,lines);
 }
 
 double CoolingLinesOIII(double T, double ne, double nOIII,
                         double lines[OxygenLevelCount][OxygenLevelCount])
 {
-    return CoolingOxygenIon(&OxygenIII,T,ne,nOIII,lines);
+    return CoolingOxygenIon(&OxygenIII,T,ne,nOIII,NULL,NULL,lines);
+}
+
+double CEQCoolingLinesOIIWithTemperatureTable(double T, double ne, double nOII, const CEQTemperaturePoint *point)
+{
+    return CoolingOxygenIon(&OxygenII,T,ne,nOII,point,oxygenIIAdjacentFactors,NULL);
+}
+
+double CEQCoolingLinesOIIIWithTemperatureTable(double T, double ne, double nOIII, const CEQTemperaturePoint *point)
+{
+    return CoolingOxygenIon(&OxygenIII,T,ne,nOIII,point,oxygenIIIAdjacentFactors,NULL);
 }
 
 double CoolingLinesHIIregionOxygen(double T, double ne, double nOII, double nOIII)
