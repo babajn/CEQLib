@@ -68,9 +68,10 @@ void CEQLibiSetRunParamHIIRegion(bool Use);
    from about 1.4% to 5.3%. */
 void CEQLibiSetRunParamChargeTransfer(bool Use);
 /* Upper bound on the relative charge residual of the chemistry inside the
-   energy and net-rate APIs, which use min(value, 0.1*accuracy). The default
-   1e-8 is far tighter than the energy accuracy needs. 1e-5 typically makes
-   energy updates 10-25% faster and changes T by less than about 2e-5.
+   implicit energy API, which uses min(value, 0.1*accuracy). The default 1e-8
+   is far tighter than the energy accuracy needs. 1e-5 typically makes energy
+   updates 10-25% faster and changes T by less than about 2e-5. The net-rate
+   API solves at accuracy 1e-8 and so uses at most 1e-9, whatever the value.
    Returns CEQ_INVALID_INPUT unless 0 < value < 1. */
 CEQLibStatus CEQLibiSetRunParamChemistryAccuracy(double value);
 void CEQLibiSetRunParamDustAttenuation(bool Use);

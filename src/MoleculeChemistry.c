@@ -41,6 +41,8 @@ static int NumberTableShieldingCO;
 static int NumberTableShieldingH2;
 static gsl_spline *logShieldCOAccess;
 static gsl_spline *logShieldH2Access;
+static double h2ShieldingTailPower;
+static double h2ShieldingTailOpticalDepth;
 
 void InitializeMoleculeChemistory(int Check){
 
@@ -96,6 +98,17 @@ void InitializeMoleculeChemistory(int Check){
         }
         logShieldH2Access = gsl_spline_alloc(gsl_interp_linear,NumberTableShieldingH2);
         gsl_spline_init(logShieldH2Access,TableNh2,TableShieldingH2,NumberTableShieldingH2);
+
+        /* Continue the Lee et al. H2 shielding as S_edge*x^-p*exp(-tau*(x-1)),
+           where x=N_H2/N_edge. Match the slope at the edge and the decrease
+           over the next decade from Visser et al. (2009), Table 5, 12CO with
+           N_CO=0. This keeps the tail normalized to the Lee et al. table. */
+        const int last = NumberTableShieldingH2-1;
+        const double edgeSlope = (TableShieldingH2[last-1]-TableShieldingH2[last]) /
+                                 (TableNh2[last]-TableNh2[last-1]);
+        const double logDecadeAttenuation = log(1.108e-2/3.938e-7);
+        h2ShieldingTailOpticalDepth = (logDecadeAttenuation-edgeSlope*log(10.0))/(9.0-log(10.0));
+        h2ShieldingTailPower = edgeSlope-h2ShieldingTailOpticalDepth;
     }
 
     if(CEQLibRunParameters.UseCOFormation==true && Check==1){
@@ -715,7 +728,12 @@ static double f_co_self(double logNco){
 }
 static double f_co_H2(double logNh2){
     if(logNh2<TableNh2[0])                          return 0.e0;
-    if(logNh2>TableNh2[NumberTableShieldingH2-1])   return -7.0;
+    const int last = NumberTableShieldingH2-1;
+    if(logNh2>TableNh2[last]){
+        const double logRatio = logNh2-TableNh2[last];
+        return TableShieldingH2[last] - h2ShieldingTailPower*logRatio
+               - (h2ShieldingTailOpticalDepth/log(10.0))*expm1(logRatio*log(10.0));
+    }
     return gsl_spline_eval(logShieldH2Access,logNh2,NULL);
 }
 

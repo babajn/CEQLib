@@ -1,10 +1,12 @@
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #include "ChemicalEquilibriumCooling.h"
+#include "Astro.h"
 #include "Constants.h"
 #include "CollisionalGasPhaseChemistry.h"
 #include "CosmicRay.h"
@@ -12,6 +14,7 @@
 #include "FineStructureLines.h"
 #include "HIIregionLineCooling.h"
 #include "MoleculeChemistry.h"
+#include "GrainSurfaceChemistry.h"
 #include "PhotochemicalGasPhaseChemistry.h"
 
 static StructCEQData GasState(double nH, double temperature, double column)
@@ -603,6 +606,147 @@ static void CheckHydrogenOxygenChargeTransfer(void)
     assert(fabs(CEQLibGetElectronNumberDensity(&dusty)-dusty.nel) <= 1.0e-9*dusty.nel);
 }
 
+extern double b_turb;
+
+/* H2 destruction against formation, from the rate functions used by the solver. */
+static double MolecularHydrogenImbalance(const StructCEQData *s)
+{
+    const double nH = s->n[ipHYDROGEN], nHI = s->natom[ipHYDROGEN], nH2 = s->nmol[ipH2];
+    const double formation = nH*H2FormationRate(s->T,s->Zd,EffectiveDustTemperature(s))*nHI;
+    const double doppler = sqrt(SQ(12.90*sqrt(1.e-4*s->T))+SQ(b_turb));
+    const double photo = H2PhotoDissociationRateWithDustFactor(s->G0,nH2*s->Nt/nH,doppler,
+                                                               DustShieldingFactorFUV(s->Nt,s->Zd));
+    const double collision = H2DissociationFromCoefficients(H2DissociationCoefficients(s->T),s->nel,nHI,nH2);
+    return RelativeDifference((photo+collision)*nH2,formation);
+}
+
+static void CheckMolecularChargeTransferBalance(void)
+{
+    /* Partly ionized molecular gas, where coupling O and H used to leave H2
+       about 9% out of balance because H I moved after the H2 solve. */
+    const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
+    CEQLibiSetRunParamGrainSurfaceProcesses(true);
+    CEQLibiSetRunParamCosmicRayIonization(true);
+    CEQLibiSetRunParamSoftXrayIonization(true);
+    CEQLibiSetRunParamH2Formation(true,1.0);
+    CEQLibiSetRunParamCOFormation(true,1.0);
+    const double nH = 100.0, accuracy = 1.0e-8;
+    StructCEQData state = GasState(nH,60.0,1.0e21);
+    state.nel = 1.0e-3*nH;
+    state.NLyn = 1.0e-5*nH*LIGHT_C_CGS;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,accuracy) == CEQ_SUCCESS);
+    assert(state.nmol[ipH2] > 0.4*nH && state.nion[ipHYDROGEN] > 1.0e-3*nH);
+    assert(MolecularHydrogenImbalance(&state) <= 2.0*accuracy);
+
+    const CEQHydrogenRates rates = CEQHydrogenIonizationRates(&state);
+    const double T = state.T, nHI = state.natom[ipHYDROGEN], nHII = state.nion[ipHYDROGEN];
+    const double ionization = nHI*rates.ionization
+                            + state.nion[ipOXYGEN]*nHI*OIIChargeTransferRateToHI(T)
+                            + state.nOIII*nHI*OIIIChargeTransferRateToHI(T);
+    const double recombination = nHII*rates.recombination + state.natom[ipOXYGEN]*nHII*OIChargeTransferRateToHII(T);
+    assert(RelativeDifference(ionization,recombination) <= 2.0*accuracy);
+
+    /* CO is re-solved after charge transfer moves H2: solving CO again from the
+       returned H2 must leave it unchanged. The old order left a 1e-3 offset. */
+    const double nCO = 316.22776601683793;
+    StructCEQData molecular = GasState(nCO,1000.0,1.0e20*sqrt(nCO));
+    molecular.nel = 1.0e-3*nCO;
+    molecular.NLyn = 1.0e-5*nCO*LIGHT_C_CGS;
+    assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&molecular,accuracy) == CEQ_SUCCESS);
+    assert(molecular.nmol[ipCO] > 0.01*molecular.n[ipCARBON]);
+    assert(MolecularHydrogenImbalance(&molecular) <= 2.0*accuracy);
+    StructCEQData carbon = molecular;
+    assert(CEQSolveCarbonEquilibrium(&carbon,molecular.nmol[ipCO],accuracy) == CEQ_SUCCESS);
+    assert(RelativeDifference(carbon.nmol[ipCO],molecular.nmol[ipCO]) <= 1.0e-6);
+    CEQLibRunParameters = saved;
+}
+
+static void CheckH2ShieldingUpperTail(void)
+{
+    const double edge = 1.016e22, delta = 1.e-6;
+    const double atEdge = COShieldingFactor(edge,0.0,3.0);
+    const double below = COShieldingFactor(edge/(1.0+delta),0.0,3.0);
+    const double above = COShieldingFactor(edge*(1.0+delta),0.0,3.0);
+    assert(RelativeDifference(atEdge,4.666e-3) <= 1.e-12);
+    assert(below > atEdge && atEdge > above);
+    assert(RelativeDifference(below-atEdge,atEdge-above) < 1.e-5);
+
+    /* Match the attenuation per decade in the N_CO=0 column of Visser et al. Table 5. */
+    const double nextDecade = COShieldingFactor(10.0*edge,0.0,3.0);
+    assert(RelativeDifference(nextDecade/atEdge,3.938e-7/1.108e-2) <= 1.e-12);
+    assert(COShieldingFactor(100.0*edge,0.0,3.0) < nextDecade);
+}
+
+static void CheckCarbonBalanceAtH2ShieldingBoundary(double nH, double metallicity, double column)
+{
+    const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
+    CEQLibiSetRunParamHIIRegion(true);
+    CEQLibiSetRunParamChargeTransfer(true);
+    CEQLibiSetRunParamDustAttenuation(true);
+    CEQLibiSetRunParamGrainSurfaceProcesses(true);
+    CEQLibiSetRunParamCosmicRayIonization(true);
+    CEQLibiSetRunParamSoftXrayIonization(true);
+    CEQLibiSetRunParamH2Formation(true,1.0);
+    CEQLibiSetRunParamCOFormation(true,1.0);
+    /* Both fixtures put the uncoupled H2 above the edge and the coupled H2 below. */
+    const double upperH2Column = 1.016e22;
+    const double accuracies[] = {1.e-8, 1.e-5};
+    for(size_t i=0; i<sizeof(accuracies)/sizeof(accuracies[0]); i++){
+        const double accuracy = accuracies[i];
+        StructCEQData state = GasState(nH,30.0,column);
+        state.nel = 1.e-3*nH;
+        state.NLyn = 1.e-5*nH*LIGHT_C_CGS;
+        state.Z *= metallicity;
+        state.Zd *= metallicity;
+        for(int element=ipCARBON; element<NumberChemicalElement; element++){
+            state.n[element] *= metallicity;
+            state.natom[element] = state.n[element];
+        }
+        assert(CEQLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,accuracy) == CEQ_SUCCESS);
+
+        StructCEQData uncoupled = state;
+        assert(CEQSolveHydrogenEquilibrium(&uncoupled,accuracy) == CEQ_SUCCESS);
+        const double h2Column = state.Nt*(state.nmol[ipH2]/nH);
+        const double uncoupledColumn = state.Nt*(uncoupled.nmol[ipH2]/nH);
+        assert(h2Column < upperH2Column && uncoupledColumn > upperH2Column);
+
+        const double nCO = state.nmol[ipCO];
+        const double freeCarbon = state.natom[ipCARBON] + state.nion[ipCARBON] + state.nCIII;
+        const double association = 4.e-16*pow(state.T/300.0,-0.2)*state.nmol[ipH2];
+        const double photoCI = 3.1e-10*state.G0*DustShieldingFactor(state.Nt,state.Zd,3.0);
+        const double formation = (association*photoCI/(association+photoCI))*freeCarbon;
+        const double destruction = COPhotoDissociationRate(state.G0,state.Nt,state.Zd)*
+                                   COShieldingFactor(h2Column,state.Nt*(nCO/nH),b_turb)*nCO;
+        assert(RelativeDifference(formation,destruction) <= accuracy);
+        assert(MolecularHydrogenImbalance(&state) <= accuracy);
+        assert(RelativeDifference(state.nel,CEQLibGetElectronNumberDensity(&state)) <= accuracy);
+    }
+    CEQLibRunParameters = saved;
+}
+
+static void CheckMolecularHydrogenRoundoffAccuracy(void)
+{
+    /* At the smallest tolerance the thermal solver uses (16 eps), the local H2
+       search started near the root must still meet it when it reports success. */
+    const struct StructCEQLibParameters_tag saved = CEQLibRunParameters;
+    CEQLibiSetRunParamH2Formation(true,1.0);
+    const double accuracy = 16.0*DBL_EPSILON;
+    const double temperatures[] = {30.0, 100.0, 1000.0};
+    const double offsets[] = {1.0e-9, 1.0e-6, 1.0e-3, -1.0e-3, 0.1};
+    for(size_t i = 0; i < sizeof(temperatures)/sizeof(temperatures[0]); i++){
+        StructCEQData reference = GasState(100.0,temperatures[i],1.0e21);
+        reference.nel = 1.0e-4*reference.n[ipHYDROGEN];
+        assert(CEQSolveHydrogenEquilibrium(&reference,1.0e-8) == CEQ_SUCCESS);
+        for(size_t j = 0; j < sizeof(offsets)/sizeof(offsets[0]); j++){
+            StructCEQData state = reference;
+            state.nmol[ipH2] = reference.nmol[ipH2]*(1.0+offsets[j]);
+            if(CEQSolveHydrogenEquilibrium(&state,accuracy) == CEQ_SUCCESS)
+                assert(MolecularHydrogenImbalance(&state) <= 1.0e-12);
+        }
+    }
+    CEQLibRunParameters = saved;
+}
+
 static void CheckChargeTransferSwitch(void)
 {
     const double nH = 100.0, accuracy = 1.0e-10;
@@ -685,6 +829,11 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     CheckPhotoionizedOxygenCooling();
     CheckPhotoionizationTurnOn();
     CheckHydrogenOxygenChargeTransfer();
+    CheckMolecularChargeTransferBalance();
+    CheckH2ShieldingUpperTail();
+    CheckCarbonBalanceAtH2ShieldingBoundary(100.0,0.3,2.0320004172648183e22);
+    CheckCarbonBalanceAtH2ShieldingBoundary(1.0,0.03,4.0608174530788829e22);
+    CheckMolecularHydrogenRoundoffAccuracy();
     CheckChargeTransferSwitch();
     CheckChemistryAccuracySetting();
 }

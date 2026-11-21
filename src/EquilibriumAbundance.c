@@ -114,26 +114,138 @@ static int SolveFluxBracket(double (*residual)(double,const void *), const void 
 
 typedef struct {
     const StructCEQData *state;
+    const CEQMolecularHydrogenCoefficients *h2;
     double neutralFraction;
-    double formation;
-    double doppler;
-    double dustShielding;
-    H2CollisionalDissociationCoefficients collision;
     bool useAtomicFraction;
 } HydrogenBalance;
 
-static double HydrogenFluxResidual(double fraction, const void *parameters){
-    const HydrogenBalance *balance = parameters;
-    const StructCEQData *state = balance->state;
+/* Relative imbalance of H2 destruction and formation for the given split. */
+static double MolecularHydrogenResidual(const StructCEQData *state, const CEQMolecularHydrogenCoefficients *h2,
+                                        double neutral, double atomic, double molecular){
     const double nH = state->n[ipHYDROGEN];
-    const double molecular = balance->useAtomicFraction ? 1.0-fraction : fraction;
-    const double atomic = balance->useAtomicFraction ? fraction : 1.0-fraction;
-    const double nHI = (nH*atomic)*balance->neutralFraction;
+    const double nHI = (nH*atomic)*neutral;
     const double nH2 = (0.5*nH)*molecular;
     const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,(0.5*molecular)*state->Nt,
-                                                               balance->doppler,balance->dustShielding);
-    const double collision = H2DissociationFromCoefficients(balance->collision,state->nel,nHI,nH2);
-    return FluxResidual((photo+collision)*nH2,balance->formation*nHI);
+                                                               h2->doppler,h2->dustShielding);
+    const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,nH2);
+    return FluxResidual((photo+collision)*nH2,h2->formation*nHI);
+}
+
+static double HydrogenFluxResidual(double fraction, const void *parameters){
+    const HydrogenBalance *balance = parameters;
+    const double molecular = balance->useAtomicFraction ? 1.0-fraction : fraction;
+    const double atomic = balance->useAtomicFraction ? fraction : 1.0-fraction;
+    return MolecularHydrogenResidual(balance->state,balance->h2,balance->neutralFraction,atomic,molecular);
+}
+
+static CEQMolecularHydrogenCoefficients MolecularHydrogenCoefficients(const StructCEQData *state){
+    const double dustTemperature = EffectiveDustTemperature(state);
+    return (CEQMolecularHydrogenCoefficients){
+        .formation = state->n[ipHYDROGEN]*H2FormationRate(state->T,state->Zd,dustTemperature),
+        .doppler = sqrt(SQ(12.90*sqrt(1.e-4*state->T))+SQ(b_turb)),
+        .dustShielding = DustShieldingFactorFUV(state->Nt,state->Zd),
+        .collision = H2DissociationCoefficients(state->T),
+    };
+}
+
+/* Search outward from a previous fraction for a sign change, then refine it.
+   The residual increases with the H2 fraction and decreases with the atomic
+   fraction, so the step direction follows the sign. Returns CEQ_NO_EQUILIBRIUM
+   when no bracket is found, leaving the caller's full-range search. */
+static int SolveMolecularHydrogenNear(const HydrogenBalance *balance, double start, double half,
+                                      double accuracy, double *root){
+    FluxPoint near = {start,HydrogenFluxResidual(start,balance)};
+    if(!isfinite(near.residual)) return CEQ_INVALID_INPUT;
+    if(fabs(near.residual) <= accuracy){ *root = start; return CEQ_SUCCESS; }
+    const bool upward = balance->useAtomicFraction ? near.residual > 0.0 : near.residual < 0.0;
+    double step = fmax(2.0*fabs(near.residual),1.e-12);
+    for(int i=0;i<64;i++){
+        FluxPoint far;
+        if(upward){
+            const double fraction = near.fraction*(1.0+step);
+            far = fraction >= 0.5 ? (FluxPoint){0.5,half} : (FluxPoint){fraction,HydrogenFluxResidual(fraction,balance)};
+        }else{
+            const double fraction = near.fraction/(1.0+step);
+            if(!(fraction > 0.0)) return CEQ_NO_EQUILIBRIUM;
+            far = (FluxPoint){fraction,HydrogenFluxResidual(fraction,balance)};
+        }
+        if(!isfinite(far.residual)) return CEQ_INVALID_INPUT;
+        if(fabs(far.residual) <= accuracy){ *root = far.fraction; return CEQ_SUCCESS; }
+        if((far.residual < 0.0) != (near.residual < 0.0)){
+            /* Illinois regula falsi: the residual is smooth inside this narrow bracket.
+               The weights wa and wb are the end residuals scaled down for
+               interpolation only; a and b keep the evaluated residuals. */
+            FluxPoint a = near, b = far;
+            double wa = a.residual, wb = b.residual;
+            int side = 0;
+            for(int j=0;j<100;j++){
+                double x = (a.fraction*wb - b.fraction*wa)/(wb - wa);
+                const double low = fmin(a.fraction,b.fraction), high = fmax(a.fraction,b.fraction);
+                if(!(x > low && x < high)) x = low + 0.5*(high-low);
+                if(!(x > low && x < high)) break;
+                const FluxPoint c = {x,HydrogenFluxResidual(x,balance)};
+                if(!isfinite(c.residual)) return CEQ_INVALID_INPUT;
+                if(fabs(c.residual) <= accuracy){ *root = x; return CEQ_SUCCESS; }
+                if((c.residual < 0.0) == (b.residual < 0.0)){
+                    b = c; wb = c.residual;
+                    if(side == 1) wa *= 0.5;
+                    side = 1;
+                }else{
+                    a = c; wa = c.residual;
+                    if(side == -1) wb *= 0.5;
+                    side = -1;
+                }
+            }
+            const FluxPoint lower = a.fraction < b.fraction ? a : b;
+            const FluxPoint upper = a.fraction < b.fraction ? b : a;
+            return SolveFluxBracket(HydrogenFluxResidual,balance,lower,upper,accuracy,-1.0,root);
+        }
+        if(far.fraction >= 0.5) return CEQ_NO_EQUILIBRIUM;
+        near = far;
+        step *= 4.0;
+    }
+    return CEQ_NO_EQUILIBRIUM;
+}
+
+/* Split the H nuclei between H2 and atomic H for a given neutral fraction of
+   the atomic H. previousH2 seeds the search. */
+static int SolveMolecularHydrogen(const StructCEQData *state, const CEQMolecularHydrogenCoefficients *h2,
+                                  double neutral, double previousH2, double accuracy,
+                                  double *atomic, double *molecular){
+    const double nH = state->n[ipHYDROGEN];
+    HydrogenBalance balance = {.state = state, .h2 = h2, .neutralFraction = neutral};
+    const double half = HydrogenFluxResidual(0.5,&balance);
+    if(!isfinite(half)) return CEQ_INVALID_INPUT;
+    double fraction;
+    int status;
+    if(half == 0.0 && HydrogenFluxResidual(0.0,&balance) == 0.0 &&
+       HydrogenFluxResidual(1.0,&balance) == 0.0){
+        // With both reaction fluxes zero, continue the previous abundance.
+        fraction = 2.0*(previousH2/nH);
+        if(!isfinite(fraction)) return CEQ_INVALID_INPUT;
+        fraction = fmin(1.0,fmax(0.0,fraction));
+        status = CEQ_SUCCESS;
+    }else{
+        // Use the smaller fraction so that nearly molecular gas retains its trace H I.
+        balance.useAtomicFraction = half < 0.0;
+        double initialFraction = 0.0;
+        if(previousH2 > 0.0 && previousH2 < nH){
+            const double molecularGuess = 2.0*(previousH2/nH);
+            initialFraction = balance.useAtomicFraction ? 1.0-molecularGuess : molecularGuess;
+        }
+        status = CEQ_NO_EQUILIBRIUM;
+        if(initialFraction > 0.0 && initialFraction < 0.5)
+            status = SolveMolecularHydrogenNear(&balance,initialFraction,half,accuracy,&fraction);
+        if(status != CEQ_SUCCESS){
+            const FluxPoint lower = {0.0,HydrogenFluxResidual(0.0,&balance)};
+            const FluxPoint upper = {0.5,half};
+            status = SolveFluxBracket(HydrogenFluxResidual,&balance,lower,upper,accuracy,initialFraction,&fraction);
+        }
+    }
+    if(status != CEQ_SUCCESS) return status;
+    *atomic = balance.useAtomicFraction ? fraction : 1.0-fraction;
+    *molecular = balance.useAtomicFraction ? 1.0-fraction : fraction;
+    return CEQ_SUCCESS;
 }
 
 static CEQLadderCoefficients CarbonCoefficients(const StructCEQData *s){
@@ -146,6 +258,19 @@ static CEQLadderCoefficients CarbonCoefficients(const StructCEQData *s){
         .photo1 = CIIPhotoionizationRate(NLyn),
         .collision1 = CIICollisionalIonizationRate(s->T),
         .recombination2 = CIIIRecombinationRate(s->T),
+    };
+}
+
+static double COFormationCoefficient(double T){
+    /* Radiative association forming CH2+, k148 in Glover et al. (2010). */
+    return (4.e-16*pow(T/300.0,-0.2))*CEQLibRunParameters.CpForCO;
+}
+
+static CEQMolecularCarbonCoefficients MolecularCarbonCoefficients(const StructCEQData *s){
+    return (CEQMolecularCarbonCoefficients){
+        .formationPerH2 = COFormationCoefficient(s->T),
+        .photoCI = 3.1e-10*s->G0*DustShieldingFactor(s->Nt,s->Zd,3.0),
+        .photoCO = COPhotoDissociationRate(s->G0,s->Nt,s->Zd),
     };
 }
 
@@ -185,7 +310,11 @@ void CEQPrepareRateCoefficients(const StructCEQData *s, CEQRateCoefficients *c){
         .toOxygenII = OIChargeTransferRateToHII(T),
         .toHydrogenI = OIIChargeTransferRateToHI(T),
         .oxygenIIIToHydrogenI = OIIIChargeTransferRateToHI(T),
+        .hasMolecularHydrogen = CEQLibRunParameters.UseH2Formation,
     };
+    if(c->hasMolecularHydrogen) c->molecularHydrogen = MolecularHydrogenCoefficients(s);
+    if(CEQLibRunParameters.UseCOFormation && T <= 1.e4 && s->n[ipCARBON] > 0.0)
+        c->molecularCarbon = MolecularCarbonCoefficients(s);
 }
 
 CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructCEQData *s,
@@ -211,17 +340,37 @@ CEQHydrogenRates CEQHydrogenIonizationRates(const StructCEQData *s){
 typedef struct {
     StructCEQData *state;
     const CEQIonLadderRates *oxygen;
-    double atomicHydrogen, freeOxygen;
+    const CEQMolecularHydrogenCoefficients *h2;   /* NULL without H2 formation. */
+    double atomicHydrogen, freeOxygen, accuracy;
     double ionization, recombination;   /* H rates per atom without charge transfer. */
     double toOxygenII, toHydrogenI, oxygenIIIToHydrogenI;
+    double startS, startAtomic, startMolecular;   /* H2 split already solved at startS. */
+    int status;
 } ChargeTransferBalance;
 
-/* Set H I/H II for s = ln(n_HII/n_HI), solve the O ladder with charge
-   transfer, and return s - ln(I/R) for the resulting per-atom H rates. */
-static double ChargeTransferResidual(double s, const ChargeTransferBalance *b){
+/* Set H I/H II for s = ln(n_HII/n_HI), with the H2 split re-solved for that
+   neutral fraction, then solve the O ladder with charge transfer and return
+   s - ln(I/R) for the resulting per-atom H rates. */
+static double ChargeTransferResidual(double s, ChargeTransferBalance *b){
     StructCEQData *state = b->state;
-    state->nion[ipHYDROGEN] = b->atomicHydrogen/(1.0+exp(-s));
-    state->natom[ipHYDROGEN] = b->atomicHydrogen/(1.0+exp(s));
+    double atomicHydrogen = b->atomicHydrogen;
+    if(b->h2 != NULL){
+        double atomic = b->startAtomic, molecular = b->startMolecular;
+        const double neutral = 1.0/(1.0+exp(s));
+        if(s != b->startS){
+            const int status = SolveMolecularHydrogen(state,b->h2,neutral,state->nmol[ipH2],
+                                                      b->accuracy,&atomic,&molecular);
+            if(status != CEQ_SUCCESS){
+                b->status = status;
+                return NAN;
+            }
+        }
+        const double nH = state->n[ipHYDROGEN];
+        atomicHydrogen = nH*atomic;
+        state->nmol[ipH2] = (0.5*nH)*molecular;
+    }
+    state->nion[ipHYDROGEN] = atomicHydrogen/(1.0+exp(-s));
+    state->natom[ipHYDROGEN] = atomicHydrogen/(1.0+exp(s));
     const double nHI = state->natom[ipHYDROGEN], nHII = state->nion[ipHYDROGEN];
     const CEQIonLadderRates *o = b->oxygen;
     if(CEQSolveIonLadder(b->freeOxygen, o->ionization0 + nHII*b->toOxygenII,
@@ -246,6 +395,8 @@ int CEQSolveHydrogenOxygenChargeTransfer(StructCEQData *state, const CEQHydrogen
         .toOxygenII = coefficients->toOxygenII,
         .toHydrogenI = coefficients->toHydrogenI,
         .oxygenIIIToHydrogenI = coefficients->oxygenIIIToHydrogenI,
+        .accuracy = accuracy,
+        .status = CEQ_INVALID_INPUT,
     };
     if(!isfinite(freeOxygen) || freeOxygen < 0.0 || !isfinite(atomicHydrogen) ||
        !isfinite(b.ionization) || !isfinite(b.recombination)) return CEQ_INVALID_INPUT;
@@ -270,6 +421,19 @@ int CEQSolveHydrogenOxygenChargeTransfer(StructCEQData *state, const CEQHydrogen
        slowly when O/H is small, so a fixed-point step followed by secant steps
        converges in a few evaluations; the bracket keeps every step bounded. */
     double s = log(b.ionization) - log(b.recombination);
+    if(CEQLibRunParameters.UseH2Formation){
+        /* The incoming state holds an H2 split already solved for its own H
+           ionization ratio: the uncoupled root after the H solve, or the
+           previous coupled root when the caller repeats this after updating CO.
+           Start there so the first evaluation reuses that split. */
+        const double nH = state->n[ipHYDROGEN];
+        b.h2 = coefficients->hasMolecularHydrogen ? &coefficients->molecularHydrogen : NULL;
+        if(b.h2 == NULL) return CEQ_INVALID_INPUT;
+        b.startS = log(state->nion[ipHYDROGEN]) - log(state->natom[ipHYDROGEN]);
+        b.startAtomic = atomicHydrogen/nH;
+        b.startMolecular = 2.0*(state->nmol[ipH2]/nH);
+        if(b.startS > lower && b.startS < upper) s = b.startS;
+    }
     double previous = NAN, previousResidual = NAN;
     for(int iteration = 0; iteration < 200; iteration++){
         if(!(s > lower && s < upper)){
@@ -280,7 +444,7 @@ int CEQSolveHydrogenOxygenChargeTransfer(StructCEQData *state, const CEQHydrogen
         }
         if(iteration > 0 && (s <= lower || s >= upper)) break;
         const double residual = ChargeTransferResidual(s,&b);
-        if(!isfinite(residual)) return CEQ_INVALID_INPUT;
+        if(!isfinite(residual)) return b.status;
         if(fabs(residual) <= accuracy) return CEQ_SUCCESS;
         if(residual < 0.0){ lower = s; lowerResidual = residual; }
         else              { upper = s; upperResidual = residual; }
@@ -299,11 +463,11 @@ int CEQSolveHydrogenEquilibrium(StructCEQData *state, double accuracy){
     const double nH = state->n[ipHYDROGEN];
     if(!isfinite(nH) || nH <= 0.0) return CEQ_INVALID_INPUT;
     const CEQHydrogenRates rates = CEQHydrogenIonizationRates(state);
-    return CEQSolveHydrogenEquilibriumWithRates(state,&rates,accuracy);
+    return CEQSolveHydrogenEquilibriumWithRates(state,&rates,NULL,accuracy);
 }
 
 int CEQSolveHydrogenEquilibriumWithRates(StructCEQData *state, const CEQHydrogenRates *rates,
-                                         double accuracy){
+                                         const CEQRateCoefficients *coefficients, double accuracy){
     const double nH = state->n[ipHYDROGEN];
     if(!isfinite(nH) || nH <= 0.0 || !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0){
         return CEQ_INVALID_INPUT;
@@ -315,40 +479,10 @@ int CEQSolveHydrogenEquilibriumWithRates(StructCEQData *state, const CEQHydrogen
     double atomic = 1.0;
     double molecular = 0.0;
     if(CEQLibRunParameters.UseH2Formation){
-        const double dustTemperature = EffectiveDustTemperature(state);
-        HydrogenBalance balance = {
-            .state = state, .neutralFraction = neutral,
-            .formation = nH*H2FormationRate(state->T,state->Zd,dustTemperature),
-            .doppler = sqrt(SQ(12.90*sqrt(1.e-4*state->T))+SQ(b_turb)),
-            .dustShielding = DustShieldingFactorFUV(state->Nt,state->Zd),
-            .collision = H2DissociationCoefficients(state->T),
-        };
-        const double half = HydrogenFluxResidual(0.5,&balance);
-        if(!isfinite(half)) return CEQ_INVALID_INPUT;
-        const double previousH2 = state->nmol[ipH2];
-        double fraction;
-        if(half == 0.0 && HydrogenFluxResidual(0.0,&balance) == 0.0 &&
-           HydrogenFluxResidual(1.0,&balance) == 0.0){
-            // With both reaction fluxes zero, continue the previous abundance.
-            fraction = 2.0*(previousH2/nH);
-            if(!isfinite(fraction)) return CEQ_INVALID_INPUT;
-            fraction = fmin(1.0,fmax(0.0,fraction));
-            status = CEQ_SUCCESS;
-        }else{
-            // Use the smaller fraction so that nearly molecular gas retains its trace H I.
-            balance.useAtomicFraction = half < 0.0;
-            double initialFraction = 0.0;
-            if(previousH2 > 0.0 && previousH2 < nH){
-                const double molecularGuess = 2.0*(previousH2/nH);
-                initialFraction = balance.useAtomicFraction ? 1.0-molecularGuess : molecularGuess;
-            }
-            const FluxPoint lower = {0.0,HydrogenFluxResidual(0.0,&balance)};
-            const FluxPoint upper = {0.5,half};
-            status = SolveFluxBracket(HydrogenFluxResidual,&balance,lower,upper,accuracy,initialFraction,&fraction);
-        }
+        const CEQMolecularHydrogenCoefficients h2 = coefficients != NULL && coefficients->hasMolecularHydrogen ?
+            coefficients->molecularHydrogen : MolecularHydrogenCoefficients(state);
+        status = SolveMolecularHydrogen(state,&h2,neutral,state->nmol[ipH2],accuracy,&atomic,&molecular);
         if(status != CEQ_SUCCESS) return status;
-        atomic = balance.useAtomicFraction ? fraction : 1.0-fraction;
-        molecular = balance.useAtomicFraction ? 1.0-fraction : fraction;
     }
     state->natom[ipHYDROGEN] = (nH*atomic)*neutral;
     state->nion[ipHYDROGEN] = (nH*atomic)*ion;
@@ -567,11 +701,7 @@ void EquilibriumOxygenFractionalAbundance(StructCEQData *PhydroPP){
 // ref. Keto & Caselli, ApJ, 683, 238, (2008)
 //      see footnote 2 of Glover & Clark, MNRAS, 421, 116, (2012)
 static double COFormationRateCH2(double nH2, double T){
-    // CH2 formation rate coefficient from CII and H2 (via radiative association to form CH2+)
-    //double kRA = 6.e-16; // ref.  Table 12 of Tielens & Hollenbach (1985)
-    double Cp = CEQLibRunParameters.CpForCO;
-    double kRA = 4.e-16*pow(T/300.0,-0.2);  // k148 in Table B1 of Glover et al. (2010)
-    return kRA*Cp*nH2; // [/s] 
+    return COFormationCoefficient(T)*nH2;
 }
 
 static double COtoCIIratio(double nH2, double T, double G0, double Ntot, double N2, double Nco, double Z){
@@ -782,7 +912,7 @@ static int SolveCarbonSegments(const CarbonBalance *balance, const CEQCarbonShie
 
 int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double accuracy,
                                const CEQCarbonShieldingInterval *intervals, int count,
-                               const CEQRateCoefficients *coefficients){
+                               const CEQRateCoefficients *coefficients, bool checkExistingCO){
     const double nC = state->n[ipCARBON];
     const double nO = state->n[ipOXYGEN];
     if(!isfinite(nC) || nC < 0.0 || !isfinite(nO) || nO < 0.0) return CEQ_INVALID_INPUT;
@@ -796,10 +926,12 @@ int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double 
         return status;
     }
 
-    const double hydroRatio = state->nmol[ipH2]/state->n[ipHYDROGEN];
-    const double formation = COFormationRateCH2(state->nmol[ipH2],state->T);
-    const double photoCI = 3.1e-10*state->G0*DustShieldingFactor(state->Nt,state->Zd,3.0);
-    const double photoCO = COPhotoDissociationRate(state->G0,state->Nt,state->Zd);
+    const double nH = state->n[ipHYDROGEN];
+    const double hydroRatio = state->nmol[ipH2]/nH;
+    const CEQMolecularCarbonCoefficients rates = coefficients != NULL ?
+        coefficients->molecularCarbon : MolecularCarbonCoefficients(state);
+    const double formation = rates.formationPerH2*state->nmol[ipH2];
+    const double photoCI = rates.photoCI, photoCO = rates.photoCO;
     if(!isfinite(formation) || formation < 0.0 || !isfinite(photoCI) || photoCI < 0.0 ||
        !isfinite(photoCO) || photoCO < 0.0 || !isfinite(previousCO) || previousCO < 0.0 ||
        !isfinite(hydroRatio) || hydroRatio < 0.0 || !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0){
@@ -828,13 +960,29 @@ int CEQSolveCarbonWithIntervals(StructCEQData *state, double previousCO, double 
     }else if(photoCO > 0.0){
         if(CEQCOShieldingPointCount() < 2) return CEQ_INVALID_INPUT;
         const double h2Column = state->Nt*hydroRatio;
-        const double carbonColumn = state->Nt*(nC/state->n[ipHYDROGEN]);
+        const double carbonColumn = state->Nt*(nC/nH);
         if(!isfinite(h2Column) || !isfinite(carbonColumn) || h2Column < 0.0 || carbonColumn < 0.0){
             return CEQ_INVALID_INPUT;
         }
         const double doppler = sqrt(SQ(12.90*sqrt(1.e-4*state->T))+SQ(b_turb));
-        const double photoWithH2 = photoCO*COShieldingFactor(h2Column,0.0,doppler);
         const double scale = fmax(effectiveFormation,photoCO);
+        if(checkExistingCO){
+            /* Use the sum of the carbon ions to retain trace free carbon. */
+            const double freeCarbon = state->natom[ipCARBON] + state->nion[ipCARBON] + state->nCIII;
+            const double shield = COShieldingFactor(h2Column,state->Nt*(state->nmol[ipCO]/nH),doppler);
+            const double residual = FluxResidual((photoCO/scale)*shield*reference,
+                                                 (effectiveFormation/scale)*(freeCarbon/nC));
+            if(fabs(residual) <= accuracy){
+                /* The atomic ladder at fixed n_e does not depend on H2. The
+                   molecular model's C I/C II split still needs updating. */
+                if(!(CEQLibRunParameters.UseHIIRegion && state->NLyn > 0.0)){
+                    state->natom[ipCARBON] = freeCarbon*neutralCarbon;
+                    state->nion[ipCARBON] = freeCarbon*carbonIon;
+                }
+                return CEQ_SUCCESS;
+            }
+        }
+        const double photoWithH2 = photoCO*COShieldingFactor(h2Column,0.0,doppler);
         CarbonBalance balance = {
             .formation = effectiveFormation/scale,
             .unshieldedPhoto = photoCO/scale,
@@ -864,7 +1012,7 @@ int CEQSolveCarbonEquilibrium(StructCEQData *state, double previousCO, double ac
     const int points = CEQCOShieldingPointCount();
     CEQCarbonShieldingInterval intervals[points+1];
     const int count = CEQPrepareCarbonShieldingIntervals(state,intervals,points);
-    return CEQSolveCarbonWithIntervals(state,previousCO,accuracy,intervals,count,NULL);
+    return CEQSolveCarbonWithIntervals(state,previousCO,accuracy,intervals,count,NULL,false);
 }
 
 // eq(11)-(13) in Glover & Clark, MNRAS, 421, 116, (2012)

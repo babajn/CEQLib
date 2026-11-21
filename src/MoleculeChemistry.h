@@ -1,3 +1,6 @@
+#ifndef CEQ_MOLECULE_CHEMISTRY_H
+#define CEQ_MOLECULE_CHEMISTRY_H
+
 #include "CEQDataStructure.h"
 
 void InitializeHydrogenChemistory(int Check);
@@ -46,3 +49,4 @@ double COFormationRate(double nH, double xO, double G0, double Ntot, double Zd);
 #endif
 double CoolingCORovibrationalLine(StructCEQData *PhydroPP);
 
+#endif
