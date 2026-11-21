@@ -22,7 +22,7 @@
 //#include "CoolingCIE.h"
 //#include "HIIregionLineCooling.h"
 
-#define EQC_DIAGNOSTIC_DIRECTORY "./EQCCooling"
+#define EQC_DIAGNOSTIC_DIRECTORY "./EQCooling"
 
 extern struct StructEQCLibParameters_tag{
     bool UseDebugMode;

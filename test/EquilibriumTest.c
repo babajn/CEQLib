@@ -838,7 +838,7 @@ static void CheckPhotoionization(const char *pegaseDirectory)
     assert(fabs(HeatingHeIIPhotoionization(1.0)-referenceHeIIHeating) <= 1.0e-8*referenceHeIIHeating);
 
     struct stat info;
-    assert(stat("out",&info) != 0 && stat("EQCCooling",&info) != 0);
+    assert(stat("out",&info) != 0 && stat("EQCooling",&info) != 0);
     assert(EQCLibTryInitialization(0,"missing-pegase") == EQC_INITIALIZATION_FAILED);
     assert(mkdir("malformed",0700) == 0);
     FILE *input = fopen("malformed/spectra_Kroupa_Z0.0001.dat","w");
