@@ -207,11 +207,74 @@ static int SolveMolecularHydrogenNear(const HydrogenBalance *balance, double sta
     return EQC_NO_EQUILIBRIUM;
 }
 
+/* Newton iteration on r = ln(destroyed/formed) in the logit z = ln(y/a) of
+   the H2 fraction y and atomic fraction a = 1-y. The logit step updates y and
+   a without forming 1-y, so trace H2 and trace H I both stay accurate. The
+   convergence test is the bounded flux residual of the bracket solver.
+   Returns EQC_NO_CONVERGENCE to leave the bracket solver to the caller. */
+static int SolveMolecularHydrogenNewton(const StructEQCData *state, const CEQMolecularHydrogenCoefficients *h2,
+                                        double neutral, double previousH2, double accuracy,
+                                        double *atomic, double *molecular){
+    const double nH = state->n[ipHYDROGEN];
+    const double photoUnshielded = state->G0*(3.3e-11*h2->dustShielding);
+    const double byElectron = state->nel*h2->collision.electron;
+    const double byAtom = (nH*neutral)*h2->collision.atomicHydrogen;     /* times a */
+    const double byMolecule = (0.5*nH)*h2->collision.molecularHydrogen;  /* times y */
+    const double formation = h2->formation*(nH*neutral);                 /* times a */
+    if(!(formation > 0.0) || !isfinite(formation)) return EQC_NO_CONVERGENCE;
+
+    double y = 2.0*(previousH2/nH);
+    if(!(y > 0.0 && y < 1.0)){
+        /* Unshielded balance 0.5 y (A + B a + C y) = F a, quadratic in y. */
+        const double formationPerHydrogen = h2->formation*neutral;
+        const double q2 = 0.5*(byMolecule-byAtom);
+        const double q1 = 0.5*(photoUnshielded+byElectron+byAtom) + formationPerHydrogen;
+        const double discriminant = q1*q1 + 4.0*q2*formationPerHydrogen;
+        y = discriminant >= 0.0 ? (2.0*formationPerHydrogen)/(q1+sqrt(discriminant)) : 0.5;
+        if(!(y > 0.0 && y < 1.0)) y = 0.5;
+    }
+    double a = 1.0-y;
+    for(int iteration=0; iteration<16; iteration++){
+        const double column = (0.5*y)*state->Nt;
+        /* Match the bracket residual's evaluation order. */
+        const double nHI = (nH*a)*neutral;
+        const double nH2 = (0.5*nH)*y;
+        const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,column,h2->doppler,h2->dustShielding);
+        const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,nH2);
+        const double destruction = photo+collision;
+        const double destroyed = destruction*nH2;
+        const double formed = h2->formation*nHI;
+        if(!(destroyed >= DBL_MIN && formed >= DBL_MIN)) return EQC_NO_CONVERGENCE;
+        const double residual = FluxResidual(destroyed,formed);
+        if(!isfinite(residual)) return EQC_NO_CONVERGENCE;
+        if(fabs(residual) <= accuracy){
+            *atomic = a;
+            *molecular = y;
+            return EQC_SUCCESS;
+        }
+        /* dr/dz = 1 + y a (d destruction/dy)/destruction. */
+        const double slope = 1.0 + (a*photo*H2SelfShieldingLogSlope(column)
+                                    + (y*a)*(byMolecule-byAtom))/destruction;
+        if(!(slope > 0.0)) return EQC_NO_CONVERGENCE;
+        const double step = fmax(-8.0,fmin(8.0,-log(destroyed/formed)/slope));
+        const double grown = y*exp(step);
+        const double total = a+grown;
+        y = grown/total;
+        a = a/total;
+        if(!(y > 0.0 && a > 0.0)) return EQC_NO_CONVERGENCE;
+    }
+    return EQC_NO_CONVERGENCE;
+}
+
 /* Split the H nuclei between H2 and atomic H for a given neutral fraction of
    the atomic H. previousH2 seeds the search. */
 static int SolveMolecularHydrogen(const StructEQCData *state, const CEQMolecularHydrogenCoefficients *h2,
                                   double neutral, double previousH2, double accuracy,
                                   double *atomic, double *molecular){
+    /* Keep the original iteration at tolerances sensitive to roundoff. */
+    if(accuracy > 1.e-12 &&
+       SolveMolecularHydrogenNewton(state,h2,neutral,previousH2,accuracy,atomic,molecular) == EQC_SUCCESS)
+        return EQC_SUCCESS;
     const double nH = state->n[ipHYDROGEN];
     HydrogenBalance balance = {.state = state, .h2 = h2, .neutralFraction = neutral};
     const double half = HydrogenFluxResidual(0.5,&balance);

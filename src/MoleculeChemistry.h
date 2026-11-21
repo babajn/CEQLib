@@ -12,6 +12,7 @@ double DustShieldingFactorFUV(double Ntot, double Zd);
 
 double H2FormationRate(double T, double Zd, double Tdust);
 double H2SelfShieldingFactor(double N2, double b5);
+double H2SelfShieldingLogSlope(double N2);
 double H2PhotoDissociationRate(double G0, double Nt, double N2, double b5, double Zd);
 double H2PhotoDissociationRateWithDustFactor(double G0, double N2, double b5, double dustFactor);
 typedef struct {

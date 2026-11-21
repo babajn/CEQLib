@@ -43,7 +43,7 @@ EQCLibSetRunParamChargeTransfer(true);
 EQCLibSetRunParamChemistryAccuracy(1.0e-5);
 ```
 
-陰的エネルギー更新の許容誤差は `1e-4` を目安にします。1 万年刻みの単一スレッド測定では、CO を無効にすると EQCLib の更新時間は 1 回あたり 385 µs から 128 µs に短くなりました。 [設定比較ノートブック](plot/PlotMolecularSettings.ipynb)
+陰的エネルギー更新の許容誤差は `1e-4` を目安にします。1 万年刻みの単一スレッド測定では、CO を無効にすると EQCLib の更新時間は 1 回あたり 365.5 µs から 105.1 µs に短くなりました。 [設定比較ノートブック](plot/PlotMolecularSettings.ipynb)
 
 CO 輝線を予測する場合は CO を有効にします。遮蔽された低温ガスの熱収支が重要な場合は、代表的な粒子で CO の有無による冷却率の差を確認してください。 [CO モデルの適用範囲](#co-モデルの適用範囲)
 
@@ -54,6 +54,8 @@ CO 輝線を予測する場合は CO を有効にします。遮蔽された低�
 | `EQCLibSetRunParamCOFormation` | `false` | `true, 1.0` | CO の化学平衡と輝線冷却を有効にします。第2引数は CO 生成率の倍率です。 |
 | `EQCLibSetRunParamChargeTransfer` | `true` | `false` | H II 領域の更新が約 20〜35% 速くなります。物理モデルが変わり、H I が残る条件で O III が過剰になります。Cloudy との比較では、太陽金属量の平衡温度の差が中央値 1.4% から 5.3% に広がります。H II 領域の設定が無効なときは効果がありません。 |
 | `EQCLibSetRunParamChemistryAccuracy` | `1e-8` | `1e-5` | 陰的なエネルギー更新の中で解く化学平衡の許容誤差の上限です。実際には `min(値, 0.1 × エネルギーの精度)` を使います。更新が約 10〜25% 速くなり、温度の変化は 2×10⁻⁵ 程度以下です。正味冷却率の API は内部で精度 1e-8 を指定するので、この設定にかかわらず 1e-9 以下で解きます。 |
+
+H₂ の化学平衡は Newton 法で解き、化学平衡の許容誤差が `1e-12` 以下の場合や Newton 法が収束しない場合は区間探索を使います。
 
 CO 化学を使う場合は、`EQCLibSetRunParamH2Formation(true, 1.0)` と `EQCLibSetRunParamCOFormation(true, 1.0)` を設定します。CO を無効にするには `EQCLibSetRunParamCOFormation(false, 1.0)` を呼びます。無効にすると、更新後の CO 存在量と CO 輝線冷却はゼロになり、炭素・酸素の化学状態や冷却率にも影響します。[CO モデルの適用範囲](#co-モデルの適用範囲)
 

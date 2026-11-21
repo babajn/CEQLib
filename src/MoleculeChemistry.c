@@ -244,7 +244,10 @@ double H2SelfShieldingFactor(double N2, double b5){
     // simplified formula
     // eq.(36) of Draine & Bertoldi (1996) 
     if(N2<1.e+14)   return 1.e0;
-    else            return pow(1.e-14*N2,-0.75);
+    else {
+        const double sqrtColumn = sqrt(1.e-14*N2);
+        return 1.0/(sqrtColumn*sqrt(sqrtColumn));
+    }
 
     //// more accurate formula
     // eq.(37) of Draine & Bertoldi (1996) 
@@ -252,6 +255,11 @@ double H2SelfShieldingFactor(double N2, double b5){
     double x  = 2.e-15*N2;
     double sqrt1x = sqrt(1.0+x);
     return 0.965/SQ(1.0+x/b5) + 0.035*exp(-8.5e-4*sqrt1x)/sqrt1x;
+}
+
+// d ln f / d ln N2 of H2SelfShieldingFactor.
+double H2SelfShieldingLogSlope(double N2){
+    return N2 < 1.e14 ? 0.0 : -0.75;
 }
 
 double H2PhotoDissociationRateWithDustFactor(double G0, double N2, double b5, double dustFactor){
