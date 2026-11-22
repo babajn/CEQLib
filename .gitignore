@@ -35,18 +35,5 @@ tags
 !/data/PEGASE2/spectra_Kroupa_Z0.0500.dat
 !/data/PEGASE2/spectra_Kroupa_Z0.1000.dat
 
-# Local Le Bourlot et al. (1999) reference files
-/data/LeBourlot+1999/interp.f
-/data/LeBourlot+1999/le_cube.data
-
-# Local ionization and recombination reference tables
-/data/GnatSternberg2007/*.dat
-/data/Nahar1999/*.dat
-/data/NaharPradhan1997/*.dat
-
-# Local Gnat & Ferland (2012) tables outside the CIE generator inputs
-/data/GnatFerland2012/H.dat
-/data/GnatFerland2012/He.dat
-
 # Local gnuplot scripts
 /plot/**/*.gp
