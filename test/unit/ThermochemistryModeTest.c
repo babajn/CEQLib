@@ -37,6 +37,7 @@ static void CheckModeSettings(void)
     assert(EQCLibTryLoadChemistryMode(settingsPath,&mode) == EQC_SUCCESS);
     assert(mode == EQC_CHEMISTRY_NONEQUILIBRIUM);
 
+    fputs("[expected test diagnostics] Duplicate, invalid and malformed chemistry_mode settings.\n",stderr);
     WriteSettings("chemistry_mode = equilibrium\nchemistry_mode = nonequilibrium\n");
     assert(EQCLibTryLoadChemistryMode(settingsPath,&mode) == EQC_INVALID_INPUT);
     assert(mode == EQC_CHEMISTRY_NONEQUILIBRIUM);
@@ -52,6 +53,7 @@ static void CheckModeSettings(void)
     assert(mode == EQC_CHEMISTRY_EQUILIBRIUM);
     assert(remove(settingsPath) == 0);
     mode = EQC_CHEMISTRY_NONEQUILIBRIUM;
+    fputs("[expected test diagnostics] Missing chemistry mode configuration file.\n",stderr);
     assert(EQCLibTryLoadChemistryMode(settingsPath,&mode) == EQC_INITIALIZATION_FAILED);
     assert(mode == EQC_CHEMISTRY_NONEQUILIBRIUM);
 }

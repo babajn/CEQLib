@@ -1,0 +1,10 @@
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=0 nH=0.001 T=2255.28 t=0.638 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=1 nH=0.00114815 T=2716.17 t=0.767 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=2 nH=0.00131826 T=3264.2 t=0.92 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=3 nH=0.00151356 T=3910.79 t=1.1 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=4 nH=0.0017378 T=4677.31 t=1.313 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=5 nH=0.00199526 T=5581.88 t=1.564 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=6 nH=0.00229087 T=6642.45 t=1.858 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=7 nH=0.00263027 T=7891.28 t=2.205 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=8 nH=0.00301995 T=9346.38 t=2.618 Myr status=-2
+Wolfire step failed: ./out/PostProcessMap_Nt1.0e+18_ISRF1.0_Zs1.0e+00.dat index=9 nH=0.00346737 T=10919.7 t=3.217 Myr status=-2

@@ -3,6 +3,7 @@
 import argparse
 from functools import lru_cache
 from pathlib import Path
+import re
 
 import matplotlib
 
@@ -18,6 +19,10 @@ from plot_style import GRAY, PLOT_STYLE, SERIES_COLORS
 PLOT_DIR = Path(__file__).resolve().parent
 DEFAULT_RUN_DIR = PLOT_DIR.parent / "test" / "out" / "wolfire"
 REFERENCE_DIR = PLOT_DIR.parent / "test" / "wolfire1995" / "reference"
+REJECTED_POINT = re.compile(
+    r"^Wolfire (?:initial state|step) failed: (\S+) index=(\d+) nH=(\S+)"
+    r"(?: T=(\S+) t=\S+ Myr)? status=(-?\d+)$"
+)
 DENSITY_LABEL = r"$\log_{10}[n_{\rm H}/(\mathrm{cm}^{-3})]$"
 PRESSURE_LABEL = r"$\log_{10}[n_{\rm H}T/(\mathrm{K\,cm}^{-3})]$"
 # Zero-based column indices in the headerless PostProcessMap files.
@@ -96,13 +101,29 @@ class WolfireResults:
         return {name: columns[:, index] for index, name in enumerate(RESULT_COLUMNS.values())}
 
     def rejected(self):
-        """Return the solver failures saved in rejected.tsv, or None when absent."""
+        """Return solver failures from the same run as the plotted results."""
+        if self.data_dir.resolve() == REFERENCE_DIR.resolve():
+            log = self.data_dir / "rejected.log"
+        else:
+            log = self.run_dir / "wolfire.log"
+        if log.is_file():
+            failures = []
+            with log.open(encoding="utf-8") as source:
+                for line in source:
+                    match = REJECTED_POINT.fullmatch(line.strip())
+                    if match:
+                        dataset, sample, density, temperature, status = match.groups()
+                        failures.append((Path(dataset).name, int(sample), float(density),
+                                         float(temperature) if temperature else None, int(status)))
+            return failures
+
         path = self.run_dir / "rejected.tsv"
         if not path.is_file():
             return None
         data = np.genfromtxt(path, names=True, delimiter="\t", dtype=None,
                              encoding="utf-8", ndmin=1, deletechars="")
-        return np.sort(data, order=["case", "sample"])
+        return [(row["dataset"], row["sample"], row["nH_cm^-3"], row["T_K"], row["status"])
+                for row in np.sort(data, order=["case", "sample"])]
 
     def rate_data(self, filename):
         """Read thermal budget columns, including those appended after column 46."""
