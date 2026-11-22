@@ -2,6 +2,7 @@
 現行	Wolfire_1995	Wolfire_1995.pdf	https://public.websites.umich.edu/~monnier/Courses/2003Fall_AY403_Pages/wolfire95.pdf	保存済み	
 現行	Shull_van_Steenberg_1985	Shull_van_Steenberg_1985.pdf	https://adsabs.harvard.edu/pdf/1985ApJ...298..268S	保存済み	宇宙線の加熱と UVB 光電子のエネルギー配分に使用。
 比較	Furlanetto_Stoever_2010		https://doi.org/10.1111/j.1365-2966.2010.16401.x https://arxiv.org/abs/0910.4410 https://cosmicdawn.astro.ucla.edu/codes_and_tools.html	外部データ	著者配布の elec_interp.tar の数値表を独立検証に使用。再配布許諾は未確認。
+現行	Dalgarno_Yan_Liu_1999		https://doi.org/10.1086/313267 https://ui.adsabs.harvard.edu/abs/1999ApJS..125..237D	取得失敗 (出版社・ADS のPDFエンドポイントが403)	光電子の二次電離・加熱の適用範囲を説明する原典。全文PDFは公開エンドポイントから取得できなかった。
 現行	Le_Teuff_2000	Le_Teuff_2000.pdf	https://star.pst.qub.ac.uk/~tjm/papers/rate99.ps.gz	保存済み（著者公開の PostScript から変換）	
 現行	Verner_1996	Verner_1996.pdf	https://arxiv.org/pdf/astro-ph/9601009	保存済み	
 現行	Verner_Yakovlev_1995	Verner_Yakovlev_1995.pdf	https://adsabs.harvard.edu/pdf/1995A%26AS..109..125V	保存済み	C・O・Si イオンの各殻の光電離係数。切り替えと Si II の K 殻端は著者の phfit2.f に準拠。
