@@ -30,7 +30,7 @@ make -C src libEQCLib.a
 
 ### PEGASE.2 のスペクトルを指定する
 
-PEGASE.2 由来のファイルは再配布条件を確認するまでローカルで管理します。光電離を含むテストを実行するには、手元の Kroupa IMF スペクトル7本を同じディレクトリに用意します。
+`data/PEGASE2/` に、EQCLib の開発者が PEGASE.2 で生成した Kroupa IMF のスペクトル7本を同梱しています。光電離を含むテストは既定でこの7本を使います。PEGASE.2 のプログラムと生成に使った入力資料はローカルで管理します。
 
 ```text
 spectra_Kroupa_Z0.0001.dat
@@ -42,19 +42,20 @@ spectra_Kroupa_Z0.0500.dat
 spectra_Kroupa_Z0.1000.dat
 ```
 
-テスト用の `PEGASE_DIR` には、そのディレクトリの絶対パスを指定します。すでに取得済みの `data/PEGASE2/` に7本がそろっている場合は、テストの既定のパスで実行できます。
-
 ```sh
-export PEGASE_DIR="/absolute/path/to/pegase-spectra"
 make -C test check cell-check
 make -C test hii
 ```
 
-`check` と `hii` はスペクトルを使います。ライブラリのビルドと `cell-check` はデータの準備前に実行できます。
+別のスペクトルを使う場合は、同じ名前の7本を置いたディレクトリの絶対パスを `PEGASE_DIR` で指定します。
+
+```sh
+make -C test hii PEGASE_DIR="/absolute/path/to/pegase-spectra"
+```
 
 ### テスト結果を Jupyter で確認する
 
-スペクトルを用意したシェルでリポジトリのルートから次を実行します。`notebook-data` はライブラリのビルドと基本テストも行い、H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に出力します。H II 領域のノートブックだけを使う場合は `make -C test hii` で作図データを用意できます。計算時間はターゲットを順番に実行して測ります。
+リポジトリのルートから次を実行します。`notebook-data` はライブラリのビルドと基本テストも行い、H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に出力します。H II 領域のノートブックだけを使う場合は `make -C test hii` で作図データを用意できます。計算時間はターゲットを順番に実行して測ります。
 
 ```sh
 make -C test notebook-data
@@ -93,7 +94,7 @@ cp examples/cell.conf cell.conf
 
 平衡モードは指定された `T` で化学平衡を解き、その組成から初期の内部エネルギーを計算します。非平衡モードは `x_HII` と `x_H2` を初期値に使い、He・C・O は中性から始めます。He/H、C/H、O/H の数比は 0.1、`3×10⁻⁴`、`5×10⁻⁴` です。H₂ 生成は `Zd` が正の場合と、非平衡で初期 H₂ がある場合に有効になります。
 
-`NLyn` が正の場合は、第2引数にスペクトルのディレクトリを渡します。上の例で設定したパスを使う場合は `./src/eqclib-cell cell.conf "$PEGASE_DIR"` です。標準出力の CSV には初期状態と各ステップ後の温度、組成、加熱・冷却率 [erg cm⁻³ s⁻¹] が入ります。 [必要なスペクトル](#pegase2-のスペクトルを指定する)
+`NLyn` が正の場合は、第2引数にスペクトルのディレクトリを渡します。同梱データを使う場合は、リポジトリのルートから `./src/eqclib-cell cell.conf data/PEGASE2` と実行します。標準出力の CSV には初期状態と各ステップ後の温度、組成、加熱・冷却率 [erg cm⁻³ s⁻¹] が入ります。 [必要なスペクトル](#pegase2-のスペクトルを指定する)
 
 `chemistry_mode` は `eqclib-cell` の起動時に読み込みます。この実行例では、非平衡モードを選ぶと高温側の金属 CIE 冷却を有効にします。平衡モードでは無効です。 [単一セルの CIE 設定](docs/physics.md#元素別-cie-冷却と酸素輝線の切り替え)
 

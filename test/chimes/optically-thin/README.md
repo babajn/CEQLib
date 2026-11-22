@@ -53,6 +53,6 @@ bash test/chimes/optically-thin/run.sh
 
 `CHIMES_DIR` は `chimes/` と `chimes-data/` を含むディレクトリで、既定値は EQCLib の隣にある `Chimes/`。GSL は `GSL_DIR`（既定値 `$HOME/lib/gsl`）、SUNDIALS と HDF5 は `CHIMES_LOCAL`（既定値 `$CHIMES_DIR/.local`）で指定する。
 
-EQCLib の初期化に使うスペクトルは `PEGASE_DIR` で指定する。 [必要なスペクトルと設定例](../../../README.md#pegase2-のスペクトルを指定する)
+EQCLib の初期化には同梱スペクトルを使う。別のディレクトリを使う場合は `PEGASE_DIR` で指定する。 [必要なスペクトルと設定例](../../../README.md#pegase2-のスペクトルを指定する)
 
 CSV の出力先は `test/out/chimes/optically-thin/`。別の出力先を使う場合はスクリプトにディレクトリを引数として渡し、ノートブックの `data_dir` に同じパスを設定する。

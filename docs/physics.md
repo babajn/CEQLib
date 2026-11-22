@@ -94,7 +94,7 @@ h_i = NLyn ⟨∫_(E_i)^∞ φ(E) σ_i(E) (E − E_i) dE / Q_H⟩     [erg s⁻�
 H_PI = Σ_i n(i) h_i                                      [erg cm⁻³ s⁻¹]
 ```
 
-積分には PEGASE2 の Kroupa IMF、0〜30 Myr のスペクトルと Verner の断面積を使います。実行時には恒星スペクトルの金属量 `Z = 0.0200` の係数を使い、セルの金属量は吸収する各化学種の密度に反映します。断面積で重み付けするのは H I、He I・II、C I・II、O I・II と、平衡モードの Si I・II です。伝播や入射電離光の減衰はホスト側で `NLyn` に反映する扱いです。 [PEGASE2][pegase] · [Kroupa (2001)][kroupa] · [Verner et al. (1996)][verner] · [光電離・加熱率](../src/PhotochemicalGasPhaseChemistry.c#L110) · [スペクトル積分](../src/PhotochemicalGasPhaseChemistry.c#L430) · [外部スペクトルの指定](../README.md#pegase2-のスペクトルを指定する)
+積分には PEGASE2 の Kroupa IMF、0〜30 Myr のスペクトルと Verner の断面積を使います。実行時には恒星スペクトルの金属量 `Z = 0.0200` の係数を使い、セルの金属量は吸収する各化学種の密度に反映します。断面積で重み付けするのは H I、He I・II、C I・II、O I・II と、平衡モードの Si I・II です。伝播や入射電離光の減衰はホスト側で `NLyn` に反映する扱いです。 [PEGASE2][pegase] · [Kroupa (2001)][kroupa] · [Verner et al. (1996)][verner] · [光電離・加熱率](../src/PhotochemicalGasPhaseChemistry.c#L110) · [スペクトル積分](../src/PhotochemicalGasPhaseChemistry.c#L430) · [同梱スペクトルと指定方法](../README.md#pegase2-のスペクトルを指定する)
 
 ### 遠紫外線とダスト遮蔽
 

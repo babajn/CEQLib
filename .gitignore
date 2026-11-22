@@ -25,8 +25,15 @@ tags
 # Reference papers stay local; only the index is tracked
 /reference/*.pdf
 
-# PEGASE.2 inputs are managed locally
-/data/PEGASE2/
+# Bundle the seven spectra generated with PEGASE.2 and keep its program local
+/data/PEGASE2/*
+!/data/PEGASE2/spectra_Kroupa_Z0.0001.dat
+!/data/PEGASE2/spectra_Kroupa_Z0.0004.dat
+!/data/PEGASE2/spectra_Kroupa_Z0.0040.dat
+!/data/PEGASE2/spectra_Kroupa_Z0.0080.dat
+!/data/PEGASE2/spectra_Kroupa_Z0.0200.dat
+!/data/PEGASE2/spectra_Kroupa_Z0.0500.dat
+!/data/PEGASE2/spectra_Kroupa_Z0.1000.dat
 
 # Local Le Bourlot et al. (1999) reference files
 /data/LeBourlot+1999/interp.f
