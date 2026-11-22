@@ -15,9 +15,7 @@ CPPFLAGS += -I$(GSL_DIR)/include
 
 LDLIBS += -L$(GSL_DIR)/lib -Wl,-rpath,$(GSL_DIR)/lib -lgsl -lgslcblas -lm
 
-OBJS	= RandomNumberGenerator.o \
-          Utilities.o \
-		ChemicalEquilibriumCooling.o \
+OBJS	= ChemicalEquilibriumCooling.o \
 		ChemicalEquilibriumSolver.o \
 		ChemistryMode.o \
 		HydrogenChemistry.o \
@@ -46,9 +44,7 @@ OBJS	= RandomNumberGenerator.o \
 XRAY_OBJS = Xray.o ChemicalEquilibriumSolver.o ThermalEquilibrium.o
 LEGACY_XRAY_OBJS = $(XRAY_OBJS:.o=LegacyXray.o)
 
-SRCS 	= RandomNumberGenerator.c \
-          Utilities.c \
-		ChemicalEquilibriumCooling.c \
+SRCS 	= ChemicalEquilibriumCooling.c \
 		ChemicalEquilibriumSolver.c \
 		ChemistryMode.c \
 		HydrogenChemistry.c \
