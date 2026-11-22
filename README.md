@@ -28,6 +28,32 @@ EQCLib は化学平衡モードを既定とします。その時点の温度・�
 make -C src libEQCLib.a
 ```
 
+### インストール後の基本テスト（必須）
+
+ビルド後は、リポジトリのルートで基本テストを実行します。GSL、Python 3、同梱の入力データで、化学平衡・非平衡の計算と単一セルの実行を確認できます。 [基本テストの内容と成否の見方](test/README.md#基本テスト)
+
+```sh
+make -C test check cell-check
+```
+
+### テスト結果を Jupyter で確認する
+
+`notebook-data` は基本テストも実行し、EQCLib 単体で H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に生成します。H II 領域だけを確認する場合は `make -C test hii` で作図データを用意できます。
+
+```sh
+make -C test notebook-data
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r plot/requirements.txt
+jupyter lab
+```
+
+JupyterLab で `plot/PlotHIIRegion.ipynb` などを開き、仮想環境の Python 3 カーネルで **Run → Run All Cells** を選びます。Wolfire (1995) の図と、H II 領域ノートブックの Cloudy 比較には同梱の参照結果を使えます。 [単体で実行できる検証とノートブックの一覧](test/README.md#eqclib-単体で実行できる検証と作図)
+
+### 外部コードとの比較（任意）
+
+比較結果を再計算したい場合は、CHIMES のソースと反応データ、または Cloudy の実行ファイルを用意し、対象の比較手順を実行します。 [外部コードとの比較手順](test/README.md#外部コードとの比較任意)
+
 ### PEGASE.2 のスペクトルを指定する
 
 `data/PEGASE2/` に、EQCLib の開発者が PEGASE.2 で生成した Kroupa IMF のスペクトル7本を同梱しています。光電離を含むテストは既定でこの7本を使います。PEGASE.2 のプログラムと生成に使った入力資料はローカルで管理します。
@@ -42,30 +68,11 @@ spectra_Kroupa_Z0.0500.dat
 spectra_Kroupa_Z0.1000.dat
 ```
 
-```sh
-make -C test check cell-check
-make -C test hii
-```
-
 別のスペクトルを使う場合は、同じ名前の7本を置いたディレクトリの絶対パスを `PEGASE_DIR` で指定します。
 
 ```sh
 make -C test hii PEGASE_DIR="/absolute/path/to/pegase-spectra"
 ```
-
-### テスト結果を Jupyter で確認する
-
-リポジトリのルートから次を実行します。`notebook-data` はライブラリのビルドと基本テストも行い、H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の作図データを `test/out/` に出力します。H II 領域のノートブックだけを使う場合は `make -C test hii` で作図データを用意できます。計算時間はターゲットを順番に実行して測ります。
-
-```sh
-make -C test notebook-data
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r plot/requirements.txt
-jupyter lab
-```
-
-JupyterLab で `plot/PlotHIIRegion.ipynb` などを開き、仮想環境の Python 3 カーネルで **Run → Run All Cells** を選ぶと、保存済みの計算結果から図と集計表を更新できます。Wolfire (1995) と Cloudy の比較図には同梱の参照データも使えます。各比較を再計算するときは実行手順を参照してください。CHIMES の再計算には外部の CHIMES ライブラリと反応データが必要です。 [テストとノートブックの一覧](test/README.md) · [Wolfire (1995) の実行手順](test/README.md#wolfire-et-al-1995-の検証計算と描画) · [Cloudy の実行手順](test/README.md#cloudy-との比較) · [CHIMES の実行手順](test/chimes/README.md)
 
 ## 設定ファイルで平衡・非平衡を切り替える
 

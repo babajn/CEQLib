@@ -1,26 +1,10 @@
 # EQCLib のテストと比較計算
 
-コマンドは EQCLib のルートで実行します。初回は `make -C test notebook-data` で、基本テストと H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の再計算をまとめて実行できます。作図ノートブックは `test/out/` の計算結果を読み込みます。Cloudy と Wolfire (1995) の比較には保存済みの参照データもあります。 [ビルドと JupyterLab の手順](../README.md#テスト結果を-jupyter-で確認する) · [反応・冷却・加熱の物理モデル](../docs/physics.md)
-
-## テスト一覧
-
-| 検証・比較 | コードと参照データ | 実行コマンド | 作図ノートブック |
-| --- | --- | --- | --- |
-| [平衡・水素化学・熱化学モード](#基本テスト) | [unit/](unit/) | `make -C test check`、`make -C test cell-check` | |
-| [熱化学更新の計算時間](#熱化学更新の並列ベンチマーク) | [benchmark/](benchmark/) | `make -C test benchmark` | |
-| [H II 領域](#h-ii-領域の検証計算と描画) | [hii/](hii/) | `make -C test hii`、`make -C test hii-benchmark` | [平衡・冷却・反応率](../plot/PlotHIIRegion.ipynb) |
-| [Cloudy C23.01 との H II 領域比較](#cloudy-との比較) | [hii/cloudy/](hii/cloudy/) | [実行手順](#cloudy-との比較) | [H II 領域ノートブックの Cloudy 比較](../plot/PlotHIIRegion.ipynb) |
-| [H₂・CO 化学と反応設定](#h₂co-化学の検証計算と描画) | [co/](co/) | `make -C test co`、`make -C test molecular-settings-benchmark`、[設定比較の計算ノートブック](co/RunMolecularSettingsBenchmark.ipynb) | [H₂・CO 化学](../plot/PlotCOChemistry.ipynb)、[設定比較](../plot/PlotMolecularSettings.ipynb) |
-| [非平衡化学と高温ガスの冷却](#非平衡化学の検証計算と描画) | [noneq/](noneq/) | `make -C test noneq`、`make -C test noneq-benchmark`、`make -C test noneq-hot` | [非平衡化学](../plot/PlotNonEquilibrium.ipynb) |
-| [Wolfire et al. (1995)](#wolfire-et-al-1995-の検証計算と描画) | [wolfire1995/](wolfire1995/) | [実行手順](#wolfire-et-al-1995-の検証計算と描画) | [熱平衡と熱収支](../plot/PlotWolfire1995.ipynb) |
-| [Wolfire et al. (2003)](#wolfire-et-al-2003-との熱平衡曲線の比較) | [wolfire2003/](wolfire2003/) | `make -C test/wolfire2003 run` | [熱平衡曲線](../plot/PlotWolfire2003.ipynb) |
-| [CHIMES との比較](#chimes-との比較) | [chimes/](chimes/README.md) | [無照射の単一セル](chimes/optically-thin/README.md)、[遠紫外線・遮蔽ありのグリッド](chimes/shielded/README.md) | [比較別のノートブック一覧](chimes/README.md) |
-
-`common/` にはテスト共通の C ヘッダーがあります。`reference/EQCooling/` には冷却率や反応率の保存済み診断データがあります。H II 領域や Wolfire の比較用データは各テストのフォルダにあります。
+コマンドは EQCLib のルートで実行します。 [JupyterLab の起動手順](../README.md#テスト結果を-jupyter-で確認する) · [反応・冷却・加熱の物理モデル](../docs/physics.md)
 
 ## 基本テスト
 
-`check`、H II 領域、H₂・CO、非平衡などの光電離を含むテストは、既定で `data/PEGASE2/` の同梱スペクトルを使います。別のディレクトリを使う場合は `PEGASE_DIR` に絶対パスを指定します。 [必要なスペクトルと設定例](../README.md#pegase2-のスペクトルを指定する)
+インストール時の必須の動作確認です。通常のビルド環境、Python 3、同梱の入力データで実行できます。
 
 ```sh
 make -C test check cell-check
@@ -34,11 +18,28 @@ make -C test check cell-check
 
 `[expected test diagnostics]` に続くメッセージは、欠落・破損したスペクトルや不正な設定を検出するテストの出力です。各テストの `checks passed` とコマンドの終了コードで成否を確認できます。
 
-## 熱化学更新の並列ベンチマーク
+## EQCLib 単体で実行できる検証と作図
+
+`make -C test notebook-data` は、基本テストと H II 領域、H₂・CO 化学、非平衡化学、Wolfire (2003) の計算を順に実行します。ノートブックは `test/out/` の計算結果を読み込みます。Wolfire (1995) と (2003) は、EQCLib の結果を論文や同梱データと照合する検証です。
+
+光電離を含むテストは、既定で `data/PEGASE2/` の同梱スペクトルを使います。別のディレクトリを使う場合は `PEGASE_DIR` に絶対パスを指定します。 [スペクトルの指定方法と設定例](../README.md#pegase2-のスペクトルを指定する)
+
+| 検証・比較 | コードと参照データ | 実行コマンド | 作図ノートブック |
+| --- | --- | --- | --- |
+| [熱化学更新の計算時間](#熱化学更新の並列ベンチマーク) | [benchmark/](benchmark/) | `make -C test benchmark` | |
+| [H II 領域](#h-ii-領域の検証計算と描画) | [hii/](hii/) | `make -C test hii`、`make -C test hii-benchmark` | [平衡・冷却・反応率](../plot/PlotHIIRegion.ipynb) |
+| [H₂・CO 化学と反応設定](#h₂co-化学の検証計算と描画) | [co/](co/) | `make -C test co`、`make -C test molecular-settings-benchmark`、[設定比較の計算ノートブック](co/RunMolecularSettingsBenchmark.ipynb) | [H₂・CO 化学](../plot/PlotCOChemistry.ipynb)、[設定比較](../plot/PlotMolecularSettings.ipynb) |
+| [非平衡化学と高温ガスの冷却](#非平衡化学の検証計算と描画) | [noneq/](noneq/) | `make -C test noneq`、`make -C test noneq-benchmark`、`make -C test noneq-hot` | [非平衡化学](../plot/PlotNonEquilibrium.ipynb) |
+| [Wolfire et al. (1995)](#wolfire-et-al-1995-の検証計算と描画) | [wolfire1995/](wolfire1995/) | [実行手順](#wolfire-et-al-1995-の検証計算と描画) | [熱平衡と熱収支](../plot/PlotWolfire1995.ipynb) |
+| [Wolfire et al. (2003)](#wolfire-et-al-2003-との熱平衡曲線の比較) | [wolfire2003/](wolfire2003/) | `make -C test/wolfire2003 run` | [熱平衡曲線](../plot/PlotWolfire2003.ipynb) |
+
+`common/` にはテスト共通の C ヘッダーがあります。`reference/EQCooling/` には冷却率や反応率の保存済み診断データがあります。H II 領域や Wolfire の比較用データは各テストのフォルダにあります。
+
+### 熱化学更新の並列ベンチマーク
 
 熱化学更新の並列性能は `OMP_NUM_THREADS=12 make -C test benchmark` で測定できます。このベンチマークは OpenMP を使い、原子ガスと分子ガスそれぞれの325点を、10年・1万年・100万年の時間刻みで3ステップずつ進めます。各ステップの収束数、実行時間、逐次と並列の比較を表示します。
 
-## H II 領域の検証計算と描画
+### H II 領域の検証計算と描画
 
 ```sh
 make -C test hii
@@ -54,7 +55,7 @@ make -C test hii
 
 PNG を生成するには `make -C test hii-plot` を実行してください。計算済みの CSV は [plot_hii_region.py](../plot/plot_hii_region.py) でも描画できます。PNG は `plot/out/hii/` に保存されます。
 
-### H II 領域の計算時間
+#### H II 領域の計算時間
 
 ```sh
 make -C test hii-benchmark
@@ -68,24 +69,7 @@ H II 領域で設定を切り替えた測定では、電荷交換を無効にす
 
 CO を無効にした `make -C test hii-benchmark` と同じ条件で、電荷交換を無効にして化学平衡の許容誤差を `1e-5` にすると、エネルギー更新1回あたりの時間は既定値の 0.6〜0.8 倍になりました。電荷交換を加える前の版と比べても 0.3〜0.6 倍です。測定値は単一スレッドの例で、計算機によって変わります。
 
-### Cloudy との比較
-
-[Cloudy C23.01](https://data.nublado.org/cloudy_releases/c23/) をビルドし、EQCLib のルートで次を実行します。
-
-```sh
-make -C test hii
-python3 test/hii/cloudy/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe
-```
-
-スペクトルは `--pegase-dir`、環境変数 `PEGASE_DIR`、同梱の `data/PEGASE2/` の順に参照します。
-
-[run_cloudy_hii.py](hii/cloudy/run_cloudy_hii.py) は EQCLib の `equilibrium.csv` から密度、電離パラメータ、元素組成を読み取ります。PEGASE2 の連続スペクトルを EQCLib と同じ水素電離光子数で年齢ごとに規格化し、0〜30 Myr の18時点を等重みで平均します。Cloudy には case B、ダストと分子なし、厚さ 1 cm の1ゾーンを指定します。密度、入射電離光子束、光学的厚さ、熱収支を確認し、冷却の出力から O II と O III の正味の衝突線冷却を集計します。EQCLib の比較量には H II 領域で使われる温度重みを含めています。
-
-各ゾーンの入力、ログ、集計 CSV は `test/out/hii/cloudy/` に出力します。[PlotHIIRegion.ipynb](../plot/PlotHIIRegion.ipynb) は再計算の出力を優先し、出力がなければ [Cloudy C23.01 の保存済み参照結果](hii/cloudy/cloudy_hii_c23.01.csv) を使います。参照結果で描画する場合は EQCLib の `make -C test hii` の出力があれば実行できます。Cloudy のデータ更新と計算方法は [C23 リリース論文](https://doi.org/10.22201/ia.01851101p.2023.59.02.12) と [C23.01 リリース論文](https://doi.org/10.3847/2515-5172/ad0e75) を参照してください。対応する PDF は [reference/](../reference/index.tsv) に保存しています。
-
-H–O 電荷交換を無効にすると、Cloudy との比較における太陽金属量の平衡温度の差は、中央値で 1.4% から 5.3% に広がりました。
-
-## H₂・CO 化学の検証計算と描画
+### H₂・CO 化学の検証計算と描画
 
 ```sh
 make -C test co
@@ -100,13 +84,13 @@ make -C test co
 
 Jupyter で [PlotCOChemistry.ipynb](../plot/PlotCOChemistry.ipynb) を実行すると、反応収支、密度に対する分子の割合、柱密度に対する H/H₂ と C⁺/C/CO の遷移、生成と消滅の反応量を表示します。PNG を生成するには `make -C test co-plot` を実行してください。[plot_co_chemistry.py](../plot/plot_co_chemistry.py) が PNG を `plot/out/co/` に保存します。
 
-### 柱密度走査での CO モデルの確認
+#### 柱密度走査での CO モデルの確認
 
 柱密度走査では、`A_V ≈ 3〜10` で `CO/C > 0.99` となり、`A_V = 34` では `CO/C` が 0.05 になります。 [CO モデルの適用範囲](../docs/physics.md#co-モデルの適用範囲)
 
 宇宙線による C の電離と He⁺ + CO → C⁺ + O + He を KC08e に加え、走査の反応率を使った試算では、深部の `CO/C` は 0.8〜0.98 に保たれますが、C⁺ を除く反応が遅い C⁺ + H₂ だけなので、`A_V = 3〜50` で C⁺ が炭素の 2〜20% 残ります。実際の暗黒雲の `C⁺/C ≈ 10⁻⁴` より大きく、[C II] 冷却も過大になります。
 
-### H₂・CO・H–O 電荷交換の設定比較
+#### H₂・CO・H–O 電荷交換の設定比較
 
 ```sh
 make -C test molecular-settings-plot
@@ -124,7 +108,7 @@ Jupyter で計算を実行して設定ごとの収束数と失敗した条件を
 
 描画用ノートブックは同じ CSV から計算時間と結果の差を表示します。結果の図に使う時間刻みは `dt_years` で切り替えられます。 [PlotMolecularSettings.ipynb](../plot/PlotMolecularSettings.ipynb)
 
-## 非平衡化学の検証計算と描画
+### 非平衡化学の検証計算と描画
 
 ```sh
 make -j1 -C test noneq-plot
@@ -146,7 +130,7 @@ Jupyter の [PlotNonEquilibrium.ipynb](../plot/PlotNonEquilibrium.ipynb) では�
 
 [plot_noneq.py](../plot/plot_noneq.py) は CSV から時間発展図 `ionizing_pulse.png`・`fuv_pulse.png`、数値検証図 `validation.png`、平衡との冷却率比較図 `ionizing_cooling_comparison.png`・`fuv_cooling_comparison.png`、計算時間図 `benchmark.png` を `plot/out/noneq/` に生成します。開発時の表引きの検証には、直接評価との時系列比較図 `ionizing_temperature_lookup.png`・`fuv_temperature_lookup.png` と計算時間図 `temperature_lookup_benchmark.png` を使えます。切り替え時刻や対数軸の表示範囲外の率は CSV に記録します。計算済みのデータを PNG に描き直す場合は `python3 plot/plot_noneq.py --data-dir test/out/noneq` を使います。
 
-### 高温ガスの冷却と消灯後の酸素輝線
+#### 高温ガスの冷却と消灯後の酸素輝線
 
 ```sh
 make -j1 -C test noneq-hot
@@ -164,7 +148,7 @@ make -j1 -C test noneq-hot
 
 ノートブックでは現行実装の高温冷却履歴と消灯後の酸素輝線を表示します。開発時の実装比較には上記の CSV と、`plot_noneq.py` が出力する `hot_cooling.png`、`hot_benchmark.png`、`oxygen_after_switch.png` を使えます。 [PlotNonEquilibrium.ipynb](../plot/PlotNonEquilibrium.ipynb)
 
-## Wolfire et al. (1995) の検証計算と描画
+### Wolfire et al. (1995) の検証計算と描画
 
 ```sh
 make -C test start
@@ -180,7 +164,7 @@ Jupyter で [PlotWolfire1995.ipynb](../plot/PlotWolfire1995.ipynb) を実行す�
 
 PNG を生成するには `make -C test wolfire-plot` を実行してください。`test/out/wolfire` の計算結果または同梱の [参照データ](wolfire1995/reference/) から `thermal_rates.png` などを生成し、`plot/out/wolfire/` に保存します。 [plot_wolfire1995.py](../plot/plot_wolfire1995.py)
 
-## Wolfire et al. (2003) との熱平衡曲線の比較
+### Wolfire et al. (2003) との熱平衡曲線の比較
 
 ```sh
 make -C test/wolfire2003 run
@@ -188,7 +172,33 @@ make -C test/wolfire2003 run
 
 太陽円の基準条件で化学・熱平衡を求め、冷相と暖相の安定枝および二相共存圧力を論文の Figure 8 と Table 3 に照合します。比較用の実行ファイルは GNU リンカの `--wrap` で論文の電離・加熱率に近似的にそろえたモデルと、EQCLib の既定の処方で計算した対照を出力します。計算結果は `test/out/wolfire2003/equilibrium.csv` に保存されます。ノートブックの実行には Jupyter、NumPy、pandas、SciPy、Matplotlib が必要です。 [PlotWolfire2003.ipynb](../plot/PlotWolfire2003.ipynb) · [Wolfire et al. (2003)](https://doi.org/10.1086/368016)
 
-## CHIMES との比較
+## 外部コードとの比較（任意）
+
+比較計算を再実行するときは、対象の外部コードを用意します。
+
+| 比較 | 再計算に必要なもの | 作図ノートブック |
+| --- | --- | --- |
+| [Cloudy C23.01 との H II 領域比較](#cloudy-との比較) | Cloudy の実行ファイル | [H II 領域ノートブック](../plot/PlotHIIRegion.ipynb) |
+| [CHIMES との比較](#chimes-との比較) | CHIMES のソース、反応データ、HDF5、SUNDIALS | [比較別のノートブック一覧](chimes/README.md) |
+
+### Cloudy との比較
+
+[Cloudy C23.01](https://data.nublado.org/cloudy_releases/c23/) をビルドし、EQCLib のルートで次を実行します。
+
+```sh
+make -C test hii
+python3 test/hii/cloudy/run_cloudy_hii.py --cloudy /path/to/c23.01/source/cloudy.exe
+```
+
+スペクトルは `--pegase-dir`、環境変数 `PEGASE_DIR`、同梱の `data/PEGASE2/` の順に参照します。
+
+[run_cloudy_hii.py](hii/cloudy/run_cloudy_hii.py) は EQCLib の `equilibrium.csv` から密度、電離パラメータ、元素組成を読み取ります。PEGASE2 の連続スペクトルを EQCLib と同じ水素電離光子数で年齢ごとに規格化し、0〜30 Myr の18時点を等重みで平均します。Cloudy には case B、ダストと分子なし、厚さ 1 cm の1ゾーンを指定します。密度、入射電離光子束、光学的厚さ、熱収支を確認し、冷却の出力から O II と O III の正味の衝突線冷却を集計します。EQCLib の比較量には H II 領域で使われる温度重みを含めています。
+
+各ゾーンの入力、ログ、集計 CSV は `test/out/hii/cloudy/` に出力します。[PlotHIIRegion.ipynb](../plot/PlotHIIRegion.ipynb) は再計算の出力を優先し、出力がなければ [Cloudy C23.01 の保存済み参照結果](hii/cloudy/cloudy_hii_c23.01.csv) を使います。参照結果で描画する場合は EQCLib の `make -C test hii` の出力があれば実行できます。Cloudy のデータ更新と計算方法は [C23 リリース論文](https://doi.org/10.22201/ia.01851101p.2023.59.02.12) と [C23.01 リリース論文](https://doi.org/10.3847/2515-5172/ad0e75) を参照してください。対応する PDF は [reference/](../reference/index.tsv) に保存しています。
+
+H–O 電荷交換を無効にすると、Cloudy との比較における太陽金属量の平衡温度の差は、中央値で 1.4% から 5.3% に広がりました。
+
+### CHIMES との比較
 
 無照射の単一セルと、FUV・遮蔽ありの温度・密度グリッドで EQCLib と CHIMES を比較します。`test/chimes/` の比較ドライバーが、既定では EQCLib の隣にある `Chimes/chimes/` の C ライブラリを呼び出し、`Chimes/chimes-data/` の反応データを使って計算します。`plot/` の比較ノートブックは `test/out/chimes/` に出力した CSV から図と集計を作ります。 [CHIMES 比較の一覧と実行手順](chimes/README.md)
 
