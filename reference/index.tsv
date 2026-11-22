@@ -4,14 +4,14 @@
 比較	Furlanetto_Stoever_2010		https://doi.org/10.1111/j.1365-2966.2010.16401.x https://arxiv.org/abs/0910.4410 https://cosmicdawn.astro.ucla.edu/codes_and_tools.html	外部データ	著者配布の elec_interp.tar の数値表を独立検証に使用。再配布許諾は未確認。
 現行	Le_Teuff_2000	Le_Teuff_2000.pdf	https://star.pst.qub.ac.uk/~tjm/papers/rate99.ps.gz	保存済み（著者公開の PostScript から変換）	
 現行	Verner_1996	Verner_1996.pdf	https://arxiv.org/pdf/astro-ph/9601009	保存済み	
-現行	Verner_Yakovlev_1995		https://www.pa.uky.edu/~verner/photo.html https://cdsarc.cds.unistra.fr/viz-bin/ReadMe/J/A%2BAS/109/125?format=html&tex=true	出典確認済み	C・O・Si イオンの各殻の光電離係数。切り替えと Si II の K 殻端は著者の phfit2.f に準拠。
-比較	Kaastra_Mewe_1993		https://ui.adsabs.harvard.edu/abs/1993A%26AS...97..443K/abstract https://gitlab.nublado.org/cloudy/cloudy/-/blob/c25.00/data/mewe_nelectron.dat	出典確認済み	Cloudy c25 の殻別データから、オージェ過程で多重電離になる確率を評価。
+現行	Verner_Yakovlev_1995	Verner_Yakovlev_1995.pdf	https://adsabs.harvard.edu/pdf/1995A%26AS..109..125V	保存済み	C・O・Si イオンの各殻の光電離係数。切り替えと Si II の K 殻端は著者の phfit2.f に準拠。
+比較	Kaastra_Mewe_1993	Kaastra_Mewe_1993.pdf	https://adsabs.harvard.edu/pdf/1993A%26AS...97..443K	保存済み	Cloudy c25 の殻別データから、オージェ過程で多重電離になる確率を評価。
 比較	Lotz_1967		https://doi.org/10.1086/190154 https://adsabs.harvard.edu/pdf/1967ApJS...14..207L	出典確認済み	高速電子による C・O・Si の衝突電離を H・He と比較する近似。
 比較	Richings_CHIMES_cross_sections		https://arxiv.org/abs/1401.4719 https://bitbucket.org/richings/chimes-tools/src/411fd88eb38ae05bd47adf598f1db5dc08fb4579/generate_cross_sections/generate_cross_sections.py	出典確認済み	FG20 率の比較。公開の生成コードで外殻フィットと殻別断面積の足し方を照合。
-現行	Balucinska_Church_McCammon_1992		https://doi.org/10.1086/172032 https://cdsarc.cds.unistra.fr/viz-bin/ReadMe/VI/62?format=html&tex=true	出典確認済み	著者配布の xsctns.for と totlxs.for から金属15元素の数値係数と原子量を採録。
+現行	Balucinska_Church_McCammon_1992	Balucinska_Church_McCammon_1992.pdf	https://adsabs.harvard.edu/pdf/1992ApJ...400..699B	保存済み	著者配布の xsctns.for と totlxs.for から金属15元素の数値係数と原子量を採録。
 比較	Morrison_McCammon_1983		https://doi.org/10.1086/161102 https://articles.adsabs.harvard.edu/pdf/1983ApJ...270..119M	出典確認済み	表2の星間吸収断面積との比較に使用。
-現行	Asplund_2009		https://doi.org/10.1146/annurev.astro.46.060407.145222 https://arxiv.org/abs/0909.0948	出典確認済み	表1の太陽光球元素比から X 線金属吸収を規格化。
-現行	Faucher_Giguere_2020		https://doi.org/10.1093/mnras/staa302 https://arxiv.org/abs/1903.08657 https://galaxies.northwestern.edu/uvb-fg20/	外部データ	著者配布の fg20_cloudy.ascii を使用。再配布許諾が未確認のためデータは外部ディレクトリで指定。
+現行	Asplund_2009	Asplund_2009.pdf	https://arxiv.org/pdf/0909.0948	保存済み	表1の太陽光球元素比から X 線金属吸収を規格化。
+現行	Faucher_Giguere_2020	Faucher_Giguere_2020.pdf	https://arxiv.org/pdf/1903.08657	保存済み（データ本体は外部）	宇宙紫外線背景の入射スペクトル。著者配布の fg20_cloudy.ascii は再配布許諾が未確認のため外部ディレクトリで指定。
 現行	Tielens_Hollenbach_1985	Tielens_Hollenbach_1985.pdf	https://adsabs.harvard.edu/pdf/1985ApJ...291..722T	保存済み	
 現行	Bakes_Tielens_1994	Bakes_Tielens_1994.pdf	https://adsabs.harvard.edu/pdf/1994ApJ...427..822B	保存済み	
 現行	Weingartner_Draine_2001	Weingartner_Draine_2001.pdf	https://arxiv.org/pdf/astro-ph/0105237	保存済み	

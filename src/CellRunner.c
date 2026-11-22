@@ -18,6 +18,9 @@ typedef struct {
     double nH, temperature, timestepYears, steps;
     double ionizedHydrogen, molecularHydrogen;
     double G0, NLyn, Nt, Zd;
+    bool useUVB;
+    char *uvbDirectory;
+    double uvbRedshift, uvbColumns[2];
 } CellSettings;
 
 static const double CellAccuracy = 1.0e-8;
@@ -39,6 +42,9 @@ static bool ReadSettings(const char *path, CellSettings *settings)
         {"x_HII", &settings->ionizedHydrogen, false}, {"x_H2", &settings->molecularHydrogen, false},
         {"G0", &settings->G0, false}, {"NLyn", &settings->NLyn, false},
         {"Nt", &settings->Nt, false}, {"Zd", &settings->Zd, false},
+        {"uvb_redshift", &settings->uvbRedshift, false},
+        {"uvb_column_top", &settings->uvbColumns[0], false},
+        {"uvb_column_bottom", &settings->uvbColumns[1], false},
     };
     FILE *file = fopen(path,"r");
     if(!file){
@@ -48,7 +54,7 @@ static bool ReadSettings(const char *path, CellSettings *settings)
 
     char *line = NULL;
     size_t capacity = 0, lineNumber = 0;
-    bool seenMode = false, valid = true;
+    bool seenMode = false, seenUVB = false, valid = true;
     while(getline(&line,&capacity,file) >= 0){
         lineNumber++;
         char *comment = strchr(line,'#');
@@ -71,6 +77,30 @@ static bool ReadSettings(const char *path, CellSettings *settings)
                 break;
             }
             seenMode = true;
+            continue;
+        }
+        if(strcmp(key,"uvb") == 0){
+            if(seenUVB || (strcmp(value,"on") != 0 && strcmp(value,"off") != 0)){
+                fprintf(stderr,"%s:%zu: set uvb once to on or off\n",path,lineNumber);
+                valid = false;
+                break;
+            }
+            seenUVB = true;
+            settings->useUVB = strcmp(value,"on") == 0;
+            continue;
+        }
+        if(strcmp(key,"uvb_directory") == 0){
+            if(settings->uvbDirectory || !*value){
+                fprintf(stderr,"%s:%zu: set uvb_directory once to a nonempty path\n",path,lineNumber);
+                valid = false;
+                break;
+            }
+            settings->uvbDirectory = strdup(value);
+            if(!settings->uvbDirectory){
+                perror("uvb_directory");
+                valid = false;
+                break;
+            }
             continue;
         }
 
@@ -124,6 +154,11 @@ static bool ValidateSettings(const CellSettings *settings)
         fputs("G0, NLyn, Nt, and Zd must be nonnegative\n",stderr);
         return false;
     }
+    if(settings->useUVB && !(settings->uvbRedshift >= 0.0 &&
+                             settings->uvbColumns[0] >= 0.0 && settings->uvbColumns[1] >= 0.0)){
+        fputs("uvb = on requires nonnegative uvb_redshift, uvb_column_top, and uvb_column_bottom\n",stderr);
+        return false;
+    }
     return true;
 }
 
@@ -136,6 +171,7 @@ static EQCLibStatus InitializeCell(const CellSettings *settings, StructEQCData *
         .G0 = settings->G0, .NLyn = settings->NLyn, .Nt = settings->Nt, .Zd = settings->Zd,
         .Td = EQCApproximateDustTemperature(settings->Nt,settings->G0),
     };
+    if(settings->useUVB) memcpy(state.NHIuvb,settings->uvbColumns,sizeof state.NHIuvb);
     state.n[ipHYDROGEN] = nH;
     state.n[ipHELIUM] = 0.10*nH;
     state.n[ipCARBON] = 3.0e-4*nH;
@@ -201,8 +237,19 @@ int main(int argc, char *argv[])
         .chemistryMode = EQC_CHEMISTRY_EQUILIBRIUM,
         .nH = 10.0, .temperature = 8000.0, .timestepYears = 1000.0, .steps = 10.0,
         .ionizedHydrogen = 0.5,
+        .uvbRedshift = NAN, .uvbColumns = {NAN,NAN},
     };
-    if((argc > 1 && !ReadSettings(argv[1],&settings)) || !ValidateSettings(&settings)) return EXIT_FAILURE;
+    if((argc > 1 && !ReadSettings(argv[1],&settings)) || !ValidateSettings(&settings)){
+        free(settings.uvbDirectory);
+        return EXIT_FAILURE;
+    }
+    const EQCLibStatus uvbStatus = settings.useUVB ?
+        EQCLibSetRunParamUVBackground(true,settings.uvbDirectory) : EQC_SUCCESS;
+    free(settings.uvbDirectory);
+    if(uvbStatus != EQC_SUCCESS){
+        fprintf(stderr,"could not configure UVB (status %d)\n",uvbStatus);
+        return EXIT_FAILURE;
+    }
 
     EQCLibSetRunParamHIIRegion(settings.NLyn > 0.0);
     EQCLibSetRunParamRecombinationCaseB(true);
@@ -213,6 +260,13 @@ int main(int argc, char *argv[])
     const bool useH2 = settings.Zd > 0.0 || (nonequilibrium && settings.molecularHydrogen > 0.0);
     EQCLibSetRunParamH2Formation(useH2,1.0);
     if(EQCLibTryInitialization(0,argc == 3 ? argv[2] : NULL) != EQC_SUCCESS) return EXIT_FAILURE;
+    if(settings.useUVB){
+        const EQCLibStatus status = EQCLibTrySetUVBackgroundRedshift(settings.uvbRedshift);
+        if(status != EQC_SUCCESS){
+            fprintf(stderr,"could not set uvb_redshift to %g (status %d)\n",settings.uvbRedshift,status);
+            return EXIT_FAILURE;
+        }
+    }
 
     StructEQCData state;
     const char *mode = nonequilibrium ? "nonequilibrium" : "equilibrium";

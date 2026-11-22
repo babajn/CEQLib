@@ -98,6 +98,13 @@ cp examples/cell.conf cell.conf
 | `NLyn` | 0 | 水素電離光子束 [cm⁻² s⁻¹] |
 | `Nt` | 0 | 水素柱密度 [cm⁻²] |
 | `Zd` | 0 | ダスト対ガス質量比 |
+| `uvb` | `off` | `on` で宇宙紫外線背景を有効化 |
+| `uvb_directory` | `../data/FG20` | `fg20_cloudy.ascii` のあるディレクトリ。相対パスは実行ディレクトリが基準 |
+| `uvb_redshift` | `on` の場合は必須 | UVB の赤方偏移 |
+| `uvb_column_top` | `on` の場合は必須 | 上側境界からセルまでの遮蔽柱密度 [cm⁻²] |
+| `uvb_column_bottom` | `on` の場合は必須 | 下側境界からセルまでの遮蔽柱密度 [cm⁻²] |
+
+UVB を使う場合は `uvb = on` とし、赤方偏移と上下の柱密度を指定します。柱密度 `0` はその側が無遮蔽という指定です。単一セル実行では、初期状態の計算から全ステップまで同じ赤方偏移と柱密度を使います。リポジトリのルートから実行する設定例では `uvb_directory = data/FG20` を指定できます。 [FG20 のデータと遮蔽の説明](#宇宙紫外線背景と遮蔽)
 
 平衡モードは指定された `T` で化学平衡を解き、その組成から初期の内部エネルギーを計算します。非平衡モードは `x_HII` と `x_H2` を初期値に使い、He・C・O は中性から始めます。He/H、C/H、O/H の数比は 0.1、`3×10⁻⁴`、`5×10⁻⁴` です。H₂ 生成は `Zd` が正の場合と、非平衡で初期 H₂ がある場合に有効になります。
 
@@ -249,3 +256,5 @@ CO 化学を使う場合は、`EQCLibSetRunParamH2Formation(true, 1.0)` と `EQC
 ## 参考文献
 
 各過程の原典は物理モデルの該当節から参照できます。論文と取得元は文献索引にまとめています。 [物理モデル](docs/physics.md) · [文献索引](reference/index.tsv)
+
+宇宙紫外線背景と金属吸収の実装に伴い、Faucher-Giguère (2020)、Verner & Yakovlev (1995)、Bałucińska-Church & McCammon (1992)、Asplund et al. (2009)、Kaastra & Mewe (1993) の原典PDFも `reference/` に収録しています。
