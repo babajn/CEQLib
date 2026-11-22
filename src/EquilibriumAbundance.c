@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <fenv.h>
 #include <float.h>
 #include <math.h>
 #include "Astro.h"
@@ -181,6 +182,9 @@ typedef struct {
     double residual;
 } FluxPoint;
 
+static double HydrogenFluxResidual(double fraction, const void *parameters);
+static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget);
+
 static int SolveFluxBracket(double (*residual)(double,const void *), const void *parameters,
                             FluxPoint lower, FluxPoint upper, double accuracy,
                             double initialFraction, double *root){
@@ -190,9 +194,20 @@ static int SolveFluxBracket(double (*residual)(double,const void *), const void 
     if((lower.residual < 0.0) == (upper.residual < 0.0)) return EQC_NO_EQUILIBRIUM;
 
     // Interpolate between periodic bisections and retain the sign bracket.
-    for(int i=0;i<2*(DBL_MAX_EXP+DBL_MANT_DIG);i++){
+    const int limit = 2*(DBL_MAX_EXP+DBL_MANT_DIG);
+    bool tryTraceSkip = residual == HydrogenFluxResidual;
+    for(int i=0;i<limit;i++){
+        const bool useInitialFraction = i == 0 && initialFraction > lower.fraction && initialFraction < upper.fraction;
+        if(tryTraceSkip && !useInitialFraction && lower.fraction == 0.0 &&
+           lower.residual == 1.0 && upper.residual == -1.0 && upper.fraction <= 0x1p-54){
+            /* The opposite saturated residuals make the secant a midpoint, too.
+               Count the omitted halvings so later interpolation keeps its parity. */
+            tryTraceSkip = false;
+            i += SkipSaturatedHydrogenBisections(&upper,parameters,limit-i);
+            if(i == limit) break;
+        }
         double middle = lower.fraction + 0.5*(upper.fraction-lower.fraction);
-        if(i == 0 && initialFraction > lower.fraction && initialFraction < upper.fraction){
+        if(useInitialFraction){
             middle = initialFraction;
         }else if(i % 2 == 0){
             const double fraction = lower.residual/(lower.residual-upper.residual);
@@ -222,23 +237,66 @@ typedef struct {
     bool useAtomicFraction;
 } HydrogenBalance;
 
-/* Relative imbalance of H2 destruction and formation for the given split. */
-static double MolecularHydrogenResidual(const StructEQCData *state, const CEQMolecularHydrogenCoefficients *h2,
-                                        double neutral, double atomic, double molecular){
+typedef struct {
+    double destroyed;
+    double formed;
+} HydrogenFluxes;
+
+static HydrogenFluxes MolecularHydrogenFluxes(const HydrogenBalance *balance, double atomic, double molecular){
+    const StructEQCData *state = balance->state;
+    const CEQMolecularHydrogenCoefficients *h2 = balance->h2;
     const double nH = state->n[ipHYDROGEN];
-    const double nHI = (nH*atomic)*neutral;
+    const double nHI = (nH*atomic)*balance->neutralFraction;
     const double nH2 = (0.5*nH)*molecular;
     const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,(0.5*molecular)*state->Nt,
                                                                h2->doppler,h2->dustShielding);
     const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,nH2);
-    return FluxResidual((photo+collision)*nH2,h2->formation*nHI);
+    return (HydrogenFluxes){(photo+collision)*nH2,h2->formation*nHI};
 }
 
 static double HydrogenFluxResidual(double fraction, const void *parameters){
     const HydrogenBalance *balance = parameters;
     const double molecular = balance->useAtomicFraction ? 1.0-fraction : fraction;
     const double atomic = balance->useAtomicFraction ? fraction : 1.0-fraction;
-    return MolecularHydrogenResidual(balance->state,balance->h2,balance->neutralFraction,atomic,molecular);
+    const HydrogenFluxes flux = MolecularHydrogenFluxes(balance,atomic,molecular);
+    return FluxResidual(flux.destroyed,flux.formed);
+}
+
+static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget){
+    const HydrogenBalance *balance = parameters;
+    /* Below 2^-54, 1 - atomic rounds to exactly 1 in binary64 round-to-nearest.
+       The H2 density and shielding are then constant. Both the destruction
+       (including collisions with H I) and formation are nondecreasing with
+       atomic abundance. Bound every skipped residual using the destruction
+       at the old upper endpoint and the formation at the new one. */
+    if(FLT_RADIX != 2 || DBL_MANT_DIG != 53 || FLT_EVAL_METHOD != 0 ||
+       !balance->useAtomicFraction || !(upper->fraction >= DBL_MIN) ||
+       !(balance->state->n[ipHYDROGEN] > 0.0) || !(balance->neutralFraction > 0.0) ||
+       !(balance->h2->formation > 0.0) || !(balance->h2->collision.atomicHydrogen >= 0.0) ||
+       fegetround() != FE_TONEAREST) return 0;
+
+    const HydrogenFluxes flux = MolecularHydrogenFluxes(balance,upper->fraction,1.0);
+    if(!(flux.destroyed > 0.0) || !isfinite(flux.destroyed) ||
+       !(flux.formed > 0.0) || !isfinite(flux.formed)) return 0;
+
+    /* Estimate how far we can halve while staying below half an ulp of the
+       formation term. The bound below verifies the estimate with rounded
+       fluxes. Keep the endpoints normal so all skipped halvings are exact. */
+    int steps = ilogb(flux.formed)-ilogb(flux.destroyed)-58;
+    const int normalSteps = ilogb(upper->fraction)-(DBL_MIN_EXP-1);
+    if(steps > normalSteps) steps = normalSteps;
+    if(steps > budget) steps = budget;
+    if(steps < 8) return 0;
+
+    const double candidate = scalbn(upper->fraction,-steps);
+    const double nHI = (balance->state->n[ipHYDROGEN]*candidate)*balance->neutralFraction;
+    const double bound = (balance->h2->formation*nHI)*0x1p-56;
+    if(!(bound >= DBL_MIN) || flux.destroyed > bound) return 0;
+
+    /* At each skipped point the subtraction rounds to -formation, so the
+       original residual is exactly -1 and the lower endpoint does not move. */
+    upper->fraction = candidate;
+    return steps;
 }
 
 #ifndef EQC_H2_LEGACY_SHIELDING

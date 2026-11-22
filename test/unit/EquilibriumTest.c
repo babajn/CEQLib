@@ -665,6 +665,15 @@ static void CheckTraceHydrogen(void)
     assert(CEQSolveHydrogenEquilibrium(&molecular,accuracy) == EQC_SUCCESS);
     assert(molecular.natom[ipHYDROGEN] < 1.0e-90);
     CheckHydrogenFlux(&molecular,accuracy);
+
+    /* An exactly molecular seed carries no usable trace atomic fraction. */
+    molecular = initial;
+    molecular.G0 = 1.0e-200;
+    molecular.natom[ipHYDROGEN] = 0.0;
+    molecular.nmol[ipH2] = 0.5*molecular.n[ipHYDROGEN];
+    assert(CEQSolveHydrogenEquilibrium(&molecular,accuracy) == EQC_SUCCESS);
+    assert(molecular.natom[ipHYDROGEN] > 0.0 && molecular.natom[ipHYDROGEN] < 1.0e-190);
+    CheckHydrogenFlux(&molecular,accuracy);
 }
 
 static void CheckOxygenLineEmissivities(void)
