@@ -38,13 +38,29 @@ void InitializeSoftXrayIonization(int Check){
 static double SoftXrayIonizationRate(double xe, double Ntot){
     // ref. (A6)(A7)(A8) of Wolfire et al. (1995)
     if(xe<=0.0) return 0.0;
-    if(xe>0.5)  return 0.e0;
+#ifdef EQC_LEGACY_XRAY_CUTOFF
+    if(xe > EQC_XRAY_IONIZATION_MAX_XE) return 0.0;
+#else
+    if(xe >= EQC_XRAY_IONIZATION_MAX_XE) return 0.0;
+#endif
     double p1 = MAX(-0.3,log10(1.e-18*Ntot));
     double p2 = log10(xe);
     double f4 = 1.06 + 4.08e-2*p2 + 6.51e-3*SQ(p2);
     double f5 = 1.90 + 0.678*p2 + 0.113*SQ(p2);
     double rate = f4*(-15.6-1.10*p1+9.13e-2*SQ(p1)) + f5*0.87*exp(-SQ((p1-0.41)/0.84));
-    return pow(10.0,rate);
+    double ionization = pow(10.0,rate);
+#ifndef EQC_LEGACY_XRAY_CUTOFF
+    /* Appendix A fits the rate through xe=0.1. Join the fit smoothly to zero
+       at the previous cutoff, using the remaining fraction to avoid
+       cancellation close to the cutoff. */
+    const double taperStart = 0.1;
+    if(xe > taperStart){
+        const double remaining = (EQC_XRAY_IONIZATION_MAX_XE - xe) /
+                                 (EQC_XRAY_IONIZATION_MAX_XE - taperStart);
+        ionization *= SQ(remaining) * (3.0 - 2.0*remaining);
+    }
+#endif
+    return ionization;
 }
 
 double SoftXrayIonizationRateHI(double xe, double Ntot){

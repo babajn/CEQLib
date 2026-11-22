@@ -25,6 +25,9 @@ tags
 # Reference papers stay local; only the index is tracked
 /reference/*.pdf
 
+# Local copy of the externally distributed FG20 spectrum
+/data/FG20/
+
 # Bundle the seven spectra generated with PEGASE.2 and keep its program local
 /data/PEGASE2/*
 !/data/PEGASE2/spectra_Kroupa_Z0.0001.dat

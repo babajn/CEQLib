@@ -4,21 +4,34 @@
 #include <stddef.h>
 
 #include "ChemicalEquilibriumCooling.h"
+#include "CoolingHeatingRates.h"
+#include "EquilibriumAbundance.h"
 #include "GrainSurfaceChemistry.h"
+#include "PhotoelectronDeposition.h"
+#ifdef EQC_LEGACY_XRAY_CUTOFF
+#include "Xray.h"
+#endif
 
 typedef struct {
     const StructEQCData *initial;
+    const CEQUVBRates *uvb;
+    CEQUVBEquilibriumStats *stats;
+    CEQSecondaryIonizationSeed *secondarySeed;
     double timestep;
     double accuracy;
     double chemistryAccuracy;
+#ifdef EQC_LEGACY_XRAY_CUTOFF
     bool hasXrayIonization;
+#endif
 } ThermalProblem;
 
 typedef struct {
     double temperature;
     double residual;
     bool converged;
+#ifdef EQC_LEGACY_XRAY_CUTOFF
     bool aboveXrayCutoff;
+#endif
 } ThermalPoint;
 
 static double NetHeatingRate(const StructEQCData *state)
@@ -36,7 +49,16 @@ static EQCLibStatus EvaluateThermalPoint(const ThermalProblem *problem, double t
     *trial = *problem->initial;
     trial->T = temperature;
     trial->Td = EffectiveDustTemperature(trial);
-    EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(trial, problem->chemistryAccuracy);
+    if(problem->stats) problem->stats->temperatureTrials++;
+    CEQSecondaryIonizationSeed seed = {0};
+    if(problem->secondarySeed) seed = *problem->secondarySeed;
+    EQCLibStatus status = CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
+        trial,problem->chemistryAccuracy,problem->uvb,problem->stats,problem->secondarySeed ? &seed : NULL);
+    if(status != EQC_SUCCESS && problem->secondarySeed && (seed.hydrogen > 0.0 || seed.helium > 0.0)){
+        seed = (CEQSecondaryIonizationSeed){0};
+        status = CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
+            trial,problem->chemistryAccuracy,problem->uvb,problem->stats,&seed);
+    }
     if(status != EQC_SUCCESS)
         return status;
 
@@ -59,10 +81,13 @@ static EQCLibStatus EvaluateThermalPoint(const ThermalProblem *problem, double t
     if(!isfinite(roundoff))
         return EQC_NO_CONVERGENCE;
     point->temperature = temperature;
+#ifdef EQC_LEGACY_XRAY_CUTOFF
     point->aboveXrayCutoff = problem->hasXrayIonization &&
-                             trial->nel/trial->n[ipHYDROGEN] > 0.5;
+                            trial->nel/trial->n[ipHYDROGEN] > EQC_XRAY_IONIZATION_MAX_XE;
+#endif
     point->residual = residual;
     point->converged = fabs(residual) <= problem->accuracy * scale + roundoff;
+    if(problem->secondarySeed) *problem->secondarySeed = seed;
     return EQC_SUCCESS;
 }
 
@@ -70,10 +95,16 @@ static EQCLibStatus RefineThermalBracket(const ThermalProblem *problem,
                                          ThermalPoint near, ThermalPoint far, EQCLibStatus boundaryStatus,
                                          StructEQCData *trial)
 {
+    bool continueInterpolation = false;
+    ThermalPoint displaced = {0};
     for(int iteration = 0; iteration < 128; iteration++){
         double fraction = 0.5;
-        if(boundaryStatus == EQC_SUCCESS && iteration % 2 == 0){
+        const bool interpolate = boundaryStatus == EQC_SUCCESS &&
+            (iteration % 2 == 0 || continueInterpolation);
+        double bestResidual = 0.0;
+        if(interpolate){
             /* Use an interpolated point, with regular bisection to shrink the bracket. */
+            bestResidual = fmin(fabs(near.residual),fabs(far.residual));
             double scale = fmax(fabs(near.residual), fabs(far.residual));
             double nearWeight = fabs(near.residual) / scale;
             double farWeight = fabs(far.residual) / scale;
@@ -82,6 +113,19 @@ static EQCLibStatus RefineThermalBracket(const ThermalProblem *problem,
         double temperature = near.temperature + (far.temperature - near.temperature) * fraction;
         double lower = fmin(near.temperature, far.temperature);
         double upper = fmax(near.temperature, far.temperature);
+        if(continueInterpolation && interpolate){
+            /* Inverse quadratic interpolation at zero residual, using the
+               last displaced endpoint. Keep the secant if it leaves the bracket. */
+            const double scale = fmax(fabs(displaced.residual),fmax(fabs(near.residual),fabs(far.residual)));
+            const double a = near.residual/scale, b = far.residual/scale, c = displaced.residual/scale;
+            if(a != b && a != c && b != c){
+                const double farWeight = (a/(b-a))*(c/(b-c));
+                const double thirdWeight = (a/(c-a))*(b/(c-b));
+                const double estimate = near.temperature + farWeight*(far.temperature-near.temperature)
+                                                     + thirdWeight*(displaced.temperature-near.temperature);
+                if(isfinite(estimate) && estimate > lower && estimate < upper) temperature = estimate;
+            }
+        }
         if(temperature <= lower || temperature >= upper)
             temperature = lower + 0.5 * (upper - lower);
         if(temperature <= lower || temperature >= upper)
@@ -89,6 +133,10 @@ static EQCLibStatus RefineThermalBracket(const ThermalProblem *problem,
 
         ThermalPoint next;
         EQCLibStatus status = EvaluateThermalPoint(problem, temperature, trial, &next);
+        /* Keep the enclosure and retry interpolation while it makes rapid
+           residual progress. Otherwise return to the original bisections. */
+        continueInterpolation = problem->secondarySeed && interpolate && status == EQC_SUCCESS &&
+            fabs(next.residual) <= 0.25*bestResidual;
         if(status != EQC_SUCCESS){
             /* Search up to the first invalid interval from the same side as the initial state. */
             far.temperature = temperature;
@@ -96,8 +144,10 @@ static EQCLibStatus RefineThermalBracket(const ThermalProblem *problem,
         }else if(next.converged){
             return EQC_SUCCESS;
         }else if((next.residual < 0.0) == (near.residual < 0.0)){
+            displaced = near;
             near = next;
         }else{
+            displaced = far;
             far = next;
             boundaryStatus = EQC_SUCCESS;
         }
@@ -187,9 +237,12 @@ static EQCLibStatus SearchThermalState(const ThermalProblem *problem, double tem
         ThermalPoint far = {.temperature = temperature};
         status = EvaluateThermalPoint(problem,temperature,trial,&far);
         if(stride > 1 &&
-           (status != EQC_SUCCESS || far.aboveXrayCutoff != near.aboveXrayCutoff ||
+           (status != EQC_SUCCESS ||
+#ifdef EQC_LEGACY_XRAY_CUTOFF
+            far.aboveXrayCutoff != near.aboveXrayCutoff ||
+#endif
             ((near.residual < 0.0) == (far.residual < 0.0) && fabs(far.residual) > fabs(near.residual)))){
-            /* Recover the fine grid at invalid or discontinuous intervals and on a reversal. */
+            /* Recover the fine grid at invalid intervals, legacy jumps, and on a reversal. */
             far.temperature = defaultTemperature;
             status = EvaluateThermalPoint(problem,defaultTemperature,trial,&far);
             stride = 1;
@@ -211,7 +264,7 @@ static EQCLibStatus SearchThermalState(const ThermalProblem *problem, double tem
 }
 
 static EQCLibStatus SolveThermalState(const StructEQCData *initial, double timestep, double accuracy,
-                                      StructEQCData *trial)
+                                      StructEQCData *trial, CEQUVBEquilibriumStats *stats)
 {
     if(initial == NULL || !isfinite(initial->U) || initial->U <= 0.0 ||
        !isfinite(initial->Rho) || initial->Rho <= 0.0)
@@ -225,26 +278,46 @@ static EQCLibStatus SolveThermalState(const StructEQCData *initial, double times
     if(!isfinite(temperature) || temperature <= 0.0)
         return EQC_INVALID_INPUT;
 
+    CEQUVBRates uvb;
+    EQCLibStatus status = CEQEvaluateUVBackgroundWithMetallicity(initial->NHIuvb,initial->Z,&uvb);
+    if(status != EQC_SUCCESS) return status;
+
     const double minimumChemistryAccuracy = 16.0 * DBL_EPSILON;
+    /* Only the secondary coefficients are carried between temperatures. The
+       accepted cell remains the reference for charge and molecular branches. */
+    const bool hasSecondaryPower = CEQHasUVBHighPower(&uvb,initial->n[ipHELIUM]);
+    CEQSecondaryIonizationSeed initialSeed = {0};
+    if(hasSecondaryPower){
+        const CEQPhotoelectronDeposition deposit = CEQDepositUVBPhotoelectrons(initial,&uvb);
+        initialSeed = (CEQSecondaryIonizationSeed){deposit.ionizationHI,deposit.ionizationHeI};
+    }
+    CEQSecondaryIonizationSeed secondarySeed = initialSeed;
     ThermalProblem problem = {
         .initial = initial,
+        .uvb = &uvb,
+        .stats = stats,
+        .secondarySeed = hasSecondaryPower ? &secondarySeed : NULL,
         .timestep = timestep,
         .accuracy = accuracy,
+#ifdef EQC_LEGACY_XRAY_CUTOFF
         .hasXrayIonization = EQCLibRunParameters.UseSoftXrayIonization && initial->X0 > 0.0,
+#endif
         .chemistryAccuracy = fmax(minimumChemistryAccuracy,
                                   fmin(EQCLibRunParameters.ChemistryAccuracy, 0.1 * accuracy))
     };
-    EQCLibStatus status = SearchThermalState(&problem, temperature, trial);
+    status = SearchThermalState(&problem, temperature, trial);
     if(status == EQC_NO_CONVERGENCE && problem.chemistryAccuracy > minimumChemistryAccuracy){
         /* Near thermal balance, small changes in the chemistry can dominate the net rate. */
         double intermediateAccuracy = 0.1 * problem.chemistryAccuracy;
         problem.chemistryAccuracy = minimumChemistryAccuracy;
+        secondarySeed = initialSeed;
         status = SearchThermalState(&problem, temperature, trial);
         /* An almost machine-precision chemistry solve can itself stall. Try
            intermediate accuracies while retaining the thermal residual test. */
         for(; status == EQC_NO_CONVERGENCE && intermediateAccuracy > minimumChemistryAccuracy;
             intermediateAccuracy *= 0.1){
             problem.chemistryAccuracy = intermediateAccuracy;
+            secondarySeed = initialSeed;
             status = SearchThermalState(&problem, temperature, trial);
         }
     }
@@ -257,7 +330,7 @@ EQCLibStatus EQCLibTryNetCoolingRateChemcalEquilibrium(StructEQCData *state, dou
         return EQC_INVALID_INPUT;
 
     StructEQCData trial;
-    EQCLibStatus status = SolveThermalState(state, 0.0, 1.e-8, &trial);
+    EQCLibStatus status = SolveThermalState(state, 0.0, 1.e-8, &trial, NULL);
     if(status == EQC_SUCCESS){
         trial.U = state->U;
         *state = trial;
@@ -269,12 +342,18 @@ EQCLibStatus EQCLibTryNetCoolingRateChemcalEquilibrium(StructEQCData *state, dou
 EQCLibStatus EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(StructEQCData *state,
                                                                           double accuracy, double *Du)
 {
+    return CEQSolveEquilibriumEnergyWithStats(state,accuracy,Du,NULL);
+}
+
+EQCLibStatus CEQSolveEquilibriumEnergyWithStats(StructEQCData *state, double accuracy, double *Du,
+                                              CEQUVBEquilibriumStats *stats)
+{
     if(state == NULL || Du == NULL || !isfinite(state->dt) || state->dt <= 0.0 ||
        !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0)
         return EQC_INVALID_INPUT;
 
     StructEQCData trial;
-    EQCLibStatus status = SolveThermalState(state, state->dt, accuracy, &trial);
+    EQCLibStatus status = SolveThermalState(state, state->dt, accuracy, &trial, stats);
     if(status == EQC_SUCCESS){
         double rate = (trial.U - state->U) / state->dt;
         if(!isfinite(rate))

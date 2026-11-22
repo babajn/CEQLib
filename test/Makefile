@@ -3,6 +3,10 @@ CC = gcc
 EQCLIB_DIR ?= ../src
 GSL_DIR ?= $(or $(shell gsl-config --prefix 2>/dev/null),$(wildcard $(HOME)/lib/gsl),/usr)
 export PEGASE_DIR ?= $(abspath ../data/PEGASE2)
+UVB_DIR ?= $(abspath ../data/FG20)
+CHIMES_DATA_DIR ?= $(abspath ../../Chimes/chimes-data)
+CLOUDY_DIR ?= $(abspath ../../c25.00)
+BENCHMARK_CPU ?= $(shell awk '/^Cpus_allowed_list:/ {split($$2, cpus, /[,-]/); print cpus[1]}' /proc/self/status)
 PYTHON ?= python3
 
 OPTIMIZE += -O3 -std=c99
@@ -33,13 +37,13 @@ CFLAGS = $(OPTIMIZE) $(OPTIONS) $(INCLUDEPATH)
 LDFLAGS += -lm
 
 WOLFIRE_OBJS = out/wolfire1995_main.o out/RandomNumberGenerator.o
-UNIT_OBJS = out/EquilibriumTest.o out/HydrogenChemistryTest.o out/ThermochemistryModeTest.o
+UNIT_OBJS = out/EquilibriumTest.o out/HydrogenChemistryTest.o out/ThermochemistryModeTest.o out/UVBackgroundTest.o
 COMMON_HEADERS = common/Astro.h common/Constants.h
-TEST_SOURCES = $(wildcard benchmark/*.[ch] co/*.[ch] common/*.[ch] hii/*.[ch] noneq/*.[ch] unit/*.[ch] wolfire1995/*.[ch])
+TEST_SOURCES = $(wildcard benchmark/*.[ch] co/*.[ch] common/*.[ch] hii/*.[ch] noneq/*.[ch] unit/*.[ch] uvb/*.[ch] wolfire1995/*.[ch])
 
 ALL:   start
 
-.PHONY: start eqclib check cell-check notebook-data benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot clean tag pkg
+.PHONY: start eqclib check cell-check xray-legacy-check notebook-data benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot uvb uvb-metal uvb-metal-sensitivity uvb-metal-photoionization uvb-metal-photoionization-disk uvb-metal-cloudy uvb-charge-transfer-disk uvb-charge-transfer-bdf uvb-charge-transfer-benchmark uvb-benchmark uvb-asura-benchmark clean tag pkg
 eqclib:
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
@@ -59,16 +63,29 @@ check: $(UNIT_OBJS) eqclib
 	$(CC) $(CFLAGS) -fno-fast-math out/EquilibriumTest.o $(LDFLAGS) -o out/equilibrium_test.out
 	$(CC) $(CFLAGS) -fno-fast-math out/HydrogenChemistryTest.o $(LDFLAGS) -o out/hydrogen_chemistry_test.out
 	$(CC) $(CFLAGS) -fno-fast-math out/ThermochemistryModeTest.o $(LDFLAGS) -o out/thermochemistry_mode_test.out
+	$(CC) $(CFLAGS) -fno-fast-math out/UVBackgroundTest.o $(LDFLAGS) -o out/uv_background_test.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/check.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/equilibrium_test.out" "$$PEGASE_DIR"; \
 	"$(CURDIR)/out/hydrogen_chemistry_test.out" "$$PEGASE_DIR"; \
-	"$(CURDIR)/out/thermochemistry_mode_test.out" "$$PEGASE_DIR"
+	"$(CURDIR)/out/thermochemistry_mode_test.out" "$$PEGASE_DIR"; \
+	"$(CURDIR)/out/uv_background_test.out" "$$PEGASE_DIR"
 
 $(UNIT_OBJS): out/%.o: unit/%.c $(COMMON_HEADERS) $(EQCLIB_DIR)/ChemicalEquilibriumCooling.h Makefile | out
 	$(CC) $(CFLAGS) -fno-fast-math -c $< -o $@
 
+out/EquilibriumTest.o: $(EQCLIB_DIR)/Xray.h
 out/HydrogenChemistryTest.o: $(EQCLIB_DIR)/CoolingCIE.h $(EQCLIB_DIR)/CoolingHeatingRates.h
+out/UVBackgroundTest.o: $(EQCLIB_DIR)/CollisionalGasPhaseChemistry.h $(EQCLIB_DIR)/PhotochemicalGasPhaseChemistry.h \
+                       $(EQCLIB_DIR)/EquilibriumAbundance.h $(EQCLIB_DIR)/MoleculeChemistry.h \
+                       $(EQCLIB_DIR)/CoolingHeatingRates.h $(EQCLIB_DIR)/PhotoelectronDeposition.h $(EQCLIB_DIR)/UVBackground.h
+
+xray-legacy-check: unit/EquilibriumTest.c eqclib | out
+	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLibLegacyXray.a
+	$(CC) $(CFLAGS) -fno-fast-math -DEQC_LEGACY_XRAY_CUTOFF $< $(EQCLIB_DIR)/libEQCLibLegacyXray.a $(filter-out -lEQCLib,$(LDFLAGS)) -o out/equilibrium_legacy_xray_test.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/check.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/equilibrium_legacy_xray_test.out" "$$PEGASE_DIR"
 
 cell-check: eqclib
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) eqclib-cell
@@ -172,8 +189,99 @@ noneq-hot: noneq/NonEquilibriumHotCoolingTest.c eqclib
 noneq-plot: noneq noneq-benchmark noneq-hot
 	$(PYTHON) ../plot/plot_noneq.py
 
+out/uvb:
+	mkdir -p $@
+
+uvb: uvb/UVBackgroundReference.c uvb/compare.py eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_reference.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_reference.out" "$(abspath $(UVB_DIR))"; \
+	mv rates.csv equilibrium.csv soft-xray.csv secondary.csv disk-updates.csv disk-grid.csv EQCooling/UVBackgroundRates.dat "$(CURDIR)/out/uvb/"
+	$(PYTHON) uvb/compare.py "$(abspath $(UVB_DIR))/fg20_cloudy.ascii" "$(CHIMES_DATA_DIR)" out/uvb
+
+uvb-metal: uvb/MetalXrayReference.c uvb/metal_compare.py eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_metal_reference.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-metal.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_metal_reference.out" "$(abspath $(UVB_DIR))"; \
+	mv metal-*.csv "$(CURDIR)/out/uvb/"
+	$(PYTHON) uvb/metal_compare.py "$(abspath $(UVB_DIR))/fg20_cloudy.ascii" out/uvb
+
+uvb-metal-sensitivity: uvb/UVBackgroundReference.c eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_metal_sensitivity.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-metal-sensitivity.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_metal_sensitivity.out" "$(abspath $(UVB_DIR))" --metal-sensitivity; \
+	mv disk-500ev.csv "$(CURDIR)/out/uvb/"
+
+out/uvb_metal_photoionization_reference.out: uvb/MetalPhotoionizationReference.c eqclib | out
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o $@
+
+uvb-metal-photoionization: out/uvb_metal_photoionization_reference.out uvb/metal_photoionization_compare.py | out/uvb
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-metal-pi.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_metal_photoionization_reference.out" "$(abspath $(UVB_DIR))"; \
+	mv metal-photoionization-*.csv "$(CURDIR)/out/uvb/"
+	$(PYTHON) uvb/metal_photoionization_compare.py "$(abspath $(UVB_DIR))/fg20_cloudy.ascii" "$(abspath $(CHIMES_DATA_DIR))" out/uvb --atomic-data "$(abspath $(CLOUDY_DIR))/data"
+
+uvb-metal-cloudy: out/uvb_metal_photoionization_reference.out uvb/metal_cloudy.py | out/uvb
+	$(PYTHON) uvb/metal_cloudy.py "$(abspath $(CLOUDY_DIR))" "$(abspath $(UVB_DIR))/fg20_cloudy.ascii" out/uvb "$(CURDIR)/out/uvb_metal_photoionization_reference.out"
+
+uvb-metal-photoionization-disk: uvb/UVBackgroundReference.c eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_metal_photoionization_disk.out
+	$(CC) $(CFLAGS) -fno-fast-math -DEQC_EXPERIMENTAL_UVB_OXYGEN_COOLING $< $(EQCLIB_DIR)/ChemicalEquilibriumCooling.c $(LDFLAGS) -o out/uvb_metal_photoionization_oxygen.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-metal-disk.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_metal_photoionization_disk.out" "$(abspath $(UVB_DIR))" --metal-photoionization-disk; \
+	mv disk-metal-photoionization.csv "$(CURDIR)/out/uvb/"; \
+	"$(CURDIR)/out/uvb_metal_photoionization_oxygen.out" "$(abspath $(UVB_DIR))" --metal-photoionization-disk; \
+	mv disk-metal-photoionization.csv "$(CURDIR)/out/uvb/disk-metal-photoionization-oxygen-weight.csv"
+
+uvb-charge-transfer-disk: uvb/UVBackgroundReference.c eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_charge_transfer_disk.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-charge-transfer-disk.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_charge_transfer_disk.out" "$(abspath $(UVB_DIR))" --charge-transfer-disk; \
+	mv disk-charge-transfer.csv disk-charge-transfer-budget.csv "$(CURDIR)/out/uvb/"
+
+uvb-charge-transfer-bdf: uvb/UVBChargeTransferReference.c eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_charge_transfer_reference.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-charge-transfer-bdf.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_charge_transfer_reference.out" "$(abspath $(UVB_DIR))"; \
+	"$(CURDIR)/out/uvb_charge_transfer_reference.out" "$(abspath $(UVB_DIR))" --regression "$$PEGASE_DIR"; \
+	mv uvb-charge-transfer-bdf.csv uvb-charge-transfer-regression.csv "$(CURDIR)/out/uvb/"
+
+uvb-charge-transfer-benchmark: uvb/ASURABenchmark.c eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_charge_transfer_benchmark.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-charge-transfer-bench.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	taskset -c "$(BENCHMARK_CPU)" "$(CURDIR)/out/uvb_charge_transfer_benchmark.out" "$$PEGASE_DIR" "$(abspath $(UVB_DIR))" --charge-transfer; \
+	taskset -c "$(BENCHMARK_CPU)" "$(CURDIR)/out/uvb_charge_transfer_benchmark.out" "$$PEGASE_DIR" "$(abspath $(UVB_DIR))" --charge-transfer-bidirectional; \
+	mv asura-charge-transfer.csv asura-charge-transfer-bidirectional.csv "$(CURDIR)/out/uvb/"
+
+uvb-benchmark: noneq/NonEquilibriumBenchmark.c uvb/benchmark.py eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_benchmark.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-bench.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	"$(CURDIR)/out/uvb_benchmark.out" "$$PEGASE_DIR" --uvb-off; \
+	mv benchmark.csv "$(CURDIR)/out/uvb/benchmark-off.csv"; \
+	"$(CURDIR)/out/uvb_benchmark.out" "$$PEGASE_DIR" "$(abspath $(UVB_DIR))"; \
+	mv benchmark.csv "$(CURDIR)/out/uvb/benchmark-on.csv"
+	$(PYTHON) uvb/benchmark.py out/uvb
+
+uvb-asura-benchmark: uvb/ASURABenchmark.c eqclib | out/uvb
+	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_asura_benchmark.out
+	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb-asura.XXXXXX"); \
+	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
+	taskset -c "$(BENCHMARK_CPU)" "$(CURDIR)/out/uvb_asura_benchmark.out" "$$PEGASE_DIR" "$(abspath $(UVB_DIR))"; \
+	mv asura-benchmark.csv "$(CURDIR)/out/uvb/"
+	@echo "ASURA benchmark saved in out/uvb/asura-benchmark.csv (CPU $(BENCHMARK_CPU))"
+
 clean:
-	rm -f $(WOLFIRE_OBJS) $(UNIT_OBJS) test.out out/equilibrium_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out out/noneq_hot_driver.o out/noneq_hot_current.out out/noneq_hot_legacy.out out/noneq_hot_linear.out
+	rm -f $(WOLFIRE_OBJS) $(UNIT_OBJS) test.out out/equilibrium_test.out out/equilibrium_legacy_xray_test.out out/hydrogen_chemistry_test.out out/thermochemistry_mode_test.out out/uv_background_test.out out/uvb_reference.out out/uvb_benchmark.out out/uvb_asura_benchmark.out out/thermal_benchmark.out out/hii_region_test.out out/hii_region_benchmark.out out/molecular_test.out out/molecular_settings_benchmark.out out/non_equilibrium_test.out out/non_equilibrium_benchmark.out out/noneq_hot_driver.o out/noneq_hot_current.out out/noneq_hot_legacy.out out/noneq_hot_linear.out
+	rm -f out/uvb_metal_reference.out out/uvb_metal_sensitivity.out
 
 tag:
 	ctags $(TEST_SOURCES)

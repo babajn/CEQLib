@@ -23,6 +23,10 @@
 #include "CoolingCIE.h"
 #include "CoolingHeatingRates.h"
 #include "HIIregionLineCooling.h"
+#include "PhotoelectronDeposition.h"
+
+static int CalculateCoolingHeatingRates(StructEQCData *state, bool nonEquilibrium, bool lineDiagnostics,
+                                        const CEQTemperaturePoint *point, double uvbHeating, const CEQUVBRates *uvb);
 
 struct StructEQCLibParameters_tag EQCLibRunParameters = {
     .UseChargeTransfer = true,
@@ -78,6 +82,8 @@ EQCLibStatus EQCLibTryInitialization(int Check, const char *pegaseDirectory){
     InitializeSoftXrayIonization(Check);
     if(!InitializeCoolingTableCIE(Check)) return EQC_INITIALIZATION_FAILED;
     CEQInitializeNonEquilibriumTemperatureTables();
+    const EQCLibStatus uvbStatus = CEQInitializeUVBackground(Check);
+    if(uvbStatus != EQC_SUCCESS) return uvbStatus;
     
     if(Check==1)
         fprintf(stderr,"... done.\n");
@@ -208,14 +214,27 @@ EQCLibStatus EQCLibSetRunParamChemistryAccuracy(double value){
 
 EQCLibStatus EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(StructEQCData *state, double accuracy){
     if(state == NULL) return EQC_INVALID_INPUT;
+    CEQUVBRates uvb;
+    const EQCLibStatus status = CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb);
+    if(status != EQC_SUCCESS) return status;
+    return CEQCalculateChemicalAbundanceCoolingHeatingRatesWithUVB(state,accuracy,&uvb);
+}
 
+EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithUVB(StructEQCData *state, double accuracy,
+                                                                    const CEQUVBRates *uvb){
+    return CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(state,accuracy,uvb,NULL,NULL);
+}
+
+EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
+    StructEQCData *state, double accuracy, const CEQUVBRates *uvb, CEQUVBEquilibriumStats *stats,
+    CEQSecondaryIonizationSeed *seed){
     StructEQCData trial = *state;
-    int status = EQCLibChemicalReactionEquilibrium(&trial,accuracy);
+    int status = CEQChemicalReactionEquilibriumWithUVBSeed(&trial,accuracy,uvb,stats,seed);
     if(status < 0) return (EQCLibStatus)status;
 
     trial.invT = 1.0/trial.T;
     trial.logT = log10(trial.T);
-    status = EQCLibCalculateCoolingHeatingRates(&trial);
+    status = CalculateCoolingHeatingRates(&trial,false,true,NULL,CEQDepositUVBPhotoelectrons(&trial,uvb).heating,uvb);
     if(status != EQC_SUCCESS) return (EQCLibStatus)status;
 
     *state = trial;
@@ -297,13 +316,22 @@ void EQCLibCalulateChemcalAbundanceCoolingHeatingRates(StructEQCData *PhydroPP){
 static const double OxygenTaperStart = 1.5e4;
 static const double OxygenTaperEnd = 2.5e4;
 
-static double PhotoionizedOxygenWeight(const StructEQCData *state)
+static double PhotoionizedOxygenWeight(const StructEQCData *state, const CEQUVBRates *uvb)
 {
     const double nH = state->n[ipHYDROGEN];
-    if(!EQCLibRunParameters.UseHIIRegion || state->NLyn <= 0.0 || state->T >= OxygenTaperEnd || nH <= 0.0)
-        return 0.0;
-
-    const double photoionization = HIPhotoIonizationRate(state->NLyn);
+    if(state->T >= OxygenTaperEnd || nH <= 0.0) return 0.0;
+    double photoionization = EQCLibRunParameters.UseHIIRegion && state->NLyn > 0.0 ?
+                             HIPhotoIonizationRate(state->NLyn) : 0.0;
+#ifdef EQC_EXPERIMENTAL_UVB_OXYGEN_COOLING
+    /* Used by the reference comparison. The default weight would suppress
+       CIE cooling from other metals if the UVB were added here. */
+    if(uvb && state->n[ipOXYGEN] > 0.0){
+        const double power = CEQHighPhotoelectronPower(state,uvb);
+        photoionization += uvb->ionization[CEQ_UVB_HI] + CEQPhotoelectronIonizationRates(state,power).hydrogen;
+    }
+#else
+    (void)uvb;
+#endif
     if(photoionization == 0.0) return 0.0;
     const double xe = state->nel/nH;
     const double otherIonization = state->nel*HICollisionalIonizationRate(state->T)
@@ -330,10 +358,10 @@ static double NonEquilibriumOxygenWeight(const StructEQCData *state)
 }
 
 static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilibrium, bool lineDiagnostics,
-                                        const CEQTemperaturePoint *point){
+                                        const CEQTemperaturePoint *point, double uvbHeating, const CEQUVBRates *uvb){
 
     if(PhydroPP == NULL || !isfinite(PhydroPP->T) || PhydroPP->T <= 0.0) return EQC_INVALID_INPUT;
-
+    if(!isfinite(uvbHeating) || uvbHeating < 0.0) return EQC_INVALID_INPUT;
     PhydroPP->L_res = nonEquilibrium ? 0.0 : CoolingRateCIE(PhydroPP);
     if(!isfinite(PhydroPP->L_res)) return EQC_INVALID_INPUT;
 
@@ -344,6 +372,7 @@ static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilib
     /* Fixed silicon ionization in the non-equilibrium update means no Si photoionization heating. */
     PhydroPP->H_PI      = nonEquilibrium ? CEQHeatingPhotoionizationWithoutSilicon(PhydroPP)
                                          : HeatingPhotoionization(PhydroPP);
+    PhydroPP->H_UVB     = uvbHeating;
     PhydroPP->H_PE      = HeatingDustPhotoelectic(PhydroPP); //T,nH,ne,Z,G0,Nt);
     PhydroPP->H_CR      = TotalCosmicRayHeatingRate(PhydroPP);
     PhydroPP->H_XR      = TotalSoftXrayHeatingRate(PhydroPP);
@@ -361,6 +390,7 @@ static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilib
                         + PhydroPP->H_CR
                         + PhydroPP->H_XR
                         + PhydroPP->H_H2;
+    if(uvbHeating > 0.0) PhydroPP->H_tot += uvbHeating;
 
     // cooling rate = angular-integrated emission coefficient (= 4*pi*j) [erg/s/cc]
     PhydroPP->L_ff      = CoolingBremsstrahalung(PhydroPP);
@@ -402,7 +432,7 @@ static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilib
             if(!isfinite(PhydroPP->L_res)) return EQC_INVALID_INPUT;
         }
     }else{
-        const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP);
+        const double oxygenWeight = PhotoionizedOxygenWeight(PhydroPP,uvb);
         if(!isfinite(oxygenWeight)) return EQC_INVALID_INPUT;
         if(oxygenWeight > 0.0){
             /* Replace the CIE metal contribution in photoionized gas without counting oxygen twice. */
@@ -478,17 +508,31 @@ static int CalculateCoolingHeatingRates(StructEQCData *PhydroPP, bool nonEquilib
 }
 
 int EQCLibCalculateCoolingHeatingRates(StructEQCData *state){
-    return CalculateCoolingHeatingRates(state,false,true,NULL);
+    if(state == NULL) return EQC_INVALID_INPUT;
+    CEQUVBRates uvb;
+    const EQCLibStatus status = CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb);
+    if(status != EQC_SUCCESS) return status;
+    return CalculateCoolingHeatingRates(state,false,true,NULL,CEQDepositUVBPhotoelectrons(state,&uvb).heating,&uvb);
 }
 
 int CEQCalculateNonEquilibriumCoolingHeatingRates(StructEQCData *state){
-    CEQTemperaturePoint point;
-    const bool tabulated = state != NULL && CEQLocateTemperature(state->T,&point);
-    return CalculateCoolingHeatingRates(state,true,true,tabulated ? &point : NULL);
+    if(state == NULL) return EQC_INVALID_INPUT;
+    CEQUVBRates uvb;
+    const EQCLibStatus status = CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb);
+    if(status != EQC_SUCCESS) return status;
+    return CEQCalculateNonEquilibriumCoolingHeatingRatesWithUVB(state,&uvb);
 }
 
-int CEQCalculateNonEquilibriumEnergyRates(StructEQCData *state, const CEQTemperaturePoint *point){
-    return CalculateCoolingHeatingRates(state,true,false,point);
+int CEQCalculateNonEquilibriumCoolingHeatingRatesWithUVB(StructEQCData *state, const CEQUVBRates *uvb){
+    CEQTemperaturePoint point;
+    const bool tabulated = CEQLocateTemperature(state->T,&point);
+    return CalculateCoolingHeatingRates(state,true,true,tabulated ? &point : NULL,
+                                        CEQDepositUVBPhotoelectrons(state,uvb).heating,NULL);
+}
+
+int CEQCalculateNonEquilibriumEnergyRates(StructEQCData *state, const CEQTemperaturePoint *point,
+                                         double uvbHeating){
+    return CalculateCoolingHeatingRates(state,true,false,point,uvbHeating,NULL);
 }
 
 double EQCLibGetTotalNumberDensity(StructEQCData *PhydroPP){

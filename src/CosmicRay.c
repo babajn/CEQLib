@@ -8,6 +8,7 @@
 #include "ChemicalElements.h"
 #include "FineStructureLines.h"
 #include "CosmicRay.h"
+#include "PhotoelectronDeposition.h"
 
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_deriv.h>
@@ -161,8 +162,7 @@ static double HeatDepositedForEachPrimaryElectron(double E_in_eV, double xe){
     //      eq(A3)(A4)(A5) of Wolfire et al. (1995)
     if(xe<0.0||xe>=1.0)  return 0.e0;
     //if(xe>0.5)  return 0.e0;
-    double f1i = 1.0-pow(xe,0.2663); 
-    double f1  = 0.9971*(1.0-pow(f1i,1.3163));
+    double f1  = CEQPhotoelectronHeatingFraction(xe);
     double f2  = 2.0*E_in_eV-13.6;
     const int last = ElectronFractionTableSize - 1;
     double f3;

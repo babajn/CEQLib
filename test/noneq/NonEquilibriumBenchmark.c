@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "ChemicalEquilibriumCooling.h"
@@ -17,6 +18,7 @@ typedef struct {
     const char *name;
     double density, temperature, column, dust, fuv, photoionizationRate;
     double ionizedHydrogen, molecularHydrogen, singlyIonized, doublyIonized;
+    double uvbColumn;
 } BenchmarkCase;
 
 static StructEQCData InitialCell(const BenchmarkCase *cell, double years)
@@ -26,6 +28,7 @@ static StructEQCData InitialCell(const BenchmarkCase *cell, double years)
         .T = cell->temperature, .dt = years*YEAR_CGS, .Td = 20.0,
         .Nt = cell->column, .Zd = cell->dust, .G0 = cell->fuv,
         .NLyn = cell->photoionizationRate/HIPhotoIonizationRate(1.0),
+        .NHIuvb = {cell->uvbColumn,cell->uvbColumn},
     };
     state.n[ipHYDROGEN] = nH;
     state.n[ipHELIUM] = 0.10*nH;
@@ -71,12 +74,12 @@ static const Method Methods[] = {
 enum { MethodCount = sizeof Methods/sizeof Methods[0] };
 
 static bool Measure(const char *scenario, const Method *method, const StructEQCData *initial,
-                    unsigned int calls, double *elapsed, double *temperature)
+                    clockid_t timer, unsigned int calls, double *elapsed, double *temperature)
 {
     StructEQCData state;
     struct timespec start, end;
     EQCLibSetRunParamNonEquilibriumTemperatureTables(method->temperatureTables);
-    if(clock_gettime(CLOCK_MONOTONIC,&start) != 0){
+    if(clock_gettime(timer,&start) != 0){
         perror("clock_gettime");
         return false;
     }
@@ -89,7 +92,7 @@ static bool Measure(const char *scenario, const Method *method, const StructEQCD
             return false;
         }
     }
-    if(clock_gettime(CLOCK_MONOTONIC,&end) != 0){
+    if(clock_gettime(timer,&end) != 0){
         perror("clock_gettime");
         return false;
     }
@@ -104,16 +107,16 @@ static bool Measure(const char *scenario, const Method *method, const StructEQCD
     return true;
 }
 
-static bool RunCase(FILE *file, const BenchmarkCase *cell, double years)
+static bool RunCase(FILE *file, const BenchmarkCase *cell, double years, clockid_t timer, int methodCount)
 {
     const StructEQCData initial = InitialCell(cell,years);
     unsigned int calls[MethodCount];
     double elapsed, finalTemperature;
     /* Calibrate and warm up every method before collecting the five batches. */
-    for(int method = 0; method < MethodCount; method++){
+    for(int method = 0; method < methodCount; method++){
         calls[method] = 1;
         for(;;){
-            if(!Measure(cell->name,&Methods[method],&initial,calls[method],&elapsed,&finalTemperature))
+            if(!Measure(cell->name,&Methods[method],&initial,timer,calls[method],&elapsed,&finalTemperature))
                 return false;
             if(elapsed >= BatchSeconds || calls[method] == MaximumCalls) break;
             calls[method] *= 2;
@@ -121,12 +124,12 @@ static bool RunCase(FILE *file, const BenchmarkCase *cell, double years)
     }
     /* Rotate the first method to spread short-term system load. */
     for(int trial = 1; trial <= Trials; trial++){
-        for(int i = 0; i < MethodCount; i++){
-            const int method = (trial-1+i)%MethodCount;
-            if(!Measure(cell->name,&Methods[method],&initial,calls[method],&elapsed,&finalTemperature))
+        for(int i = 0; i < methodCount; i++){
+            const int method = (trial-1+i)%methodCount;
+            if(!Measure(cell->name,&Methods[method],&initial,timer,calls[method],&elapsed,&finalTemperature))
                 return false;
             if(elapsed <= 0.0){
-                fprintf(stderr,"%s %s dt=%g yr: batch measured zero wall time\n",cell->name,Methods[method].name,years);
+                fprintf(stderr,"%s %s dt=%g yr: batch measured zero elapsed time\n",cell->name,Methods[method].name,years);
                 return false;
             }
             fprintf(file,"%s,%g,%g,%g,%s,%d,%u,%.12e,%.12e\n",cell->name,cell->density,cell->temperature,years,
@@ -138,10 +141,13 @@ static bool RunCase(FILE *file, const BenchmarkCase *cell, double years)
 
 int main(int argc, char **argv)
 {
-    if(argc != 2){
-        fprintf(stderr,"Usage: %s PEGASE2_DIRECTORY\n",argv[0]);
+    if(argc != 2 && argc != 3){
+        fprintf(stderr,"Usage: %s PEGASE2_DIRECTORY [UVB_DIRECTORY|--uvb-off]\n",argv[0]);
         return EXIT_FAILURE;
     }
+    const bool compareUVB = argc == 3;
+    const bool enableUVB = compareUVB && strcmp(argv[2],"--uvb-off") != 0;
+    if(enableUVB && EQCLibSetRunParamUVBackground(true,argv[2]) != EQC_SUCCESS) return EXIT_FAILURE;
     EQCLibSetRunParamHIIRegion(true);
     EQCLibSetRunParamChargeTransfer(true);
     EQCLibSetRunParamRecombinationCaseB(true);
@@ -152,15 +158,29 @@ int main(int argc, char **argv)
     EQCLibSetRunParamCosmicRayIonization(false);
     EQCLibSetRunParamSoftXrayIonization(false);
     if(EQCLibTryInitialization(0,argv[1]) != EQC_SUCCESS) return EXIT_FAILURE;
+    if(enableUVB && EQCLibTrySetUVBackgroundRedshift(0.0) != EQC_SUCCESS) return EXIT_FAILURE;
 
-    const BenchmarkCase cases[] = {
+    const BenchmarkCase originalCases[] = {
         {.name = "ionizing", .density = 10.0, .temperature = 8000.0, .photoionizationRate = 1.0e-7},
         {.name = "recombining", .density = 10.0, .temperature = 1.35e4,
          .ionizedHydrogen = 0.98, .singlyIonized = 0.20, .doublyIonized = 0.70},
         {.name = "fuv", .density = 100.0, .temperature = 100.0, .column = 2.0e20,
          .dust = SOLAR_METALLICITY, .fuv = 1.0e3, .molecularHydrogen = 0.8},
     };
-    const double steps[] = {10.0,1.0e3,1.0e5};
+    const BenchmarkCase uvbCases[] = {
+        {.name = "diffuse", .density = 0.04, .temperature = 9000.0, .uvbColumn = 1.0e16,
+         .ionizedHydrogen = 0.1, .singlyIonized = 0.1},
+        {.name = "shielded", .density = 1.0, .temperature = 8000.0, .uvbColumn = 1.0e20,
+         .ionizedHydrogen = 0.01, .singlyIonized = 0.1},
+    };
+    const double originalSteps[] = {10.0,1.0e3,1.0e5};
+    const double uvbSteps[] = {1.0e5};
+    const BenchmarkCase *cases = compareUVB ? uvbCases : originalCases;
+    const size_t caseCount = compareUVB ? sizeof uvbCases/sizeof uvbCases[0] : sizeof originalCases/sizeof originalCases[0];
+    const double *steps = compareUVB ? uvbSteps : originalSteps;
+    const size_t stepCount = compareUVB ? sizeof uvbSteps/sizeof uvbSteps[0] : sizeof originalSteps/sizeof originalSteps[0];
+    const clockid_t timer = compareUVB ? CLOCK_PROCESS_CPUTIME_ID : CLOCK_MONOTONIC;
+    const int methodCount = compareUVB ? 2 : MethodCount;
     FILE *file = fopen("benchmark.csv","w");
     if(file == NULL){
         perror("benchmark.csv");
@@ -168,16 +188,17 @@ int main(int argc, char **argv)
     }
     fputs("scenario,nH,T_initial,dt_yr,method,trial,calls,elapsed_s,T_final\n",file);
     bool success = true;
-    for(size_t i = 0; success && i < sizeof cases/sizeof cases[0]; i++){
+    for(size_t i = 0; success && i < caseCount; i++){
         EQCLibSetRunParamH2Formation(cases[i].molecularHydrogen > 0.0,1.0);
-        for(size_t j = 0; success && j < sizeof steps/sizeof steps[0]; j++)
-            success = RunCase(file,&cases[i],steps[j]);
+        for(size_t j = 0; success && j < stepCount; j++)
+            success = RunCase(file,&cases[i],steps[j],timer,methodCount);
     }
     if(fclose(file) != 0){
         perror("benchmark.csv");
         return EXIT_FAILURE;
     }
     if(!success) return EXIT_FAILURE;
-    puts("Equilibrium and both non-equilibrium timings measured.");
+    if(compareUVB) printf("Equilibrium and non-equilibrium CPU timings measured with UVB %s.\n",enableUVB ? "on" : "off");
+    else puts("Equilibrium and both non-equilibrium timings measured.");
     return EXIT_SUCCESS;
 }

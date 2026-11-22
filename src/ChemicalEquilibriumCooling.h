@@ -74,6 +74,25 @@ EQCLibStatus EQCLibTryLoadChemistryMode(const char *path, EQCLibChemistryMode *m
    when no evaluations are running. */
 EQCLibStatus EQCLibTryInitialization(int check, const char *pegaseDirectory);
 void EQCLibInitialization(int Check);
+/* Configure the UV background before initialization. It is off by default.
+   A NULL directory selects ../data/FG20. Change the setting only when no
+   evaluations are running. */
+EQCLibStatus EQCLibSetRunParamUVBackground(bool use, const char *directory);
+/* Set the upper photon energy in eV before initialization. Zero (the default)
+   selects the full spectrum. */
+EQCLibStatus EQCLibSetRunParamUVBackgroundMaximumEnergy(double energyEV);
+/* Set the redshift for subsequent evaluations, within the initialized table's
+   range. This is not thread-safe. Set it outside parallel evaluation regions. */
+EQCLibStatus EQCLibTrySetUVBackgroundRedshift(double z);
+/* Get the primary ionization rates and photoelectron kinetic power integrated
+   over one incident hemisphere, in H I, He I, He II order. Units are s^-1
+   and erg s^-1 per absorber. The heating array holds the power before
+   partition into heat and secondary processes. Outputs are kept on error. */
+EQCLibStatus EQCLibTryGetUVBackgroundHemisphereRates(double column, double ionization[3], double heating[3]);
+/* As above, with cell metallicity Z. Metal power is in erg s^-1 per H nucleus
+   at Z, in the order K < 100 eV and K >= 100 eV. The original API uses Z=0. */
+EQCLibStatus EQCLibTryGetUVBackgroundHemisphereRatesWithMetallicity(
+    double column, double Z, double ionization[3], double heating[3], double metalPower[2]);
 void EQCLibSetRunParamDebugMode(bool Use);
 void EQCLibSetRunParamRecombinationCaseB(bool Use);
 /* Use NLyn to evaluate photoionization and blend the CIE metal term with

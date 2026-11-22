@@ -72,5 +72,8 @@ typedef struct StructEQCData_tag{
     double L_HI21cm;    
     // absorption coefficient [1/cm]
     double k_HI21cm;    
+
+    double NHIuvb[2];    // H I column to each face of the slab [cm^-2]; zero is optically thin.
+    double H_UVB;       // UV background photoionization heating [erg/s/cc].
 } StructEQCData;
 #endif

@@ -16,7 +16,76 @@ make -C test check cell-check
 
 `make -C test cell-check` で平衡・非平衡の両モードの初期組成と極短ステップでの温度を検証できます。
 
+`make -C test check` には合成べき乗スペクトルを使う UVB テストも含まれます。別の数値積分との照合、片側と両側の規格化、柱密度に対する遮蔽とスペクトルの硬化、赤方偏移の補間と入力エラー、エネルギー上限、UVB だけでの電離を確認します。二次電離については、光電子のエネルギー収支、H I と He I が消える極限、電離度の上下限、固定温度での H・He の平衡解と長時間 BDF 解の一致を、無遮蔽と遮蔽ありで検証します。恒星光と UVB を併用する平衡計算では、中性と電離の初期値から同じ組成を得ることも確認します。FG20 が欠落して HM12 だけがある場合や、スペクトルが破損している場合は、再初期化がエラーを返して直前の率を保持することを確認します。 [UVB の単体テスト](unit/UVBackgroundTest.c)
+
 `[expected test diagnostics]` に続くメッセージは、欠落・破損したスペクトルや不正な設定を検出するテストの出力です。各テストの `checks passed` とコマンドの終了コードで成否を確認できます。
+
+### 軟 X 線の打ち切りの回帰テスト
+
+通常の `check` では、電離率の単調な減衰、両端でのなめらかな接続、既存の加熱率を確認します。旧モデルで電子分率 `xe = 0.5` の段差にかかって失敗したセルについて、平衡・熱更新が成功することも検証します。次のコマンドは比較用の `EQC_LEGACY_XRAY_CUTOFF` ビルド `src/libEQCLibLegacyXray.a` を作り、従来の打ち切りでの戻り値と失敗時の状態保持を検証します。FG20 データは不要です。 [軟 X 線の電離モデル](../docs/physics.md#軟-x-線)
+
+```sh
+make -C test xray-legacy-check
+```
+
+## FG20 の遮蔽と計算時間
+
+公式の `fg20_cloudy.ascii` を置いたディレクトリを `UVB_DIR` に指定します。既定値はリポジトリの `data/FG20/` です。外部比較には、CHIMES の `chimes_main_data.hdf5` と `FG20_cross_sections/` を含むディレクトリも指定します。既定の CHIMES データはワークスペースの `Chimes/chimes-data` です。Python 3 の NumPy、SciPy、h5py を使います。 [FG20 の取得元とファイル形式](../README.md#宇宙紫外線背景と遮蔽)
+
+```sh
+make -C test uvb UVB_DIR=/absolute/path/to/FG20 CHIMES_DATA_DIR=/absolute/path/to/chimes-data
+make -C test uvb-benchmark UVB_DIR=/absolute/path/to/FG20
+make -C test uvb-metal uvb-metal-sensitivity UVB_DIR=/absolute/path/to/FG20
+make -C test uvb-metal-photoionization uvb-metal-cloudy CLOUDY_DIR=/absolute/path/to/c25.00
+make -C test uvb-metal-photoionization-disk
+```
+
+`uvb` は、赤方偏移 0、1、2、3 で無遮蔽、両側が同じ柱密度、上下で異なる柱密度を検証します。一次電離率と光電子エネルギーを独立の平板計算と比較し、無遮蔽の一次電離率を CHIMES と照合します。H・He の固定温度 10⁴ K の平衡組成は、各イオンの定常比と電荷保存から求めた参照解と比較します。この格子で二次電離の固定点反復の回数も集計します。結果は `test/out/uvb/` の `rates.csv`、`comparison.csv`、`equilibrium.csv` に保存します。`soft-xray.csv` は同じ組成での UVB と `X0 = 1` の軟 X 線の加熱率を並べ、`UVBackgroundRates.dat` は運動エネルギー100 eV以上の光電子が供給エネルギーに占める割合を記録します。 [独立積分と比較コード](uvb/compare.py)
+
+`secondary.csv` と `secondary-comparison.csv` は、赤方偏移0と2、片側の柱密度 `10¹⁹〜10²¹ cm⁻²`、H II 分率 `10⁻³〜10⁻¹` で、熱、二次電離、励起などへの配分を記録します。全スペクトルと、光子エネルギーを 300 eV で打ち切った場合を比べます。
+
+`disk-updates.csv` は、100 pc の局所柱密度と前ステップの組成を使い、1 Myr 刻みで12回の平衡熱更新をした結果です。旧モデルで失敗した希薄セル（`z = 0`、`nH = 0.01 cm⁻³`）が軟 X 線と UVB を併用しても全ステップ成功することを確認します。分子ガスでは、推奨する `xHI + 2*xH2` の有効柱密度と、比較用の `xHI` だけの指定を両側に与えます。
+
+`disk-grid.csv` は、宇宙線を有効にした `z = 0, 2`、`nH = 10⁻³〜10 cm⁻³`（0.5 dex 刻み）での更新結果です。UVB と軟 X 線のオン・オフ、平衡・非平衡を組み合わせた144条件で、各12ステップの成功を確認します。温度・電子分率・加熱の内訳を出力します。FG20 だけの放射寄与を調べる基準は軟 X 線オフです。 [円盤セルの再現条件](uvb/UVBackgroundReference.c)
+
+`uvb-benchmark` は既存の非平衡ベンチマークを使い、同じ初期条件で UVB を無効・有効にしたときの平衡・非平衡両モードのセル更新あたりの CPU 時間を測ります。表の初期化を除いた測定で、照射で異なる組成・温度へ収束する計算負荷も含みます。各モードの比較は `test/out/uvb/benchmark-summary.csv` に保存します。
+
+`uvb-metal` は `Z/Z☉ = 0, 0.1, 1, 2`、片側の柱密度 `10¹⁹〜10²² cm⁻²` に加え、赤方偏移・金属量・上下の柱密度を同時に補間する点を、独立の Python 積分と比較します。総断面積を Morrison & McCammon (1983) の表2と照合し、金属のパワーを含むエネルギー収支と、公開 API の金属量ゼロでの互換性を検証します。`metal-comparison.csv`、`metal-cross-section-comparison.csv`、`metal-deep-comparison.csv`、`metal-deep-bands.csv`、`metal-chemistry-comparison.csv` に結果、`metal-timing.csv` に初期化と赤方偏移の設定時間、保持メモリを保存します。 [独立積分コード](uvb/metal_compare.py)
+
+`uvb-metal-sensitivity` は太陽金属量、宇宙線・軟 X 線ありで、FG20 全域と光子上限 500 eV を比較します。`z = 0, 2`、`G0 = 0.1, 1`、`X0 = 0.1, 1`、`nH = 10⁻³〜10² cm⁻³`（0.5 dex 刻み）、平衡・非平衡の全352ケースを12ステップ進め、`disk-500ev.csv` に出力します。軟 X 線を両方の計算に含めるので、この比較は高エネルギー側の感度を測るものです。 [円盤試験](uvb/UVBackgroundReference.c)
+
+`uvb_reference.out` と `uvb_asura_benchmark.out` は、オプション `--zero-metallicity` を付けるとセルの `Z` をゼロにします。既存の元素数密度やダスト量を保持したケースで、金属の追加前後を比較できます。
+
+`uvb-metal-photoionization` は C・O・Si の6つの率を、Cloudy c25 の `phfit.dat` と `mewe_nelectron.dat` に基づく独立積分で照合します。しきい値、遮蔽、補間点、金属の光電離を加えたエネルギー収支を検証し、`metal-photoionization-integrals.csv`、`metal-photoionization-auger.csv`、`metal-photoionization-chimes.csv` と `metal-photoionization-impact-estimate.csv` に結果を出力します。CHIMES の `photoion_euv` では C II、O I、O II、Si II を比較し、単一電離と対応する Auger チャンネルを併記します。C I と Si I は CHIMES の FUV グループに入り、その率は13.6 eV未満も含みます。`CLOUDY_DIR` の既定値はワークスペースの `c25.00` です。 [独立積分コード](uvb/metal_photoionization_compare.py)
+
+CHIMES の表生成コードでは、最初の内殻端より下でも、外殻の総断面積に C・O の 2s や Si の 3s を別途加えています。この領域の Verner et al. (1996) のフィットにはそれらの殻がすでに含まれます。EQCLib は Verner の `phfit2.f` と同じ殻の切り替えを使うため、生成済みの CHIMES 表との率には系統差が出ます。 [CHIMES の表生成コード](https://bitbucket.org/richings/chimes-tools/src/411fd88eb38ae05bd47adf598f1db5dc08fb4579/generate_cross_sections/generate_cross_sections.py) · [Verner の配布ページ](https://www.pa.uky.edu/~verner/photo.html)
+
+`uvb-metal-cloudy` は Cloudy の実行ファイルとデータを使い、HM12 と FG20 のそれぞれで同じ13.6 eV以上のスペクトルを EQCLib と Cloudy に与えます。`z = 0, 2`、`T = 10⁴ K`、`nH = 10⁻³〜1 cm⁻³` の単一ゾーンのイオン分率を `metal-photoionization-cloudy.csv` に出力します。Cloudy の IV 価以上の割合も保存します。 [単一ゾーン比較](uvb/metal_cloudy.py)
+
+`uvb-metal-photoionization-disk` は円盤格子に H–O 電荷交換と、UVB を含む酸素輝線の重みの比較を追加します。恒星光は `NLyn = 0`、各ケース12更新で、温度、電子分率、イオン分率と輝線冷却を `disk-metal-photoionization.csv` と `disk-metal-photoionization-oxygen-weight.csv` に保存します。後者は冷却モジュールの試験用ビルドです。 [円盤試験](uvb/UVBackgroundReference.c)
+
+### UVB 照射下の H–O 電荷交換
+
+```sh
+make -C test uvb-charge-transfer-disk uvb-charge-transfer-bdf
+make -C test uvb-charge-transfer-benchmark BENCHMARK_CPU=10
+```
+
+`uvb-charge-transfer-disk` は太陽金属量、`z = 0, 2`、`nH = 10⁻³〜10² cm⁻³`（0.5 dex 刻み）、`G0 = 0.1, 1`、`X0 = 0.1, 1` で12回ずつ更新します。恒星光は `NLyn = 0` とし、電荷交換オフ、H II 領域モードを使わない電荷交換オン、H II 領域モードでの電荷交換オンを平衡・非平衡の両方で比較します。`disk-charge-transfer.csv` に各ケースの最終状態と [O I] 冷却、`disk-charge-transfer-budget.csv` に各更新での電荷残差と H–O 電荷交換の反応収支を保存します。 [円盤試験](uvb/UVBackgroundReference.c)
+
+`uvb-charge-transfer-bdf` は温度固定で H・He・O の非平衡 BDF 積分を長時間進め、一方向と双方向の平衡解との比較を `uvb-charge-transfer-bdf.csv` に保存します。酸素なし、電荷交換オフ、H II 領域モード、通常の非平衡更新の出力は、ビット比較用の `uvb-charge-transfer-regression.csv` に16進の浮動小数点形式で保存します。`uvb-metal-cloudy` は、UVB を有効にして H II 領域モードを切った条件で酸素分率を比較します。 [固定温度試験](uvb/UVBChargeTransferReference.c) · [Cloudy 単一ゾーンの比較](uvb/metal_cloudy.py)
+
+`uvb-charge-transfer-benchmark` は、同じ ASURA の初期状態から FG20 を全域で使い、一方向・双方向の更新時間を `asura-charge-transfer.csv` と `asura-charge-transfer-bidirectional.csv` に出力します。比較用の初期状態は電荷交換オフで暖機します。 [計測の条件](uvb/ASURABenchmark.c)
+
+### ASURA 設定でのセル更新時間
+
+```sh
+make -C test uvb-asura-benchmark BENCHMARK_CPU=10
+```
+
+`uvb-asura-benchmark` は `taskset` で計算を1個の論理 CPU に固定します。`BENCHMARK_CPU` の既定値はプロセスに割り当てられた最初の論理 CPU です。ASURA の推奨設定を使い、`G0 = X0 = 1`、柱密度 `Nt = nH × 100 pc`、`z = 0, 2`、`nH = 10⁻³〜10² cm⁻³`（0.5 dex 刻み）を評価します。前ステップの `xHI + 2*xH2` を柱密度に掛け、時間刻み10万年で6回の平衡更新を行い、その組成と温度から平衡・非平衡をそれぞれ1回進める時間を測ります。化学平衡の許容誤差は `1e-5`、エネルギーの許容誤差は `1e-4` です。
+
+UVB 無効（`off`）、光子上限110 eV（`cut110`）、FG20 全域（`full`）の132行を `test/out/uvb/asura-benchmark.csv` に出力します。110 eV 上限では H・He から生じる光電子は100 eV未満です。金属量が正の場合は、一部の金属から100 eV以上の電子も生じます。`cpu_us` は1セル更新あたりの CPU 時間で、5回の計測バッチの中央値です。平衡では別の計測用呼び出しで温度・電子密度の試行回数と二次電離の固定点反復回数を記録します。 [ベンチマークの条件](uvb/ASURABenchmark.c)
 
 ## EQCLib 単体で実行できる検証と作図
 

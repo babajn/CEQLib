@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "ChemicalEquilibriumCooling.h"
+#include "CoolingHeatingRates.h"
 
 EQCLibStatus EQCLibTryParseChemistryMode(const char *value, EQCLibChemistryMode *mode)
 {
@@ -80,7 +81,8 @@ EQCLibStatus EQCLibTryLoadChemistryMode(const char *path, EQCLibChemistryMode *m
     return status;
 }
 
-EQCLibStatus EQCLibTryAdvanceCell(StructEQCData *state, double accuracy, EQCLibChemistryMode mode)
+static EQCLibStatus AdvanceCell(StructEQCData *state, double accuracy, EQCLibChemistryMode mode,
+                                struct CEQUVBEquilibriumStats *stats)
 {
     if(!state || !isfinite(state->dt) || state->dt < 0.0 ||
        !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0 ||
@@ -90,7 +92,7 @@ EQCLibStatus EQCLibTryAdvanceCell(StructEQCData *state, double accuracy, EQCLibC
     StructEQCData updated = *state;
     if(mode == EQC_CHEMISTRY_EQUILIBRIUM){
         const EQCLibStatus status =
-            EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&updated,accuracy,&updated.Du);
+            CEQSolveEquilibriumEnergyWithStats(&updated,accuracy,&updated.Du,stats);
         if(status != EQC_SUCCESS) return status;
         updated.U += state->dt*updated.Du;
     }else{
@@ -101,4 +103,15 @@ EQCLibStatus EQCLibTryAdvanceCell(StructEQCData *state, double accuracy, EQCLibC
     if(!isfinite(updated.U) || updated.U <= 0.0 || !isfinite(updated.Du)) return EQC_NO_CONVERGENCE;
     *state = updated;
     return EQC_SUCCESS;
+}
+
+EQCLibStatus EQCLibTryAdvanceCell(StructEQCData *state, double accuracy, EQCLibChemistryMode mode)
+{
+    return AdvanceCell(state,accuracy,mode,NULL);
+}
+
+EQCLibStatus CEQAdvanceEquilibriumWithStats(StructEQCData *state, double accuracy,
+                                           struct CEQUVBEquilibriumStats *stats)
+{
+    return AdvanceCell(state,accuracy,EQC_CHEMISTRY_EQUILIBRIUM,stats);
 }

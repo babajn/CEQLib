@@ -16,6 +16,7 @@
 #include "MoleculeChemistry.h"
 #include "GrainSurfaceChemistry.h"
 #include "PhotochemicalGasPhaseChemistry.h"
+#include "Xray.h"
 
 static StructEQCData GasState(double nH, double temperature, double column)
 {
@@ -46,7 +47,13 @@ static void CheckAtomicEquilibrium(void)
     StructEQCData state = GasState(nH,10083.56,1.0e18);
     state.nel = 0.9*nH;
     assert(EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-9) == EQC_SUCCESS);
-    assert(fabs(state.nel/nH - 0.27455813) < 1.0e-6);
+    /* This equilibrium lies inside the soft X-ray taper. */
+#ifdef EQC_LEGACY_XRAY_CUTOFF
+    const double expectedElectronFraction = 0.27455813;
+#else
+    const double expectedElectronFraction = 0.24120160; /* Solve with 1e-11 charge tolerance. */
+#endif
+    assert(fabs(state.nel/nH - expectedElectronFraction) < 1.0e-6);
     assert(fabs(EQCLibGetElectronNumberDensity(&state) - state.nel) <= 1.0e-9 * state.nel);
     assert(state.nmol[ipH2] == 0.0 && state.nmol[ipCO] == 0.0);
     assert(isfinite(state.H_tot) && isfinite(state.L_tot));
@@ -146,20 +153,93 @@ static void CheckIonizedGasEquationOfState(void)
     assert(fabs(EQCLibConvertUtoT(&state) - state.T) < 1.0e-12 * state.T);
 }
 
+static void CheckRejectedRateUpdates(StructEQCData *state, EQCLibStatus expected)
+{
+    unsigned char original[sizeof(*state)];
+    memcpy(original,state,sizeof(original));
+    double rate = 42.0;
+    assert(EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(state,1.0e-8) == expected);
+    assert(memcmp(original,state,sizeof(original)) == 0);
+    assert(EQCLibTryNetCoolingRateChemcalEquilibrium(state,&rate) == expected);
+    assert(rate == 42.0 && memcmp(original,state,sizeof(original)) == 0);
+    assert(EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(state,1.0e-8,&rate) == expected);
+    assert(rate == 42.0 && memcmp(original,state,sizeof(original)) == 0);
+    assert(isnan(EQCLibNetCoolingRateChemcalEquilibrium(state)));
+    assert(memcmp(original,state,sizeof(original)) == 0);
+}
+
 static void CheckFailureStatus(void)
 {
     StructEQCData state = GasState(0.001,13242.50,1.0e18);
-    unsigned char original[sizeof(state)];
-    memcpy(original,&state,sizeof(state));
-    double rate = 42.0;
-    assert(EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == EQC_NO_EQUILIBRIUM);
-    assert(memcmp(original,&state,sizeof(state)) == 0);
-    assert(EQCLibTryNetCoolingRateChemcalEquilibrium(&state,&rate) == EQC_NO_EQUILIBRIUM);
-    assert(rate == 42.0 && memcmp(original,&state,sizeof(state)) == 0);
-    assert(EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,1.0e-8,&rate) == EQC_NO_EQUILIBRIUM);
-    assert(rate == 42.0 && memcmp(original,&state,sizeof(state)) == 0);
-    assert(isnan(EQCLibNetCoolingRateChemcalEquilibrium(&state)));
-    assert(memcmp(original,&state,sizeof(state)) == 0);
+    state.X0 = -1.0;
+    CheckRejectedRateUpdates(&state,EQC_INVALID_INPUT);
+}
+
+static void CheckSoftXrayRates(void)
+{
+    const double column = 1.0e20;
+    const double fractions[] = {1.0e-4,0.01,0.1,0.3,0.5,1.0};
+    /* Reference values from the Wolfire fits before changing the xe cutoff. */
+    const double ionization[] = {1.8686041205017047e-18,1.6249656997064237e-18,7.0502336080631525e-19,
+                                 3.9547076063063309e-19,2.9052818252857640e-19,0.0};
+    const double heating[] = {2.4604560942189459e-29,8.4246736965932879e-29,1.2521300789597018e-28,
+                              1.4368194436389935e-28,1.5144896889158104e-28,1.6080426300601547e-28};
+    for(size_t i=0; i<sizeof(fractions)/sizeof(fractions[0]); i++){
+        const double xe = fractions[i];
+        StructEQCData state = {.Nt=column, .X0=1.0, .nel=xe, .n={1.0}};
+        assert(fabs(TotalSoftXrayHeatingRate(&state)/heating[i]-1.0) < 1.0e-12);
+        double expected = ionization[i];
+#ifndef EQC_LEGACY_XRAY_CUTOFF
+        if(xe == 0.3) expected *= 0.5;
+        if(xe >= 0.5) expected = 0.0;
+#endif
+        const double rate = SoftXrayIonizationRateHI(xe,column);
+        assert(fabs(rate-expected) <= 1.0e-12*expected);
+        assert(SoftXrayIonizationRateHeI(xe,column) == rate);
+    }
+    assert(SoftXrayIonizationRateHI(nextafter(0.5,INFINITY),column) == 0.0);
+#ifndef EQC_LEGACY_XRAY_CUTOFF
+    const double step = 1.0e-6;
+    const double atStart = SoftXrayIonizationRateHI(0.1,column);
+    const double belowStart = SoftXrayIonizationRateHI(0.1-step,column);
+    const double aboveStart = SoftXrayIonizationRateHI(0.1+step,column);
+    const double leftSlope = (atStart-belowStart)/step;
+    const double rightSlope = (aboveStart-atStart)/step;
+    assert(fabs(rightSlope-leftSlope) <= 1.0e-3*fabs(leftSlope));
+
+    double previous = atStart;
+    for(int i=1; i<=32; i++){
+        const double xe = 0.1 + (0.5-0.1)*i/32;
+        const double rate = SoftXrayIonizationRateHI(xe,column);
+        assert(rate < previous && rate >= 0.0);
+        previous = rate;
+    }
+
+    /* The last two samples approach zero quadratically at the upper join. */
+    const double nearEnd = SoftXrayIonizationRateHI(0.5-step,column);
+    const double nearerEnd = SoftXrayIonizationRateHI(0.5-0.5*step,column);
+    assert(nearerEnd > 0.0 && fabs(nearEnd/nearerEnd-4.0) < 1.0e-3);
+#endif
+}
+
+static void CheckSoftXrayChargeTransition(void)
+{
+    const StructEQCData initial = GasState(0.001,13242.50,1.0e18);
+    StructEQCData state = initial;
+#ifdef EQC_LEGACY_XRAY_CUTOFF
+    CheckRejectedRateUpdates(&state,EQC_NO_EQUILIBRIUM);
+#else
+    assert(EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.0e-8) == EQC_SUCCESS);
+    assert(state.nel > 0.1*state.n[ipHYDROGEN] && state.nel < 0.5*state.n[ipHYDROGEN]);
+    assert(fabs(EQCLibGetElectronNumberDensity(&state)-state.nel) <= 1.0e-8*state.nel);
+    state = initial;
+    double rate;
+    assert(EQCLibTryNetCoolingRateChemcalEquilibrium(&state,&rate) == EQC_SUCCESS);
+    assert(isfinite(rate));
+    state = initial;
+    assert(EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(&state,1.0e-8,&rate) == EQC_SUCCESS);
+    assert(isfinite(rate));
+#endif
 }
 
 static void CheckZeroElectronSeed(void)
@@ -1036,6 +1116,8 @@ int main(int argc, char **argv)
     CheckHeIIIRecombinationCooling();
     CheckIonizedGasEquationOfState();
     CheckFailureStatus();
+    CheckSoftXrayRates();
+    CheckSoftXrayChargeTransition();
     CheckZeroElectronSeed();
     CheckLowIonizationXraySearch();
     CheckAtomicThermalNumerics();

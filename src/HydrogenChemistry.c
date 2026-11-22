@@ -6,6 +6,7 @@
 #include "ChemicalEquilibriumCooling.h"
 #include "CoolingHeatingRates.h"
 #include "EquilibriumAbundance.h"
+#include "PhotoelectronDeposition.h"
 
 enum {
     Ionized, LogEnergy, FirstLadder,
@@ -14,11 +15,13 @@ enum {
 
 typedef struct {
     StructEQCData state;
+    const CEQUVBRates *uvb;
     CEQRateCoefficients coefficients;
     double initialEnergy, siliconElectrons;
-    int variables;
+    int variables, ladderStart;
     bool evolveEnergy;
     bool chargeFree;
+    bool hasFastPhotoelectrons;
     int molecularOffset; /* H2, when active, follows the ion ladders. */
     int oxygenOffset, heliumOffset, carbonOffset; /* Zero when the element is absent. */
     bool hasLastDerivative;
@@ -188,16 +191,20 @@ static int ChemistryDerivative(double time, const double y[], double derivative[
                                    molecularOffset ? y[molecularOffset] : 0.0};
     double hydrogen[] = {trialHydrogen[0],trialHydrogen[1]};
     BoundFractions(hydrogen);
-    for(int i=FirstLadder;i<ladderEnd;i+=2) BoundFractions(fractions+i);
-    if(problem->evolveEnergy){
+    for(int i=problem->ladderStart;i<ladderEnd;i+=2) BoundFractions(fractions+i);
+    if(problem->evolveEnergy || problem->hasFastPhotoelectrons)
         SetAbundances(state,hydrogen,fractions,problem);
+    CEQPhotoelectronDeposition deposition = {0};
+    if(problem->evolveEnergy || problem->hasFastPhotoelectrons)
+        deposition = CEQDepositUVBPhotoelectrons(state,problem->uvb);
+    if(problem->evolveEnergy){
         /* The energy variable is ln(U/U_initial), so all thermal stages have
            positive energy and the tolerance does not depend on its CGS scale. */
         if(!SetThermalState(state,problem->initialEnergy*exp(y[LogEnergy]))) return GSL_FAILURE;
         CEQTemperaturePoint temperaturePoint;
         const CEQTemperaturePoint *point = CEQLocateLogTemperature(state->logT,&temperaturePoint)
                                          ? &temperaturePoint : NULL;
-        if(CEQCalculateNonEquilibriumEnergyRates(state,point) != EQC_SUCCESS) return GSL_FAILURE;
+        if(CEQCalculateNonEquilibriumEnergyRates(state,point,deposition.heating) != EQC_SUCCESS) return GSL_FAILURE;
         derivative[LogEnergy] = (state->H_tot-state->L_tot)/state->Rho/state->U;
         if(!isfinite(derivative[LogEnergy])) return GSL_FAILURE;
         CEQRefreshNonEquilibriumRateCoefficients(state,&problem->coefficients,point);
@@ -218,6 +225,8 @@ static int ChemistryDerivative(double time, const double y[], double derivative[
         if(!ValidRate(rates.ionization) || !ValidRate(rates.recombination)) return invalidRates;
         /* Signed stage populations restore the boundary after an overshoot. */
         derivative[Ionized] = rates.ionization*neutralStage - rates.recombination*trialHydrogen[0];
+        /* The secondary-electron budget uses the physical stage populations. */
+        if(deposition.secondaryHI != 0.0) derivative[Ionized] += deposition.secondaryHI/nH;
     }
 
     if(molecularOffset){
@@ -232,6 +241,8 @@ static int ChemistryDerivative(double time, const double y[], double derivative[
     if(oxygen && !OxygenDerivative(problem,y,neutralStage,derivative)) return GSL_FAILURE;
     if(helium && !LadderDerivative(CEQHeliumIonizationRates(state,coefficients),y+helium,derivative+helium))
         return GSL_FAILURE;
+    if(helium && deposition.secondaryHeI != 0.0)
+        derivative[helium] += deposition.secondaryHeI/state->n[ipHELIUM];
     if(carbon && !LadderDerivative(CEQCarbonIonizationRates(state,coefficients),y+carbon,derivative+carbon))
         return GSL_FAILURE;
     for(int i=0;i<problem->variables;i++)
@@ -260,7 +271,7 @@ static int ChemistryJacobian(double time, const double y[], double matrix[], dou
         /* Approach the full-population boundary from the interior. */
         bool interior = false;
         if(!energy && y[j] > step){
-            const double *pair = j == Ionized || j == molecular ? hydrogen : y+j-(j-FirstLadder)%2;
+            const double *pair = j == Ionized || j == molecular ? hydrogen : y+j-(j-problem->ladderStart)%2;
             interior = NeutralFraction(pair) < step;
         }
         nearby[j] += interior ? -step : step;
@@ -287,7 +298,9 @@ static bool InitializeLadder(double total, double singly, double doubly, double 
     return FractionsWithinBounds(fractions,tolerance);
 }
 
-static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool evolveEnergy)
+typedef enum { FixedHydrogen, FixedHydrogenHelium, FixedHydrogenHeliumOxygen } FixedTemperatureNetwork;
+
+static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool evolveEnergy, FixedTemperatureNetwork network)
 {
     if(!state || !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0 ||
        !isfinite(state->dt) || state->dt < 0.0)
@@ -304,10 +317,13 @@ static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool
         if(!isfinite(conditions[i]) || conditions[i] < 0.0) return EQC_INVALID_INPUT;
     for(int i=ipHYDROGEN+1;i<NumberChemicalElement;i++){
         if(evolveEnergy && (i == ipOXYGEN || i == ipHELIUM || i == ipCARBON || i == ipSILICON)) continue;
+        if((i == ipHELIUM && network != FixedHydrogen) ||
+           (i == ipOXYGEN && network == FixedHydrogenHeliumOxygen)) continue;
         if(state->n[i] != 0.0 || state->natom[i] != 0.0 || state->nion[i] != 0.0)
             return EQC_INVALID_INPUT;
     }
-    if((!evolveEnergy && (state->nHeIII != 0.0 || state->nOIII != 0.0 ||
+    if((!evolveEnergy && ((network == FixedHydrogen && state->nHeIII != 0.0) ||
+                         (network != FixedHydrogenHeliumOxygen && state->nOIII != 0.0) ||
                          state->nCIII != 0.0 || state->nSiIII != 0.0)) ||
        state->nmol[ipCO] != 0.0) return EQC_INVALID_INPUT;
 
@@ -323,9 +339,17 @@ static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool
     double silicon[2] = {0};
     if(!InitializeLadder(nSi,nSiII,nSiIII,silicon,roundoff)) return EQC_INVALID_INPUT;
     const double siliconElectrons = nSiII+2.0*nSiIII;
+    CEQUVBRates uvb;
+    const EQCLibStatus uvbStatus = CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb);
+    if(uvbStatus != EQC_SUCCESS) return uvbStatus;
+    const bool hasUVBIonization = uvb.ionization[CEQ_UVB_HI] > 0.0 ||
+                                 uvb.ionization[CEQ_UVB_HEI] > 0.0 ||
+                                 uvb.ionization[CEQ_UVB_HEII] > 0.0 ||
+                                 (nO > 0.0 && uvb.metalIonization[CEQ_UVB_OI] > 0.0) ||
+                                 (nC > 0.0 && uvb.metalIonization[CEQ_UVB_CI] > 0.0);
     /* Without an ion source, zero charge is an invariant of this network.
        Keep finite-difference perturbations from seeding electron reactions. */
-    const bool chargeFree = state->NLyn == 0.0 && state->X0 == 0.0 &&
+    const bool chargeFree = !hasUVBIonization && uvb.metalPowerHigh == 0.0 && state->NLyn == 0.0 && state->X0 == 0.0 &&
                             (nC == 0.0 || state->G0 == 0.0) && nHII == 0.0 &&
                             state->nion[ipOXYGEN] == 0.0 && state->nOIII == 0.0 &&
                             state->nion[ipHELIUM] == 0.0 && state->nHeIII == 0.0 &&
@@ -333,7 +357,8 @@ static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool
                             siliconElectrons == 0.0;
     double hydrogen[] = {nHII/nH,2.0*(nH2/nH)};
     double y[MaxVariables] = {0};
-    int variables = evolveEnergy ? FirstLadder : 1;
+    const int ladderStart = evolveEnergy ? FirstLadder : 1;
+    int variables = ladderStart;
     const int oxygen = !chargeFree && nO > 0.0 ? variables : 0;
     if(oxygen) variables += 2;
     const int helium = !chargeFree && nHe > 0.0 ? variables : 0;
@@ -348,7 +373,7 @@ static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool
     if(state->dt == 0.0) return EQC_SUCCESS;
     BoundFractions(hydrogen);
     y[Ionized] = hydrogen[0];
-    for(int i=FirstLadder;i<variables;i+=2) BoundFractions(y+i);
+    for(int i=ladderStart;i<variables;i+=2) BoundFractions(y+i);
     const int ladderEnd = variables;
     const int molecular = EQCLibRunParameters.UseH2Formation ? variables++ : 0;
     if(molecular) y[molecular] = hydrogen[1];
@@ -356,11 +381,13 @@ static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool
     StructEQCData updated = *state;
     /* Silicon is a fixed trace species. Only its neutral density is derived. */
     if(evolveEnergy) updated.natom[ipSILICON] = nSi*fmax(0.0,NeutralFraction(silicon));
-    ThermochemistryProblem problem = {.state = updated, .initialEnergy = state->U, .siliconElectrons = siliconElectrons,
-                                     .variables = variables,
+    ThermochemistryProblem problem = {.state = updated, .uvb = &uvb,
+                                     .initialEnergy = state->U, .siliconElectrons = siliconElectrons,
+                                     .variables = variables, .ladderStart = ladderStart,
                                      .evolveEnergy = evolveEnergy, .chargeFree = chargeFree, .molecularOffset = molecular,
+                                     .hasFastPhotoelectrons = CEQHasUVBHighPower(&uvb,nHe),
                                      .oxygenOffset = oxygen, .heliumOffset = helium, .carbonOffset = carbon};
-    CEQInitializeNonEquilibriumRateCoefficients(state,&problem.coefficients);
+    CEQInitializeNonEquilibriumRateCoefficients(state,&problem.coefficients,&uvb);
     if(!evolveEnergy){
         CEQTemperaturePoint temperaturePoint;
         const CEQTemperaturePoint *point = CEQLocateTemperature(state->T,&temperaturePoint) ? &temperaturePoint : NULL;
@@ -390,23 +417,34 @@ static EQCLibStatus AdvanceChemistry(StructEQCData *state, double accuracy, bool
     const double boundaryTolerance = roundoff+accuracy;
     if(!FractionsWithinBounds(hydrogen,boundaryTolerance)) return EQC_NO_CONVERGENCE;
     BoundFractions(hydrogen);
-    for(int i=FirstLadder;i<ladderEnd;i+=2){
+    for(int i=ladderStart;i<ladderEnd;i+=2){
         if(!FractionsWithinBounds(y+i,boundaryTolerance)) return EQC_NO_CONVERGENCE;
         BoundFractions(y+i);
     }
     SetAbundances(&updated,hydrogen,y,&problem);
     if(evolveEnergy && (!SetThermalState(&updated,state->U*exp(y[LogEnergy])) ||
-                       CEQCalculateNonEquilibriumCoolingHeatingRates(&updated) != EQC_SUCCESS)) return EQC_NO_CONVERGENCE;
+                       CEQCalculateNonEquilibriumCoolingHeatingRatesWithUVB(&updated,&uvb) != EQC_SUCCESS))
+        return EQC_NO_CONVERGENCE;
     *state = updated;
     return EQC_SUCCESS;
 }
 
 EQCLibStatus EQCLibTryAdvanceHydrogenChemistry(StructEQCData *state, double accuracy)
 {
-    return AdvanceChemistry(state,accuracy,false);
+    return AdvanceChemistry(state,accuracy,false,FixedHydrogen);
 }
 
 EQCLibStatus EQCLibTryAdvanceHydrogenThermochemistry(StructEQCData *state, double accuracy)
 {
-    return AdvanceChemistry(state,accuracy,true);
+    return AdvanceChemistry(state,accuracy,true,FixedHydrogen);
+}
+
+EQCLibStatus CEQAdvanceFixedTemperatureHydrogenHeliumChemistry(StructEQCData *state, double accuracy)
+{
+    return AdvanceChemistry(state,accuracy,false,FixedHydrogenHelium);
+}
+
+EQCLibStatus CEQAdvanceFixedTemperatureHHeOChemistry(StructEQCData *state, double accuracy)
+{
+    return AdvanceChemistry(state,accuracy,false,FixedHydrogenHeliumOxygen);
 }

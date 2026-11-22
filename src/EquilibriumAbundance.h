@@ -1,11 +1,24 @@
 #include "EQCDataStructure.h"
 #include "MoleculeChemistry.h"
 #include "TemperatureTable.h"
+#include "UVBackground.h"
 
 int CEQSolveIonLadder(double density, double ionization0, double recombination1,
                       double ionization1, double recombination2,
                       double *neutral, double *ion, double *doubleIon);
 int CEQSolveHydrogenEquilibrium(StructEQCData *state, double accuracy);
+int CEQChemicalReactionEquilibriumWithUVB(StructEQCData *state, double accuracy, const CEQUVBRates *uvb);
+typedef struct CEQUVBEquilibriumStats {
+    size_t chargeTrials, iterations, temperatureTrials; /* Includes failed attempts. */
+} CEQUVBEquilibriumStats;
+typedef struct CEQSecondaryIonizationSeed {
+    double hydrogen, helium;
+} CEQSecondaryIonizationSeed;
+/* Optional per-caller counters. Initialize the counters to zero to measure a new run. */
+int CEQChemicalReactionEquilibriumWithUVBStats(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
+                                                CEQUVBEquilibriumStats *stats);
+int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
+                                               CEQUVBEquilibriumStats *stats, CEQSecondaryIonizationSeed *seed);
 
 /* Ladder coefficients that do not depend on n_e: photoionization rates [1/s],
    electron-impact ionization and recombination coefficients [cm^3/s]. */
@@ -22,10 +35,10 @@ typedef struct {
 } CEQMolecularHydrogenCoefficients;
 
 typedef struct {
-    double formationPerH2, photoCI, photoCO;
+    double formationPerH2, photoCI, photoCII, photoCO;
 } CEQMolecularCarbonCoefficients;
 
-/* Coefficients fixed by T, NLyn, G0, Nt and Zd. A fixed-temperature equilibrium
+/* Coefficients fixed by T, NLyn, G0, Nt, Zd and the UVB rates. A fixed-temperature equilibrium
    evaluates them once and reuses them for every trial electron density. */
 typedef struct {
     CEQLadderCoefficients hydrogen, helium, carbon, oxygen, silicon;
@@ -34,18 +47,21 @@ typedef struct {
     CEQMolecularHydrogenCoefficients molecularHydrogen;
     CEQMolecularCarbonCoefficients molecularCarbon;
 } CEQRateCoefficients;
-void CEQPrepareRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients);
+void CEQPrepareRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients, const CEQUVBRates *uvb);
 /* During a non-equilibrium update the radiation, columns and elemental totals
    are fixed. Initialize their coefficients once, then refresh at each stage T. */
 void CEQInitializeChemistryTemperatureTables(void);
-void CEQInitializeNonEquilibriumRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients);
+void CEQInitializeNonEquilibriumRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients,
+                                                 const CEQUVBRates *uvb);
 void CEQRefreshNonEquilibriumRateCoefficients(const StructEQCData *state, CEQRateCoefficients *coefficients,
                                               const CEQTemperaturePoint *point);
 H2CollisionalDissociationCoefficients CEQH2DissociationCoefficientsWithTemperatureTable(
         double T, const CEQTemperaturePoint *point);
 
 /* H ionization rate per H atom and recombination rate per H+ [1/s],
-   without charge transfer. They depend on the state's n_e, not on its ions. */
+   without charge transfer. The standalone evaluator includes any UVB
+   secondaries from the supplied composition. The coefficients evaluator
+   uses only the radiation rates in the coefficients. */
 typedef struct {
     double ionization, recombination;
 } CEQHydrogenRates;
@@ -61,6 +77,23 @@ int CEQSolveHydrogenEquilibriumWithRates(StructEQCData *state, const CEQHydrogen
 typedef struct {
     double ionization0, recombination1, ionization1, recombination2;
 } CEQIonLadderRates;
+/* Terms unchanged by the secondary photoionization iteration at fixed n_e. */
+typedef struct {
+    double collision0, external0, recombination1, ionization1, recombination2;
+} CEQFixedChargeLadder;
+CEQFixedChargeLadder CEQHydrogenLadderAtFixedCharge(const StructEQCData *state,
+                                                   const CEQRateCoefficients *coefficients);
+CEQFixedChargeLadder CEQHeliumLadderAtFixedCharge(const StructEQCData *state,
+                                                 const CEQRateCoefficients *coefficients);
+static inline CEQIonLadderRates CEQEvaluateFixedChargeLadder(CEQFixedChargeLadder ladder, double photoionization)
+{
+    return (CEQIonLadderRates){
+        .ionization0 = photoionization + ladder.collision0 + ladder.external0,
+        .recombination1 = ladder.recombination1,
+        .ionization1 = ladder.ionization1,
+        .recombination2 = ladder.recombination2
+    };
+}
 CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state,
                                          const CEQRateCoefficients *coefficients);
 CEQIonLadderRates CEQCarbonIonizationRates(const StructEQCData *state,
@@ -98,6 +131,8 @@ int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double 
                                const CEQCarbonShieldingInterval *intervals, int count,
                                const CEQRateCoefficients *coefficients, bool checkExistingCO);
 
+/* Legacy one-species updates with the other species held at the input state.
+   Use the coupled equilibrium solver for consistent H and He abundances. */
 void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP);
 void EquilibriumHeliumFractionalAbundance(StructEQCData *PhydroPP);
 void EquilibriumCarbonFractionalAbundance(StructEQCData *PhydroPP);

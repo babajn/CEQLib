@@ -3,6 +3,16 @@
 void InitializePhotochemistory(int Check);
 EQCLibStatus CEQInitializePhotochemistry(int check, const char *pegaseDirectory);
 
+double PhotoionizationCrossSectionHI(double energyEV);
+double PhotoionizationCrossSectionHeI(double energyEV);
+double PhotoionizationCrossSectionHeII(double energyEV);
+double PhotoionizationCrossSectionCI(double energyEV);
+double PhotoionizationCrossSectionCII(double energyEV);
+double PhotoionizationCrossSectionOI(double energyEV);
+double PhotoionizationCrossSectionOII(double energyEV);
+double PhotoionizationCrossSectionSiI(double energyEV);
+double PhotoionizationCrossSectionSiII(double energyEV);
+
 double HIPhotoIonizationRate(double NLyn);
 double HeIPhotoIonizationRate(double NLyn);
 double HeIIPhotoIonizationRate(double NLyn);

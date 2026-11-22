@@ -9,6 +9,7 @@
 #include "ChemicalElements.h"
 #include "EquilibriumAbundance.h"
 #include "CollisionalGasPhaseChemistry.h"
+#include "PhotoelectronDeposition.h"
 #include "PhotochemicalGasPhaseChemistry.h"
 #include "GrainSurfaceChemistry.h"
 #include "MoleculeChemistry.h"
@@ -510,13 +511,13 @@ static int SolveMolecularHydrogen(const StructEQCData *state, const CEQMolecular
     return EQC_SUCCESS;
 }
 
-static CEQLadderCoefficients CarbonPhotoCoefficients(const StructEQCData *s){
+static CEQLadderCoefficients CarbonPhotoCoefficients(const StructEQCData *s, const CEQUVBRates *uvb){
     /* Without H II region mode, NLyn is ignored and C keeps its FUV photoionization. */
     const double NLyn = EQCLibRunParameters.UseHIIRegion ? s->NLyn : 0.0;
     return (CEQLadderCoefficients){
-        .photo0 = NLyn == 0.0 ? CIFUVPhotoionizationRate(s->G0,VisualExtinction(s->Nt,s->Zd))
-                              : CIPhotoionizationRate(NLyn),
-        .photo1 = CIIPhotoionizationRate(NLyn),
+        .photo0 = (NLyn == 0.0 ? CIFUVPhotoionizationRate(s->G0,VisualExtinction(s->Nt,s->Zd))
+                               : CIPhotoionizationRate(NLyn)) + uvb->metalIonization[CEQ_UVB_CI],
+        .photo1 = CIIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_CII],
     };
 }
 
@@ -527,8 +528,8 @@ static void RefreshCarbonCoefficients(double T, CEQLadderCoefficients *carbon, c
     carbon->recombination2 = ChemistryCoefficient(TemperatureRecombineCIII,T,point);
 }
 
-static CEQLadderCoefficients CarbonCoefficients(const StructEQCData *s){
-    CEQLadderCoefficients carbon = CarbonPhotoCoefficients(s);
+static CEQLadderCoefficients CarbonCoefficients(const StructEQCData *s, const CEQUVBRates *uvb){
+    CEQLadderCoefficients carbon = CarbonPhotoCoefficients(s,uvb);
     RefreshCarbonCoefficients(s->T,&carbon,NULL);
     return carbon;
 }
@@ -538,32 +539,34 @@ static double COFormationCoefficient(double T){
     return (4.e-16*pow(T/300.0,-0.2))*EQCLibRunParameters.CpForCO;
 }
 
-static CEQMolecularCarbonCoefficients MolecularCarbonCoefficients(const StructEQCData *s){
+static CEQMolecularCarbonCoefficients MolecularCarbonCoefficients(const StructEQCData *s, const CEQUVBRates *uvb){
     return (CEQMolecularCarbonCoefficients){
         .formationPerH2 = COFormationCoefficient(s->T),
-        .photoCI = 3.1e-10*s->G0*DustShieldingFactor(s->Nt,s->Zd,3.0),
+        .photoCI = 3.1e-10*s->G0*DustShieldingFactor(s->Nt,s->Zd,3.0) + uvb->metalIonization[CEQ_UVB_CI],
+        .photoCII = uvb->metalIonization[CEQ_UVB_CII],
         .photoCO = COPhotoDissociationRate(s->G0,s->Nt,s->Zd),
     };
 }
 
-static void InitializeRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c, bool equilibrium){
+static void InitializeRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c, bool equilibrium,
+                                        const CEQUVBRates *uvb){
     const double NLyn = s->NLyn;
     *c = (CEQRateCoefficients){
-        .hydrogen.photo0 = HIPhotoIonizationRate(NLyn),
+        .hydrogen.photo0 = HIPhotoIonizationRate(NLyn) + uvb->ionization[CEQ_UVB_HI],
         .hasMolecularHydrogen = EQCLibRunParameters.UseH2Formation,
     };
     if(equilibrium || s->n[ipHELIUM] > 0.0){
-        c->helium.photo0 = HeIPhotoIonizationRate(NLyn);
-        c->helium.photo1 = HeIIPhotoIonizationRate(NLyn);
+        c->helium.photo0 = HeIPhotoIonizationRate(NLyn) + uvb->ionization[CEQ_UVB_HEI];
+        c->helium.photo1 = HeIIPhotoIonizationRate(NLyn) + uvb->ionization[CEQ_UVB_HEII];
     }
-    if(equilibrium || s->n[ipCARBON] > 0.0) c->carbon = CarbonPhotoCoefficients(s);
+    if(equilibrium || s->n[ipCARBON] > 0.0) c->carbon = CarbonPhotoCoefficients(s,uvb);
     if(equilibrium || s->n[ipOXYGEN] > 0.0){
-        c->oxygen.photo0 = OIPhotoionizationRate(NLyn);
-        c->oxygen.photo1 = OIIPhotoionizationRate(NLyn);
+        c->oxygen.photo0 = OIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_OI];
+        c->oxygen.photo1 = OIIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_OII];
     }
     if(equilibrium){
-        c->silicon.photo0 = SiIPhotoionizationRate(NLyn);
-        c->silicon.photo1 = SiIIPhotoionizationRate(NLyn);
+        c->silicon.photo0 = SiIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_SI_I];
+        c->silicon.photo1 = SiIIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_SI_II];
     }
     if(c->hasMolecularHydrogen) c->molecularHydrogen.dustShielding = DustShieldingFactorFUV(s->Nt,s->Zd);
 }
@@ -609,15 +612,16 @@ static void RefreshRateCoefficients(const StructEQCData *s, CEQRateCoefficients 
     if(c->hasMolecularHydrogen) RefreshMolecularHydrogenCoefficients(s,&c->molecularHydrogen,point);
 }
 
-void CEQPrepareRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c){
-    InitializeRateCoefficients(s,c,true);
+void CEQPrepareRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c, const CEQUVBRates *uvb){
+    InitializeRateCoefficients(s,c,true,uvb);
     RefreshRateCoefficients(s,c,true,NULL);
     if(EQCLibRunParameters.UseCOFormation && s->T <= 1.e4 && s->n[ipCARBON] > 0.0)
-        c->molecularCarbon = MolecularCarbonCoefficients(s);
+        c->molecularCarbon = MolecularCarbonCoefficients(s,uvb);
 }
 
-void CEQInitializeNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c){
-    InitializeRateCoefficients(s,c,false);
+void CEQInitializeNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c,
+                                                 const CEQUVBRates *uvb){
+    InitializeRateCoefficients(s,c,false,uvb);
 }
 
 void CEQRefreshNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoefficients *c,
@@ -625,30 +629,42 @@ void CEQRefreshNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoe
     RefreshRateCoefficients(s,c,false,point);
 }
 
-CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData *s,
-                                                            const CEQRateCoefficients *c){
+CEQFixedChargeLadder CEQHydrogenLadderAtFixedCharge(const StructEQCData *s, const CEQRateCoefficients *c){
     const double xe = s->nel/s->n[ipHYDROGEN];
-    return (CEQHydrogenRates){
-        .ionization = c->hydrogen.photo0 + s->nel*c->hydrogen.collision0
-                    + s->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,s->Nt)),
-        .recombination = s->nel*c->hydrogen.recombination1
-                       + s->n[ipHYDROGEN]*HIIRecombinationRateOnDust(s->T,s->G0,s->nel,s->Zd),
+    return (CEQFixedChargeLadder){
+        .collision0 = s->nel*c->hydrogen.collision0,
+        .external0 = s->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,s->Nt)),
+        .recombination1 = s->nel*c->hydrogen.recombination1
+                        + s->n[ipHYDROGEN]*HIIRecombinationRateOnDust(s->T,s->G0,s->nel,s->Zd),
     };
 }
 
+CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData *s,
+                                                            const CEQRateCoefficients *c){
+    const CEQIonLadderRates rates = CEQEvaluateFixedChargeLadder(CEQHydrogenLadderAtFixedCharge(s,c),
+                                                                c->hydrogen.photo0);
+    return (CEQHydrogenRates){.ionization = rates.ionization0, .recombination = rates.recombination1};
+}
+
 CEQHydrogenRates CEQHydrogenIonizationRates(const StructEQCData *s){
-    CEQRateCoefficients c = {.hydrogen.photo0 = HIPhotoIonizationRate(s->NLyn)};
+    CEQUVBRates uvb;
+    if(CEQEvaluateUVBackgroundWithMetallicity(s->NHIuvb,s->Z,&uvb) != EQC_SUCCESS)
+        return (CEQHydrogenRates){.ionization = NAN, .recombination = NAN};
+    CEQRateCoefficients c = {.hydrogen.photo0 = HIPhotoIonizationRate(s->NLyn) + uvb.ionization[CEQ_UVB_HI]};
+    const double power = CEQHighPhotoelectronPower(s,&uvb);
+    if(power > 0.0)
+        c.hydrogen.photo0 += CEQDepositPhotoelectrons(s,0.0,power).ionizationHI;
     RefreshHydrogenCoefficients(s->T,&c.hydrogen,NULL);
     return CEQHydrogenIonizationRatesWithCoefficients(s,&c);
 }
 
-CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state, const CEQRateCoefficients *c){
+CEQFixedChargeLadder CEQHeliumLadderAtFixedCharge(const StructEQCData *state, const CEQRateCoefficients *c){
     const double ne = state->nel;
     const double nH = state->n[ipHYDROGEN];
     const double xe = ne/nH;
-    return (CEQIonLadderRates){
-        .ionization0 = c->helium.photo0 + ne*c->helium.collision0
-                     + state->X0*(CosmicRayIonizationRateHeI(xe) + SoftXrayIonizationRateHeI(xe,state->Nt)),
+    return (CEQFixedChargeLadder){
+        .collision0 = ne*c->helium.collision0,
+        .external0 = state->X0*(CosmicRayIonizationRateHeI(xe) + SoftXrayIonizationRateHeI(xe,state->Nt)),
         .recombination1 = ne*c->helium.recombination1
                         + nH*HeIIRecombinationRateOnDust(state->T,state->G0,ne,state->Zd),
         .ionization1 = c->helium.photo1 + ne*c->helium.collision1,
@@ -656,8 +672,19 @@ CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state, const CEQ
     };
 }
 
+CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state, const CEQRateCoefficients *c){
+    return CEQEvaluateFixedChargeLadder(CEQHeliumLadderAtFixedCharge(state,c),c->helium.photo0);
+}
+
 CEQIonLadderRates CEQCarbonIonizationRates(const StructEQCData *state, const CEQRateCoefficients *coefficients){
-    const CEQLadderCoefficients c = coefficients != NULL ? coefficients->carbon : CarbonCoefficients(state);
+    CEQLadderCoefficients c;
+    if(coefficients != NULL) c = coefficients->carbon;
+    else{
+        CEQUVBRates uvb;
+        if(CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb) != EQC_SUCCESS)
+            return (CEQIonLadderRates){NAN,NAN,NAN,NAN};
+        c = CarbonCoefficients(state,&uvb);
+    }
     const double ne = state->nel;
     const double nH = state->n[ipHYDROGEN];
     const double xe = ne/nH;
@@ -839,6 +866,8 @@ int CEQSolveHydrogenEquilibriumWithRates(StructEQCData *state, const CEQHydrogen
 }
 
 void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP){
+    CEQUVBRates uvb;
+    if(CEQEvaluateUVBackgroundWithMetallicity(PhydroPP->NHIuvb,PhydroPP->Z,&uvb) != EQC_SUCCESS) return;
 
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
@@ -856,7 +885,10 @@ void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP){
     //double b_turb = TURBULENCE_VELOCITY;    // km/s
     double b5     = H2DopplerWidth(T);
 
-    double dnHI_phot  = HIPhotoIonizationRate(NLyn);
+    double dnHI_phot  = HIPhotoIonizationRate(NLyn) + uvb.ionization[CEQ_UVB_HI];
+    const double power = CEQHighPhotoelectronPower(PhydroPP,&uvb);
+    if(power > 0.0)
+        dnHI_phot += CEQDepositPhotoelectrons(PhydroPP,0.0,power).ionizationHI;
     double dnHI_coli  = ne*HICollisionalIonizationRate(T);
     double dnHI_cr    = X0*CosmicRayIonizationRateHI(xe);
     double dnHI_xr    = X0*SoftXrayIonizationRateHI(xe,Ntot);
@@ -913,6 +945,8 @@ void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP){
 //}
 
 void EquilibriumHeliumFractionalAbundance(StructEQCData *PhydroPP){
+    CEQUVBRates uvb;
+    if(CEQEvaluateUVBackgroundWithMetallicity(PhydroPP->NHIuvb,PhydroPP->Z,&uvb) != EQC_SUCCESS) return;
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
     double nHe    = PhydroPP->n[ipHELIUM];
@@ -924,14 +958,17 @@ void EquilibriumHeliumFractionalAbundance(StructEQCData *PhydroPP){
     double Zd     = PhydroPP->Zd;
     double xe     = ne/nH;
     
-    double dnHeI_phti   = HeIPhotoIonizationRate(NLyn);
+    double dnHeI_phti   = HeIPhotoIonizationRate(NLyn) + uvb.ionization[CEQ_UVB_HEI];
+    const double power = CEQHighPhotoelectronPower(PhydroPP,&uvb);
+    if(power > 0.0)
+        dnHeI_phti += CEQDepositPhotoelectrons(PhydroPP,0.0,power).ionizationHeI;
     double dnHeI_coli   = ne*HeICollisionalIonizationRate(T);
     double dnHeI_cr     = X0*CosmicRayIonizationRateHeI(xe);
     double dnHeI_xr     = X0*SoftXrayIonizationRateHeI(xe,Ntot);
     double dnHeII_rec   = ne*(HeIIRecombinationRate(T) + HeIIDielectronicRecombinationRate(T));
     double dnHeII_dust  = nH*HeIIRecombinationRateOnDust(T,G0,ne,Zd); 
 
-    double dnHeII_phti  = HeIIPhotoIonizationRate(NLyn);
+    double dnHeII_phti  = HeIIPhotoIonizationRate(NLyn) + uvb.ionization[CEQ_UVB_HEII];
     double dnHeII_coli  = ne*HeIICollisionalIonizationRate(T);
     double dnHeII_cr    = 0.e0; // OK
     double dnHeII_xr    = 0.e0; // 0K
@@ -987,6 +1024,8 @@ void EquilibriumOxygenFractionalAbundanceChargeTransfer(StructEQCData *PhydroPP)
 }
 
 void EquilibriumOxygenFractionalAbundance(StructEQCData *PhydroPP){
+    CEQUVBRates uvb;
+    if(CEQEvaluateUVBackgroundWithMetallicity(PhydroPP->NHIuvb,PhydroPP->Z,&uvb) != EQC_SUCCESS) return;
 
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
@@ -999,7 +1038,7 @@ void EquilibriumOxygenFractionalAbundance(StructEQCData *PhydroPP){
     double Zd     = PhydroPP->Zd;
     double xe     = ne/nH;
     
-    double dnOI_phti   = OIPhotoionizationRate(NLyn);
+    double dnOI_phti   = OIPhotoionizationRate(NLyn) + uvb.metalIonization[CEQ_UVB_OI];
     double dnOI_coli   = ne*OICollisionalIonizationRate(T);
     double dnOI_cr     = X0*CosmicRayIonizationRateOI(xe);
     double dnOI_xr     = 0.e0;
@@ -1008,7 +1047,7 @@ void EquilibriumOxygenFractionalAbundance(StructEQCData *PhydroPP){
     double dnOI_chtr   = 0.e0; //nHII*OIChargeTransferRateToHII(T);
     double dnOII_chtr  = 0.e0; //nHI *OIIChargeTransferRateToHI(T);
 
-    double dnOII_phti  = OIIPhotoionizationRate(NLyn);
+    double dnOII_phti  = OIIPhotoionizationRate(NLyn) + uvb.metalIonization[CEQ_UVB_OII];
     double dnOII_coli  = ne*OIICollisionalIonizationRate(T);
     double dnOII_cr    = 0.e0;
     double dnOII_xr    = 0.e0;
@@ -1247,7 +1286,17 @@ int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double 
         state->natom[ipCARBON] = state->nion[ipCARBON] = state->nCIII = state->nmol[ipCO] = 0.0;
         return EQC_SUCCESS;
     }
-    if(!EQCLibRunParameters.UseCOFormation || state->T > 1.e4){
+    const bool formCO = EQCLibRunParameters.UseCOFormation && state->T <= 1.e4;
+    CEQRateCoefficients local;
+    if(coefficients == NULL){
+        CEQUVBRates uvb;
+        const EQCLibStatus status = CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb);
+        if(status != EQC_SUCCESS) return status;
+        local.carbon = CarbonCoefficients(state,&uvb);
+        if(formCO) local.molecularCarbon = MolecularCarbonCoefficients(state,&uvb);
+        coefficients = &local;
+    }
+    if(!formCO){
         const int status = SolveAtomicCarbon(state,nC,coefficients);
         if(status == EQC_SUCCESS) state->nmol[ipCO] = 0.0;
         return status;
@@ -1255,8 +1304,7 @@ int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double 
 
     const double nH = state->n[ipHYDROGEN];
     const double hydroRatio = state->nmol[ipH2]/nH;
-    const CEQMolecularCarbonCoefficients rates = coefficients != NULL ?
-        coefficients->molecularCarbon : MolecularCarbonCoefficients(state);
+    const CEQMolecularCarbonCoefficients rates = coefficients->molecularCarbon;
     const double formation = rates.formationPerH2*state->nmol[ipH2];
     const double photoCI = rates.photoCI, photoCO = rates.photoCO;
     if(!isfinite(formation) || formation < 0.0 || !isfinite(photoCI) || photoCI < 0.0 ||
@@ -1265,10 +1313,20 @@ int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double 
         return EQC_INVALID_INPUT;
     }
     const double rateScale = fmax(formation,photoCI);
+    const bool stellarIonization = EQCLibRunParameters.UseHIIRegion && state->NLyn > 0.0;
     double carbonIon = 0.0;
     double neutralCarbon = 1.0;
+    double doubleCarbonIon = 0.0;
     double effectiveFormation = 0.0;
-    if(rateScale > 0.0){
+    if(!stellarIonization && rates.photoCII > 0.0){
+        /* Keep the molecular C I/C II balance and include the drain from
+           C II to C III. Only C II can enter the CO formation channel. */
+        const double recombinationCIII = state->nel*coefficients->carbon.recombination2;
+        const int status = CEQSolveIonLadder(1.0,photoCI,formation,rates.photoCII,recombinationCIII,
+                                             &neutralCarbon,&carbonIon,&doubleCarbonIon);
+        if(status != EQC_SUCCESS) return status;
+        effectiveFormation = formation*carbonIon;
+    }else if(rateScale > 0.0){
         const double scaledFormation = formation/rateScale;
         const double scaledPhoto = photoCI/rateScale;
         carbonIon = scaledPhoto/(scaledFormation+scaledPhoto);
@@ -1302,9 +1360,10 @@ int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double 
             if(fabs(residual) <= accuracy){
                 /* The atomic ladder at fixed n_e does not depend on H2. The
                    molecular model's C I/C II split still needs updating. */
-                if(!(EQCLibRunParameters.UseHIIRegion && state->NLyn > 0.0)){
+                if(!stellarIonization){
                     state->natom[ipCARBON] = freeCarbon*neutralCarbon;
                     state->nion[ipCARBON] = freeCarbon*carbonIon;
+                    if(rates.photoCII > 0.0) state->nCIII = freeCarbon*doubleCarbonIon;
                 }
                 return EQC_SUCCESS;
             }
@@ -1327,23 +1386,40 @@ int CEQSolveCarbonWithIntervals(StructEQCData *state, double previousCO, double 
     state->nmol[ipCO] = fmin(nO,nC*root.molecularFraction);
     /* Ionizing radiation also acts on the carbon outside CO. The molecular
        model's C I/C II ratio only accounts for FUV and molecular reactions. */
-    if(EQCLibRunParameters.UseHIIRegion && state->NLyn > 0.0)
+    if(stellarIonization)
         return SolveAtomicCarbon(state,nC*root.freeFraction,coefficients);
     state->nion[ipCARBON] = (nC*root.freeFraction)*carbonIon;
     state->natom[ipCARBON] = (nC*root.freeFraction)*neutralCarbon;
-    state->nCIII = 0.0;
+    state->nCIII = (nC*root.freeFraction)*doubleCarbonIon;
     return EQC_SUCCESS;
 }
 
-int CEQSolveCarbonEquilibrium(StructEQCData *state, double previousCO, double accuracy){
+static int SolveCarbonEquilibrium(StructEQCData *state, double previousCO, double accuracy,
+                                  const CEQRateCoefficients *coefficients){
     const int points = CEQCOShieldingPointCount();
     CEQCarbonShieldingInterval intervals[points+1];
     const int count = CEQPrepareCarbonShieldingIntervals(state,intervals,points);
-    return CEQSolveCarbonWithIntervals(state,previousCO,accuracy,intervals,count,NULL,false);
+    return CEQSolveCarbonWithIntervals(state,previousCO,accuracy,intervals,count,coefficients,false);
+}
+
+int CEQSolveCarbonEquilibrium(StructEQCData *state, double previousCO, double accuracy){
+    return SolveCarbonEquilibrium(state,previousCO,accuracy,NULL);
 }
 
 // eq(11)-(13) in Glover & Clark, MNRAS, 421, 116, (2012)
 void EquilibriumCarbonFractionalAbundance(StructEQCData *PhydroPP){
+    CEQUVBRates uvb;
+    if(CEQEvaluateUVBackgroundWithMetallicity(PhydroPP->NHIuvb,PhydroPP->Z,&uvb) != EQC_SUCCESS) return;
+    if(EQCLibRunParameters.UseCOFormation && PhydroPP->T <= 1.e4 &&
+       (uvb.metalIonization[CEQ_UVB_CI] > 0.0 || uvb.metalIonization[CEQ_UVB_CII] > 0.0)){
+        StructEQCData result = *PhydroPP;
+        const CEQRateCoefficients coefficients = {
+            .carbon = CarbonCoefficients(&result,&uvb), .molecularCarbon = MolecularCarbonCoefficients(&result,&uvb)
+        };
+        if(SolveCarbonEquilibrium(&result,result.nmol[ipCO],EQCLibRunParameters.ChemistryAccuracy,&coefficients) == EQC_SUCCESS)
+            *PhydroPP = result;
+        return;
+    }
     double ne   = PhydroPP->nel;
     double nH   = PhydroPP->n[ipHYDROGEN];
     double nH2  = PhydroPP->nmol [ipH2];
@@ -1386,13 +1462,14 @@ void EquilibriumCarbonFractionalAbundance(StructEQCData *PhydroPP){
         double dnCI_phti  = 0.e0;
         if(NLyn==0.e0 || !EQCLibRunParameters.UseHIIRegion)  dnCI_phti = CIFUVPhotoionizationRate(G0,Av);
         else            dnCI_phti = CIPhotoionizationRate(NLyn);
+        dnCI_phti += uvb.metalIonization[CEQ_UVB_CI];
         double dnCI_coli  = ne*CICollisionalIonizationRate(T);
         double dnCI_cr    = X0*CosmicRayIonizationRateCI(xe);
         double dnCI_xr    = X0*SoftXrayIonizationRateCI(xe,Ntot);
         double dnCII_rec  = ne*CIIRecombinationRate(T);
         double dnCII_dust = nH*CIIRecombinationRateOnDust(T,G0,ne,Zd); 
 
-        double dnCII_phti  = CIIPhotoionizationRate(NLyn);
+        double dnCII_phti  = CIIPhotoionizationRate(NLyn) + uvb.metalIonization[CEQ_UVB_CII];
         double dnCII_coli  = ne*CIICollisionalIonizationRate(T);
         double dnCII_cr    = 0.e0;
         double dnCII_xr    = 0.e0;
@@ -1423,6 +1500,8 @@ void EquilibriumCarbonFractionalAbundance(StructEQCData *PhydroPP){
 }
 
 void EquilibriumSiliconFractionalAbundance(StructEQCData *PhydroPP){
+    CEQUVBRates uvb;
+    if(CEQEvaluateUVBackgroundWithMetallicity(PhydroPP->NHIuvb,PhydroPP->Z,&uvb) != EQC_SUCCESS) return;
     double ne     = PhydroPP->nel;
     double nH     = PhydroPP->n[ipHYDROGEN];
     double nSi    = PhydroPP->n[ipSILICON];
@@ -1434,14 +1513,14 @@ void EquilibriumSiliconFractionalAbundance(StructEQCData *PhydroPP){
     double Zd     = PhydroPP->Zd;
     double xe     = ne/nH;
 
-    double dnSiI_phti   = SiIPhotoionizationRate(NLyn);
+    double dnSiI_phti   = SiIPhotoionizationRate(NLyn) + uvb.metalIonization[CEQ_UVB_SI_I];
     double dnSiI_coli   = ne*SiICollisionalIonizationRate(T);
     double dnSiI_cr     = X0*CosmicRayIonizationRateSiI(xe);
     double dnSiI_xr     = X0*SoftXrayIonizationRateSiI(xe,Ntot);
     double dnSiII_rec   = ne*SiIIRecombinationRate(T);
     double dnSiII_dust  = nH*SiIIRecombinationRateOnDust(T,G0,ne,Zd); 
 
-    double dnSiII_phti  = SiIIPhotoionizationRate(NLyn);
+    double dnSiII_phti  = SiIIPhotoionizationRate(NLyn) + uvb.metalIonization[CEQ_UVB_SI_II];
     double dnSiII_coli  = ne*SiIICollisionalIonizationRate(T);
     double dnSiII_cr    = X0*CosmicRayIonizationRateSiII(xe);
     double dnSiII_xr    = X0*SoftXrayIonizationRateSiII(xe,Ntot);

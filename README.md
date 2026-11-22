@@ -153,6 +153,39 @@ static EQCLibStatus AdvanceCooling(StructEQCData *cell, double accuracy,
 
 従来の平衡エネルギー API `EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating` を直接使うホストコードでは、引き続き成功を確認してから呼び出し側で `U += dt * Du` を適用します。
 
+### 宇宙紫外線背景と遮蔽
+
+宇宙紫外線背景（UVB）は既定で無効です。有効にすると、Faucher-Giguère (2020) の入射スペクトルから H I・He I・He II の光電離率と光加熱率を初期化時に計算し、平衡・非平衡の両モードで使います。各セルの `NHIuvb[0]` と `NHIuvb[1]` に、上下の境界からセルまでの片側ずつの H I 柱密度 [cm⁻²] を渡します。0 はその側が無遮蔽であることを表します。背景光の光電離加熱は `H_UVB` と `H_tot` に入り、恒星光の光電離加熱は `H_PI` で確認できます。**`StructEQCData` に2つのフィールドを追加したため ABI が変わります。** 既存のホストコードをライブラリと一緒に再ビルドし、新しい入力をゼロ初期化してください。 [UVB の物理モデル](docs/physics.md#宇宙紫外線背景)
+
+著者の配布ページから `fg20_102720_rescaled.zip` を取得し、`fg20_cloudy.ascii` をスペクトル用のディレクトリに置きます。リポジトリの `data/FG20/` はローカルデータ用で、Git の追跡対象から除いています。2026-11-22 に確認したファイルは、Cloudy 形式の波長 [Å] と比強度 `Jν` [erg s⁻¹ cm⁻² Hz⁻¹ sr⁻¹] の表で、赤方偏移 `z = 0–10` の501点、波長537点を含みます。配布ページと付属の `README.dat` で再配布許諾を確認できなかったため、データは同梱しません。 [著者の配布ページ](https://galaxies.northwestern.edu/uvb-fg20/) · [公式アーカイブ](https://galaxies.northwestern.edu/files/2020/10/fg20_102720_rescaled.zip)
+
+| ファイル | SHA-256 |
+| --- | --- |
+| `fg20_102720_rescaled.zip` | `587a27854de50c95d79901b514d9acee421119ca41ff483eaeea84b6d695d49d` |
+| `fg20_cloudy.ascii` | `40026f69c90c1aa76038f93664e8f3dea47269cc61ce0a5bc7b0fb6aa056879d` |
+
+`EQCLibSetRunParamUVBackground(true, uvbDirectory)` を `EQCLibTryInitialization` より先に呼びます。`uvbDirectory` が `NULL` なら、実行ディレクトリからの相対パス `../data/FG20` を使います。ホストからは絶対パスも指定できます。指定先の `fg20_cloudy.ascii` を開けない場合、初期化は `EQC_INITIALIZATION_FAILED` を返し、ファイルのパスを標準エラー出力に表示します。
+
+光子エネルギーの上限は初期化前に `EQCLibSetRunParamUVBackgroundMaximumEnergy(energyEV)` で指定でき、既定値の 0 はスペクトルの全域です。`EQCLibTrySetUVBackgroundRedshift(z)` は初期化後に時間ステップごとに呼びます。初期化時には表の最小赤方偏移を選び、範囲外の設定はエラーを返します。これらの設定関数はスレッドセーフではないため、並列のセル更新を始める前に呼びます。背景光の表は更新中に読み取り専用です。`EQCLibTryGetUVBackgroundHemisphereRates` は片側の一次電離率と配分前の光電子エネルギー供給率を H I・He I・He II の順で返します。セルの実際の加熱は `H_UVB` で確認できます。 [公開 API](src/ChemicalEquilibriumCooling.h) · [光電子の二次電離と加熱](docs/physics.md#uvb-光電子の二次電離と加熱)
+
+UVB の金属吸収にも、ダスト中の金属を含む全金属質量分率 `cell->Z` を使います。太陽組成は `Z = 0.0134` です。UVB が有効なセルには有限かつ非負の `Z` を渡し、吸収の計算には最大で太陽の4倍を使います。既存の `EQCLibTryGetUVBackgroundHemisphereRates` は `Z = 0` の値を返します。金属を含めた片側の率と、金属由来の低・高エネルギー光電子のパワーを調べる場合は `EQCLibTryGetUVBackgroundHemisphereRatesWithMetallicity` を使います。 [公開 API](src/ChemicalEquilibriumCooling.h) · [金属による X 線吸収](docs/physics.md#uvb-の金属による-x-線吸収)
+
+13.6 eV 以上の UVB は C・O・Si の I→II、II→III の電離にも寄与します。平衡モードでは C・O・Si、非平衡モードでは C・O を更新し、非平衡の Si は入力の電離状態を保持します。金属の光電子は BCM92 の吸収の集計から熱と二次電離に配分します。 [直接光電離とエネルギー収支](docs/physics.md#uvb-による-cosi-の直接光電離)
+
+ASURA で方向別の柱密度を局所値で近似する場合は、`CalcNcol` で求めた全水素核柱密度 `localColumn` に、前ステップの H I と H₂ に含まれる水素核の分率 `xHI + 2*xH2` を掛け、同じ有効柱密度を両側に渡します。分子ガスでは、比較用の `localColumn * xHI` は遮蔽を過小評価します。`cell` の組成は更新前に確定した値です。方向別の H I 柱密度を評価できる場合は、各側の値を `NHIuvb` に渡します。
+
+```c
+const double nH = cell->n[ipHYDROGEN];
+const double xHI = cell->natom[ipHYDROGEN] / nH;
+const double xH2 = cell->nmol[ipH2] / nH;
+const double effectiveColumn = localColumn * (xHI + 2.0 * xH2);
+cell->NHIuvb[0] = effectiveColumn;
+cell->NHIuvb[1] = effectiveColumn;
+EQCLibStatus status = EQCLibTryAdvanceCell(cell, accuracy, mode);
+```
+
+この有効柱密度に H I・He I と金属の遮蔽を適用します。H₂ の分子としての吸収と、ダスト粒子内部の自己遮蔽は今後の課題です。 [遮蔽の比較試験](test/README.md#fg20-の遮蔽と計算時間)
+
 ### H II 領域の平衡冷却
 
 H II 領域の酸素冷却を使うには、初期化前に `EQCLibSetRunParamHIIRegion(true)` を呼び、各粒子の `NLyn` に局所の水素電離光子束 [cm⁻² s⁻¹] を設定します。各遷移の光学的に薄い放射率は `CoolingLinesOII` と `CoolingLinesOIII` で取得できます。 [輝線の API](src/HIIregionLineCooling.h) · [酸素輝線と CIE 冷却](docs/physics.md#金属輝線と高温-cie-冷却) · [H–O 電荷交換](docs/physics.md#ho-電荷交換)
@@ -197,6 +230,10 @@ EQCLibSetRunParamChemistryAccuracy(1.0e-5);
 
 この設定例は、アプリケーションが初期化前に指定する銀河計算向けの推奨設定です。C API の初期値では H₂ と CIE は無効、化学平衡許容誤差は `1e-8` です。
 
+`useLocalIonizingFlux = false` の平衡モードでも、UVB と H–O 電荷交換を有効にした酸素を含むセルでは、H の平衡組成を使って O の電離に電荷交換を反映します。H II 領域モードでは H と O を双方向に解きます。非平衡では `EQCLibSetRunParamChargeTransfer` が電荷交換を直接制御します。 [UVB での H–O 電荷交換](docs/physics.md#ho-電荷交換)
+
+軟 X 線の電離率は電子分率 `xe = 0.1〜0.5` で滑らかにゼロに近づくため、FG20 と併用できます。Wolfire et al. (1995) の入射スペクトル（式5）には銀河系外のべき乗成分も含まれ、FG20 と併用すると銀河系外軟 X 線の寄与を重複して数えます。両者の重複分の分離は今後の課題です。 [軟 X 線の適用範囲](docs/physics.md#軟-x-線) · [併用時の再現テスト](test/README.md#fg20-の遮蔽と計算時間)
+
 CO 輝線を予測する場合は CO を有効にします。遮蔽された低温ガスの熱収支が重要な場合は、代表的な粒子で CO の有無による冷却率の差を確認してください。 [CO モデルの適用範囲](docs/physics.md#co-モデルの適用範囲)
 
 ### 各設定の詳細
@@ -204,7 +241,7 @@ CO 輝線を予測する場合は CO を有効にします。遮蔽された低�
 | 設定 | 既定値 | 設定例 | 効果 |
 | --- | --- | --- | --- |
 | `EQCLibSetRunParamCOFormation` | `false` | `true, 1.0` | 平衡モードで CO の化学平衡と輝線冷却を有効にします。第2引数は CO 生成率の倍率です。 |
-| `EQCLibSetRunParamChargeTransfer` | `true` | `false` | 平衡では H II 領域を有効にしたときに使われます。非平衡では照射の有無にかかわらず使われます。 [H–O 電荷交換](docs/physics.md#ho-電荷交換) |
+| `EQCLibSetRunParamChargeTransfer` | `true` | `false` | 平衡では H II 領域モードで双方向に結合し、H II 領域モードの外では UVB が有効で O があるセルに一方向で適用します。非平衡では照射の有無にかかわらず使われます。 [H–O 電荷交換](docs/physics.md#ho-電荷交換) |
 | `EQCLibSetRunParamChemistryAccuracy` | `1e-8` | `1e-5` | 陰的なエネルギー更新の中で解く化学平衡の許容誤差の上限です。実際には `min(値, 0.1 × エネルギーの精度)` を使います。正味冷却率の API は内部で精度 1e-8 を指定するので、この設定にかかわらず 1e-9 以下で解きます。 |
 
 CO 化学を使う場合は、`EQCLibSetRunParamH2Formation(true, 1.0)` と `EQCLibSetRunParamCOFormation(true, 1.0)` を設定します。CO を無効にするには `EQCLibSetRunParamCOFormation(false, 1.0)` を呼びます。無効にすると、更新後の CO 存在量と CO 輝線冷却はゼロになり、炭素・酸素の化学状態や冷却率にも影響します。 [CO モデルの適用範囲](docs/physics.md#co-モデルの適用範囲)
