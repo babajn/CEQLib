@@ -295,12 +295,37 @@ static void WriteChargeTransferBudget(FILE *file, const DiskCase *test, StructEQ
             nHI/test->nH,nHII/test->nH,state->nmol[ipH2]/test->nH,nOI/nO,nOII/nO,nOIII/nO);
 }
 
-static DiskResult RunDiskUpdates(FILE *file, DiskCase test, bool verbose, FILE *budget)
+static void ConfigureDiskCase(const DiskCase *test)
 {
-    EQCLibSetRunParamSoftXrayIonization(test.softXray);
-    EQCLibSetRunParamHIIRegion(test.hiiRegion);
-    EQCLibSetRunParamChargeTransfer(test.chargeTransfer);
-    if(test.uvb) RequireSuccess("disk redshift",EQCLibTrySetUVBackgroundRedshift(test.redshift));
+    EQCLibSetRunParamSoftXrayIonization(test->softXray);
+    EQCLibSetRunParamHIIRegion(test->hiiRegion);
+    EQCLibSetRunParamChargeTransfer(test->chargeTransfer);
+    if(test->uvb) RequireSuccess("disk redshift",EQCLibTrySetUVBackgroundRedshift(test->redshift));
+}
+
+static void WriteCoolingCurve(FILE *file, DiskCase test)
+{
+    test.nH = 0.01;
+    const double column = 1.e18;
+    ConfigureDiskCase(&test);
+    for(int i=0; i<=80; i++){
+        StructEQCData state = DiskInitialState(&test);
+        state.T = pow(10.0,2.0+0.05*i);
+        state.NHIuvb[0] = state.NHIuvb[1] = column;
+        const EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,1.e-8);
+        if(status != EQC_SUCCESS || !isfinite(state.L_tot) || state.L_tot <= 0.0){
+            fprintf(stderr,"Cooling curve failed at z=%g, UVB=%d, X-rays=%d, T=%g K: status %d, L_tot=%g\n",
+                    test.redshift,test.uvb,test.softXray,state.T,status,state.L_tot);
+            exit(EXIT_FAILURE);
+        }
+        fprintf(file,"%g,%g,%g,%g,%d,%d,%.17g,%.17g\n",
+                test.redshift,test.nH,column,test.metallicity,test.softXray,test.uvb,state.T,state.L_tot);
+    }
+}
+
+static DiskResult RunDiskUpdates(FILE *file, DiskCase test, bool verbose, FILE *budget, FILE *history)
+{
+    ConfigureDiskCase(&test);
     StructEQCData state = DiskInitialState(&test);
     EQCLibStatus status = EQC_SUCCESS;
     /* Start the equilibrium cases with the original optically thin equilibrium.
@@ -310,6 +335,7 @@ static DiskResult RunDiskUpdates(FILE *file, DiskCase test, bool verbose, FILE *
     state.MeanMolecularWeight = EQCLibGetMeanMolecularWeight(&state);
     state.DegreeOfFreedom = EQCLibGetMeanDegreeOfFreedom(&state);
     state.U = EQCLibConvertTtoU(&state);
+    const char *modeName = test.mode == EQC_CHEMISTRY_EQUILIBRIUM ? "equilibrium" : "nonequilibrium";
     int completed = 0;
     while(status == EQC_SUCCESS && completed < DiskSteps){
         /* Apply the effective neutral column to both faces using only the
@@ -321,10 +347,13 @@ static DiskResult RunDiskUpdates(FILE *file, DiskCase test, bool verbose, FILE *
         if(status == EQC_SUCCESS){
             completed++;
             if(budget) WriteChargeTransferBudget(budget,&test,&state,completed);
+            if(history) fprintf(history,"%g,%.9g,%d,%d,%s,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
+                                test.redshift,test.nH,test.softXray,test.uvb,modeName,
+                                completed*(state.dt/MEGAYEAR_CGS),column,state.T,state.nel/test.nH,
+                                state.nion[ipHYDROGEN]/test.nH,state.H_UVB,state.H_tot);
         }
     }
     const double heatingFraction = state.H_tot > 0.0 ? state.H_UVB/state.H_tot : NAN;
-    const char *modeName = test.mode == EQC_CHEMISTRY_EQUILIBRIUM ? "equilibrium" : "nonequilibrium";
     fprintf(file,"%g,%.9g,%d,%d,%d,%d,%.17g,%.17g,%.17g,%.17g,%d,%s,"
                  "%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%g,%g,%g,%.17g,%.17g,%.17g",
             test.redshift,test.nH,test.softXray,test.includeMolecularColumn,completed,status,state.NHIuvb[0],
@@ -333,9 +362,9 @@ static DiskResult RunDiskUpdates(FILE *file, DiskCase test, bool verbose, FILE *
             test.metallicity,test.isrf,test.ionizationMultiplier,test.maximumEnergy,
             state.natom[ipHYDROGEN]/test.nH,state.nion[ipHYDROGEN]/test.nH,state.nmol[ipH2]/test.nH);
     const double nO = state.n[ipOXYGEN];
-    fprintf(file,",%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
+    fprintf(file,",%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
             test.hiiRegion,test.chargeTransfer,state.natom[ipOXYGEN]/nO,state.nion[ipOXYGEN]/nO,state.nOIII/nO,
-            state.L_CII158,state.L_OI63,state.L_OI146,state.L_OII,state.L_OIII,state.L_SiII35,state.L_res);
+            state.L_CII158,state.L_OI63,state.L_OI146,state.L_OII,state.L_OIII,state.L_SiII35,state.L_res,state.L_tot);
     if(status != EQC_SUCCESS || verbose)
         printf("Disk z=%g nH=%g UVB=%s X-rays=%s %s column=%s: %d/%d steps, status %d, T=%.2f K, UVB heating %.1f%%\n",
                test.redshift,test.nH,test.uvb ? "on" : "off",test.softXray ? "on" : "off",modeName,
@@ -352,13 +381,13 @@ static DiskResult RunDiskUpdates(FILE *file, DiskCase test, bool verbose, FILE *
 
 static DiskResult WriteDiskUpdates(FILE *file, DiskCase test, bool verbose)
 {
-    return RunDiskUpdates(file,test,verbose,NULL);
+    return RunDiskUpdates(file,test,verbose,NULL,NULL);
 }
 
 static const char DiskHeader[] =
     "z,nH,soft_xray,include_molecular_column,completed_updates,status,N_per_side,T,xe,H_UVB_over_H_tot,uvb,chemistry_mode,"
     "H_UVB,H_XR,H_CR,H_PE,H_tot,Z,G0,X0,energy_max_eV,xHI,xHII,xH2,"
-    "hii_mode,charge_transfer,xOI,xOII,xOIII,L_CII158,L_OI63,L_OI146,L_OII,L_OIII,L_SiII35,L_res\n";
+    "hii_mode,charge_transfer,xOI,xOII,xOIII,L_CII158,L_OI63,L_OI146,L_OII,L_OIII,L_SiII35,L_res,L_tot\n";
 
 static void ConfigureDiskPhysics(void)
 {
@@ -415,7 +444,11 @@ static void CheckDiskUpdates(double metallicity)
 static void CheckDiskGrid(double metallicity)
 {
     FILE *file = OpenOutput("disk-grid.csv");
+    FILE *history = OpenOutput("disk-history.csv");
+    FILE *cooling = OpenOutput("cooling-curve.csv");
     fputs(DiskHeader,file);
+    fputs("z,nH,soft_xray,uvb,chemistry_mode,time_Myr,N_per_side,T,xe,xHII,H_UVB,H_tot\n",history);
+    fputs("z,nH,N_per_side,Z,soft_xray,uvb,T,L_tot\n",cooling);
     const EQCLibChemistryMode modes[] = {EQC_CHEMISTRY_EQUILIBRIUM,EQC_CHEMISTRY_NONEQUILIBRIUM};
     DiskCase test = DiskDefaults;
     test.metallicity = metallicity;
@@ -427,11 +460,12 @@ static void CheckDiskGrid(double metallicity)
             test.softXray = xrays;
             for(int z=0; z<=2; z+=2){
                 test.redshift = z;
+                WriteCoolingCurve(cooling,test);
                 for(size_t i=0; i<sizeof(modes)/sizeof(modes[0]); i++){
                     test.mode = modes[i];
                     for(int density=-6; density<=2; density++){
                         test.nH = pow(10.0,0.5*density);
-                        const DiskResult result = WriteDiskUpdates(file,test,false);
+                        const DiskResult result = RunDiskUpdates(file,test,false,NULL,history);
                         cases++;
                         if(result.status == EQC_SUCCESS) successful++;
 #ifdef EQC_LEGACY_XRAY_CUTOFF
@@ -444,6 +478,8 @@ static void CheckDiskGrid(double metallicity)
         }
     }
     Close(file);
+    Close(history);
+    Close(cooling);
     printf("Disk grid: %d/%d cases completed all %d updates\n",successful,cases,DiskSteps);
 #ifndef EQC_LEGACY_XRAY_CUTOFF
     if(successful != cases) exit(EXIT_FAILURE);
@@ -550,7 +586,7 @@ static void CheckChargeTransferDisk(const char *directory)
                         test.chargeTransfer = treatment != 0;
                         for(size_t i=0;i<sizeof modes/sizeof modes[0];i++){
                             test.mode = modes[i];
-                            const DiskResult result = RunDiskUpdates(grid,test,false,budget);
+                            const DiskResult result = RunDiskUpdates(grid,test,false,budget,NULL);
                             RequireSuccess("charge transfer disk update",result.status);
                             successful++;
                         }

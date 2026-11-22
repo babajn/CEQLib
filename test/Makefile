@@ -43,7 +43,7 @@ TEST_SOURCES = $(wildcard benchmark/*.[ch] co/*.[ch] common/*.[ch] hii/*.[ch] no
 
 ALL:   start
 
-.PHONY: start eqclib check cell-check xray-legacy-check notebook-data benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot uvb uvb-metal uvb-metal-sensitivity uvb-metal-photoionization uvb-metal-photoionization-disk uvb-metal-cloudy uvb-charge-transfer-disk uvb-charge-transfer-bdf uvb-charge-transfer-benchmark uvb-benchmark uvb-asura-benchmark clean tag pkg
+.PHONY: start eqclib check cell-check xray-legacy-check notebook-data benchmark hii hii-benchmark hii-plot co co-plot molecular-settings-benchmark molecular-settings-plot wolfire-plot noneq noneq-benchmark noneq-hot noneq-plot uvb uvb-data uvb-plot uvb-metal uvb-metal-sensitivity uvb-metal-photoionization uvb-metal-photoionization-disk uvb-metal-cloudy uvb-charge-transfer-disk uvb-charge-transfer-bdf uvb-charge-transfer-benchmark uvb-benchmark uvb-asura-benchmark clean tag pkg
 eqclib:
 	$(MAKE) -C $(EQCLIB_DIR) GSL_DIR=$(GSL_DIR) libEQCLib.a
 
@@ -192,13 +192,18 @@ noneq-plot: noneq noneq-benchmark noneq-hot
 out/uvb:
 	mkdir -p $@
 
-uvb: uvb/UVBackgroundReference.c uvb/compare.py eqclib | out/uvb
+uvb-data: uvb/UVBackgroundReference.c eqclib | out/uvb
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_reference.out
 	@set -e; run_dir=$$(mktemp -d "$(CURDIR)/out/uvb.XXXXXX"); \
 	trap 'rm -rf "$$run_dir"' EXIT; cd "$$run_dir"; \
 	"$(CURDIR)/out/uvb_reference.out" "$(abspath $(UVB_DIR))"; \
-	mv rates.csv equilibrium.csv soft-xray.csv secondary.csv disk-updates.csv disk-grid.csv EQCooling/UVBackgroundRates.dat "$(CURDIR)/out/uvb/"
+	mv rates.csv equilibrium.csv soft-xray.csv secondary.csv disk-updates.csv disk-grid.csv disk-history.csv cooling-curve.csv EQCooling/UVBackgroundRates.dat "$(CURDIR)/out/uvb/"
+
+uvb: uvb-data uvb/compare.py
 	$(PYTHON) uvb/compare.py "$(abspath $(UVB_DIR))/fg20_cloudy.ascii" "$(CHIMES_DATA_DIR)" out/uvb
+
+uvb-plot: uvb-data
+	$(PYTHON) ../plot/plot_uvb.py
 
 uvb-metal: uvb/MetalXrayReference.c uvb/metal_compare.py eqclib | out/uvb
 	$(CC) $(CFLAGS) -fno-fast-math $< $(LDFLAGS) -o out/uvb_metal_reference.out

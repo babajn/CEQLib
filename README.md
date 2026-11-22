@@ -50,6 +50,8 @@ jupyter lab
 
 JupyterLab で `plot/PlotHIIRegion.ipynb` などを開き、仮想環境の Python 3 カーネルで **Run → Run All Cells** を選びます。Wolfire (1995) の図と、H II 領域ノートブックの Cloudy 比較には同梱の参照結果を使えます。 [単体で実行できる検証とノートブックの一覧](test/README.md#eqclib-単体で実行できる検証と作図)
 
+宇宙紫外線背景の図を再計算する場合は、FG20 のスペクトルを用意し、`make -C test uvb-data` を実行してから [作図ノートブック](plot/PlotUVBackground.ipynb) を開きます。PNG は `make -C test uvb-plot` で生成できます。 [FG20 の入手方法と検証条件](test/README.md#fg20-の遮蔽と計算時間)
+
 ### 外部コードとの比較（任意）
 
 比較結果を再計算したい場合は、CHIMES のソースと反応データ、または Cloudy の実行ファイルを用意し、対象の比較手順を実行します。 [外部コードとの比較手順](test/README.md#外部コードとの比較任意)

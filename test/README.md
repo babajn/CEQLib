@@ -30,7 +30,23 @@ make -C test xray-legacy-check
 
 ## FG20 の遮蔽と計算時間
 
-公式の `fg20_cloudy.ascii` を置いたディレクトリを `UVB_DIR` に指定します。既定値はリポジトリの `data/FG20/` です。外部比較には、CHIMES の `chimes_main_data.hdf5` と `FG20_cross_sections/` を含むディレクトリも指定します。既定の CHIMES データはワークスペースの `Chimes/chimes-data` です。Python 3 の NumPy、SciPy、h5py を使います。 [FG20 の取得元とファイル形式](../README.md#宇宙紫外線背景と遮蔽)
+公式の `fg20_cloudy.ascii` を置いたディレクトリを `UVB_DIR` に指定します。既定値はリポジトリの `data/FG20/` です。 [FG20 の取得元とファイル形式](../README.md#宇宙紫外線背景と遮蔽)
+
+### 検証計算と作図
+
+```sh
+make -C test uvb-data
+```
+
+`uvb-data` は FG20 で EQCLib の検証計算を行い、作図データを `test/out/uvb/` に書き出します。[PlotUVBackground.ipynb](../plot/PlotUVBackground.ipynb) は、遮蔽による一次電離率と光電子の運動エネルギー供給率の減衰、固定温度の H・He 平衡、二次電離、円盤ガスでの UVB の有無による差を表示します。`run_dir` を変更すると保存済みの出力を読み込めます。
+
+`disk-history.csv` には円盤格子144条件の各12更新について、温度、H II・電子分率、各更新に渡した片側の遮蔽柱密度、加熱率を記録します。ノートブックで履歴を描く密度と軟 X 線の有無を選べます。`make -C test uvb-plot` は、計算から `plot/out/uvb/` への PNG 出力までを行います。計算済みのデータから描画するには [plot_uvb.py](../plot/plot_uvb.py) を使います。
+
+`cooling-curve.csv` は、密度 `nH = 0.01 cm⁻³`、上下それぞれの UVB 遮蔽柱密度 `10¹⁸ cm⁻²` を固定した温度走査です。`z = 0, 2` で `10²〜10⁶ K` を 0.05 dex 刻みで走査し、各温度で化学平衡を求めます。ノートブックと `cooling_curve.png` では、軟 X 線の設定をそろえ、UVB オン・オフの全冷却率 `L_tot` とその比を温度に対して描きます。
+
+### 独立積分・外部データとの照合
+
+`uvb` は `uvb-data` の計算に加えて独立積分と CHIMES との照合を実行します。CHIMES の `chimes_main_data.hdf5` と `FG20_cross_sections/` を含むディレクトリを指定します。既定の CHIMES データはワークスペースの `Chimes/chimes-data` です。Python 3 の NumPy、SciPy、h5py を使います。
 
 ```sh
 make -C test uvb UVB_DIR=/absolute/path/to/FG20 CHIMES_DATA_DIR=/absolute/path/to/chimes-data
@@ -46,7 +62,7 @@ make -C test uvb-metal-photoionization-disk
 
 `disk-updates.csv` は、100 pc の局所柱密度と前ステップの組成を使い、1 Myr 刻みで12回の平衡熱更新をした結果です。旧モデルで失敗した希薄セル（`z = 0`、`nH = 0.01 cm⁻³`）が軟 X 線と UVB を併用しても全ステップ成功することを確認します。分子ガスでは、推奨する `xHI + 2*xH2` の有効柱密度と、比較用の `xHI` だけの指定を両側に与えます。
 
-`disk-grid.csv` は、宇宙線を有効にした `z = 0, 2`、`nH = 10⁻³〜10 cm⁻³`（0.5 dex 刻み）での更新結果です。UVB と軟 X 線のオン・オフ、平衡・非平衡を組み合わせた144条件で、各12ステップの成功を確認します。温度・電子分率・加熱の内訳を出力します。FG20 だけの放射寄与を調べる基準は軟 X 線オフです。 [円盤セルの再現条件](uvb/UVBackgroundReference.c)
+`disk-grid.csv` は、宇宙線を有効にした `z = 0, 2`、`nH = 10⁻³〜10 cm⁻³`（0.5 dex 刻み）での更新結果です。UVB と軟 X 線のオン・オフ、平衡・非平衡を組み合わせた144条件で、各12ステップの成功を確認します。温度・電子分率・加熱の内訳と全冷却率 `L_tot` を出力します。ノートブックと `disk_cooling.png` では、同じ密度で UVB オン・オフの全冷却率とその比を表示します。比較には12 Myr 後の温度と組成の違いも含まれます。FG20 だけの放射寄与を調べる基準は軟 X 線オフです。 [円盤セルの再現条件](uvb/UVBackgroundReference.c)
 
 `uvb-benchmark` は既存の非平衡ベンチマークを使い、同じ初期条件で UVB を無効・有効にしたときの平衡・非平衡両モードのセル更新あたりの CPU 時間を測ります。表の初期化を除いた測定で、照射で異なる組成・温度へ収束する計算負荷も含みます。各モードの比較は `test/out/uvb/benchmark-summary.csv` に保存します。
 
@@ -99,6 +115,7 @@ UVB 無効（`off`）、光子上限110 eV（`cut110`）、FG20 全域（`full`�
 | [H II 領域](#h-ii-領域の検証計算と描画) | [hii/](hii/) | `make -C test hii`、`make -C test hii-benchmark` | [平衡・冷却・反応率](../plot/PlotHIIRegion.ipynb) |
 | [H₂・CO 化学と反応設定](#h₂co-化学の検証計算と描画) | [co/](co/) | `make -C test co`、`make -C test molecular-settings-benchmark`、[設定比較の計算ノートブック](co/RunMolecularSettingsBenchmark.ipynb) | [H₂・CO 化学](../plot/PlotCOChemistry.ipynb)、[設定比較](../plot/PlotMolecularSettings.ipynb) |
 | [非平衡化学と高温ガスの冷却](#非平衡化学の検証計算と描画) | [noneq/](noneq/) | `make -C test noneq`、`make -C test noneq-benchmark`、`make -C test noneq-hot` | [非平衡化学](../plot/PlotNonEquilibrium.ipynb) |
+| [宇宙紫外線背景と遮蔽](#fg20-の遮蔽と計算時間) | [uvb/](uvb/) | `make -C test uvb-data`（FG20 スペクトルが必要） | [遮蔽・電離・円盤ガス](../plot/PlotUVBackground.ipynb) |
 | [Wolfire et al. (1995)](#wolfire-et-al-1995-の検証計算と描画) | [wolfire1995/](wolfire1995/) | [実行手順](#wolfire-et-al-1995-の検証計算と描画) | [熱平衡と熱収支](../plot/PlotWolfire1995.ipynb) |
 | [Wolfire et al. (2003)](#wolfire-et-al-2003-との熱平衡曲線の比較) | [wolfire2003/](wolfire2003/) | `make -C test/wolfire2003 run` | [熱平衡曲線](../plot/PlotWolfire2003.ipynb) |
 
