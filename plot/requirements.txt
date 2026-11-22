@@ -1,3 +1,4 @@
+h5py
 ipykernel
 jupyterlab
 matplotlib>=3.7

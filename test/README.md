@@ -214,7 +214,7 @@ make -C test uvb-metal uvb-metal-sensitivity uvb-metal-photoionization-disk
 make -C test uvb-benchmark
 ```
 
-`uvb-metal` は Python 3 の NumPy、SciPy、h5py が必要です。`Z/Z☉ = 0, 0.1, 1, 2`、片側の柱密度 `10¹⁹〜10²² cm⁻²` に加え、赤方偏移・金属量・上下の柱密度を同時に補間する点を、独立の Python 積分と比較します。総断面積を Morrison & McCammon (1983) の表2と照合し、金属のパワーを含むエネルギー収支と、公開 API の金属量ゼロでの互換性を検証します。`metal-comparison.csv`、`metal-cross-section-comparison.csv`、`metal-deep-comparison.csv`、`metal-deep-bands.csv`、`metal-chemistry-comparison.csv` に結果、`metal-timing.csv` に初期化と赤方偏移の設定時間、保持メモリを保存します。 [独立積分コード](uvb/metal_compare.py)
+`uvb-metal` は Python 3 の NumPy、SciPy、h5py が必要です。いずれも `plot/requirements.txt` でインストールされます。`Z/Z☉ = 0, 0.1, 1, 2`、片側の柱密度 `10¹⁹〜10²² cm⁻²` に加え、赤方偏移・金属量・上下の柱密度を同時に補間する点を、独立の Python 積分と比較します。総断面積を Morrison & McCammon (1983) の表2と照合し、金属のパワーを含むエネルギー収支と、公開 API の金属量ゼロでの互換性を検証します。`metal-comparison.csv`、`metal-cross-section-comparison.csv`、`metal-deep-comparison.csv`、`metal-deep-bands.csv`、`metal-chemistry-comparison.csv` に結果、`metal-timing.csv` に初期化と赤方偏移の設定時間、保持メモリを保存します。 [独立積分コード](uvb/metal_compare.py)
 
 `uvb-metal-sensitivity` は太陽金属量、宇宙線・軟 X 線ありで、FG20 全域と光子上限 500 eV を比較します。`z = 0, 2`、`G0 = 0.1, 1`、`X0 = 0.1, 1`、`nH = 10⁻³〜10² cm⁻³`（0.5 dex 刻み）、平衡・非平衡の全352ケースを12ステップ進め、`disk-500ev.csv` に出力します。軟 X 線を両方の計算に含めるので、この比較は高エネルギー側の感度を測るものです。 [円盤試験](uvb/UVBackgroundReference.c)
 
@@ -292,7 +292,7 @@ CHIMES の標準比較では銀河シミュレーション向けの設定を土�
 
 ### UVB の外部データ・外部コードとの照合
 
-各ターゲットには FG20 のスペクトルが必要です。`uvb` と `uvb-metal-photoionization` は CHIMES の HDF5 データを読み、`uvb-metal-cloudy` は Cloudy c25.00 を実行します。Python 3 の NumPy、SciPy、h5py を用意します。FG20 を `data/FG20/` に置いた場合は、下の `export` 行を省略できます。
+各ターゲットには FG20 のスペクトルが必要です。`uvb` と `uvb-metal-photoionization` は CHIMES の HDF5 データを読み、`uvb-metal-cloudy` は Cloudy c25.00 を実行します。Python 3 の NumPy、SciPy、h5py が必要です。いずれも `plot/requirements.txt` でインストールされます。FG20 を `data/FG20/` に置いた場合は、下の `export` 行を省略できます。
 
 ```sh
 export UVB_DIR=/absolute/path/to/FG20

@@ -11,6 +11,10 @@ tags
 /test.out
 /test/test.out
 
+# Local single-cell runs from the README example
+/cell.conf
+/cell.csv
+
 # Generated output and local backups
 /.venv/
 /bk/
