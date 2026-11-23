@@ -20,6 +20,7 @@ typedef struct {
     double timestep;
     double accuracy;
     double chemistryAccuracy;
+    bool fixedMolecularHydrogen;
 #ifdef EQC_LEGACY_XRAY_CUTOFF
     bool hasXrayIonization;
 #endif
@@ -39,6 +40,15 @@ static double NetHeatingRate(const StructEQCData *state)
     return (state->H_tot - state->L_tot) / state->Rho;
 }
 
+static EQCLibStatus EvaluateEquilibriumRates(const ThermalProblem *problem, StructEQCData *trial,
+                                             CEQSecondaryIonizationSeed *seed)
+{
+    if(problem->fixedMolecularHydrogen)
+        return CEQCalculateEquilibriumRatesHoldingH2(trial,problem->chemistryAccuracy,problem->uvb,seed);
+    return CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
+        trial,problem->chemistryAccuracy,problem->uvb,problem->stats,seed);
+}
+
 static EQCLibStatus EvaluateThermalPoint(const ThermalProblem *problem, double temperature,
                                          StructEQCData *trial, ThermalPoint *point)
 {
@@ -52,12 +62,10 @@ static EQCLibStatus EvaluateThermalPoint(const ThermalProblem *problem, double t
     if(problem->stats) problem->stats->temperatureTrials++;
     CEQSecondaryIonizationSeed seed = {0};
     if(problem->secondarySeed) seed = *problem->secondarySeed;
-    EQCLibStatus status = CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
-        trial,problem->chemistryAccuracy,problem->uvb,problem->stats,problem->secondarySeed ? &seed : NULL);
+    EQCLibStatus status = EvaluateEquilibriumRates(problem,trial,problem->secondarySeed ? &seed : NULL);
     if(status != EQC_SUCCESS && problem->secondarySeed && (seed.hydrogen > 0.0 || seed.helium > 0.0)){
         seed = (CEQSecondaryIonizationSeed){0};
-        status = CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
-            trial,problem->chemistryAccuracy,problem->uvb,problem->stats,&seed);
+        status = EvaluateEquilibriumRates(problem,trial,&seed);
     }
     if(status != EQC_SUCCESS)
         return status;
@@ -264,7 +272,8 @@ static EQCLibStatus SearchThermalState(const ThermalProblem *problem, double tem
 }
 
 static EQCLibStatus SolveThermalState(const StructEQCData *initial, double timestep, double accuracy,
-                                      StructEQCData *trial, CEQUVBEquilibriumStats *stats)
+                                      StructEQCData *trial, CEQUVBEquilibriumStats *stats,
+                                      bool fixedMolecularHydrogen)
 {
     if(initial == NULL || !isfinite(initial->U) || initial->U <= 0.0 ||
        !isfinite(initial->Rho) || initial->Rho <= 0.0)
@@ -299,6 +308,7 @@ static EQCLibStatus SolveThermalState(const StructEQCData *initial, double times
         .secondarySeed = hasSecondaryPower ? &secondarySeed : NULL,
         .timestep = timestep,
         .accuracy = accuracy,
+        .fixedMolecularHydrogen = fixedMolecularHydrogen,
 #ifdef EQC_LEGACY_XRAY_CUTOFF
         .hasXrayIonization = EQCLibRunParameters.UseSoftXrayIonization && initial->X0 > 0.0,
 #endif
@@ -324,19 +334,29 @@ static EQCLibStatus SolveThermalState(const StructEQCData *initial, double times
     return status;
 }
 
-EQCLibStatus EQCLibTryNetCoolingRateChemcalEquilibrium(StructEQCData *state, double *rate)
+static EQCLibStatus NetCoolingRateAtEnergy(StructEQCData *state, double *rate, bool fixedMolecularHydrogen)
 {
     if(rate == NULL)
         return EQC_INVALID_INPUT;
 
     StructEQCData trial;
-    EQCLibStatus status = SolveThermalState(state, 0.0, 1.e-8, &trial, NULL);
+    EQCLibStatus status = SolveThermalState(state,0.0,1.e-8,&trial,NULL,fixedMolecularHydrogen);
     if(status == EQC_SUCCESS){
         trial.U = state->U;
         *state = trial;
         *rate = NetHeatingRate(state);
     }
     return status;
+}
+
+EQCLibStatus EQCLibTryNetCoolingRateChemcalEquilibrium(StructEQCData *state, double *rate)
+{
+    return NetCoolingRateAtEnergy(state,rate,false);
+}
+
+EQCLibStatus EQCLibTryNetCoolingRateFixedH2(StructEQCData *state, double *rate)
+{
+    return NetCoolingRateAtEnergy(state,rate,true);
 }
 
 EQCLibStatus EQCLibTryEnergyEquationSolverChemcalEquilibriumCoolingHeating(StructEQCData *state,
@@ -353,7 +373,7 @@ EQCLibStatus CEQSolveEquilibriumEnergyWithStats(StructEQCData *state, double acc
         return EQC_INVALID_INPUT;
 
     StructEQCData trial;
-    EQCLibStatus status = SolveThermalState(state, state->dt, accuracy, &trial, stats);
+    EQCLibStatus status = SolveThermalState(state,state->dt,accuracy,&trial,stats,false);
     if(status == EQC_SUCCESS){
         double rate = (trial.U - state->U) / state->dt;
         if(!isfinite(rate))
@@ -364,6 +384,99 @@ EQCLibStatus CEQSolveEquilibriumEnergyWithStats(StructEQCData *state, double acc
         *Du = rate;
     }
     return status;
+}
+
+/* At fixed T and charge, an exponential step integrates both formation and
+   loss with frozen rate coefficients. Sampling again at the new composition
+   resolves H2 self-shielding and composition-dependent collisional loss. */
+static double MolecularFractionStep(StructEQCData *trial, const CEQMolecularHydrogenCoefficients *coefficients,
+                                    double neutralFraction, double fraction, double timestep)
+{
+    const double nH = trial->n[ipHYDROGEN];
+    trial->nmol[ipH2] = (0.5*nH)*fraction;
+    trial->natom[ipHYDROGEN] = (nH-2.0*trial->nmol[ipH2])*neutralFraction;
+    const double formation = 2.0*coefficients->formation*neutralFraction;
+    const double destruction = CEQH2DestructionRate(trial,coefficients);
+    const double total = formation + destruction;
+    if(!isfinite(total) || !(formation >= 0.0 && destruction >= 0.0)) return NAN;
+    if(total == 0.0 || timestep == 0.0) return fraction;
+    const double exponent = -total*timestep;
+    return fmin(1.0,fraction*exp(exponent) + (formation/total)*(-expm1(exponent)));
+}
+
+static EQCLibStatus AdvanceMolecularHydrogen(StructEQCData *state, double timestep, double accuracy)
+{
+    const CEQMolecularHydrogenCoefficients coefficients = CEQPrepareMolecularHydrogenCoefficients(state);
+    const double nH = state->n[ipHYDROGEN];
+    const double atomicDensity = nH - 2.0*state->nmol[ipH2];
+    double neutralFraction = 1.0;
+    if(atomicDensity > 0.0){
+        neutralFraction = fmin(1.0,state->natom[ipHYDROGEN]/atomicDensity);
+    }else if(state->nel > 0.0 && coefficients.formation > 0.0){
+        const CEQHydrogenRates rates = CEQHydrogenIonizationRates(state);
+        double ionized, unused;
+        const int status = CEQSolveIonLadder(1.0,rates.ionization,rates.recombination,0.0,0.0,
+                                            &neutralFraction,&ionized,&unused);
+        if(status != EQC_SUCCESS) return (EQCLibStatus)status;
+    }
+
+    const double initialFraction = 2.0*(state->nmol[ipH2]/nH);
+    double fraction = initialFraction;
+    double remaining = timestep, step = timestep;
+    StructEQCData trial = *state;
+    for(int attempts = 0; remaining > 0.0 && attempts < 4096; attempts++){
+        const double coarse = MolecularFractionStep(&trial,&coefficients,neutralFraction,fraction,step);
+        const double firstHalf = 0.5*step;
+        const double half = MolecularFractionStep(&trial,&coefficients,neutralFraction,fraction,firstHalf);
+        const double fine = MolecularFractionStep(&trial,&coefficients,neutralFraction,half,step-firstHalf);
+        if(!isfinite(coarse) || !isfinite(fine)) return EQC_NO_CONVERGENCE;
+        const double tolerance = accuracy*(1.e-4 + fmax(fraction,fine));
+        const double error = fabs(fine-coarse);
+        if(error <= tolerance){
+            if(remaining-step == remaining) return EQC_NO_CONVERGENCE;
+            fraction = fine;
+            remaining -= step;
+            if(error < 0.25*tolerance) step *= 2.0;
+        }else{
+            step *= 0.5;
+        }
+        step = fmin(step,remaining);
+    }
+    if(remaining > 0.0) return EQC_NO_CONVERGENCE;
+    if(fraction != initialFraction) state->nmol[ipH2] = (0.5*nH)*fraction;
+    return EQC_SUCCESS;
+}
+
+EQCLibStatus CEQAdvanceH2Thermochemistry(StructEQCData *state, double accuracy)
+{
+    if(!EQCLibRunParameters.UseH2Formation || EQCLibRunParameters.UseCOFormation ||
+       state->nmol[ipCO] != 0.0) return EQC_INVALID_INPUT;
+
+    /* Equilibrate the charge and map U to T without changing H2. Evolve H2
+       for half a step on each side of the implicit energy update. */
+    StructEQCData composition, thermal;
+    EQCLibStatus status = SolveThermalState(state,0.0,accuracy,&composition,NULL,true);
+    if(status != EQC_SUCCESS) return status;
+    composition.U = state->U;
+    const double half = 0.5*state->dt;
+    status = AdvanceMolecularHydrogen(&composition,half,accuracy);
+    if(status != EQC_SUCCESS) return status;
+    status = SolveThermalState(&composition,state->dt,accuracy,&thermal,NULL,true);
+    if(status != EQC_SUCCESS) return status;
+
+    const double before = thermal.nmol[ipH2];
+    status = AdvanceMolecularHydrogen(&thermal,state->dt-half,accuracy);
+    if(status != EQC_SUCCESS) return status;
+    if(thermal.nmol[ipH2] == before){
+        *state = thermal;
+    }else{
+        /* Refresh the equation of state and rates at the accepted U and H2. */
+        status = SolveThermalState(&thermal,0.0,accuracy,&composition,NULL,true);
+        if(status != EQC_SUCCESS) return status;
+        composition.U = thermal.U;
+        *state = composition;
+    }
+    return EQC_SUCCESS;
 }
 
 double EQCLibNetCoolingRateChemcalEquilibrium(StructEQCData *state)

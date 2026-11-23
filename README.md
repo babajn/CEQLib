@@ -95,7 +95,7 @@ cp examples/cell.conf cell.conf
 ./src/eqclib-cell cell.conf > cell.csv
 ```
 
-[設定例](examples/cell.conf) の `chemistry_mode` を `nonequilibrium` に変更すると非平衡、`equilibrium` にすると平衡です。項目の省略時は平衡を使います。ファイルは `名前 = 値` を1行ずつ記述し、`#` から行末まではコメントです。引数を省略すると下表の既定値で実行します。
+[設定例](examples/cell.conf) の `chemistry_mode` で平衡（`equilibrium`）、非平衡（`nonequilibrium`）、H₂ のみ非平衡（`h2_nonequilibrium`）を選びます。項目の省略時は平衡を使います。ファイルは `名前 = 値` を1行ずつ記述し、`#` から行末まではコメントです。引数を省略すると下表の既定値で実行します。
 
 | 項目 | 既定値 | 意味 |
 | --- | ---: | --- |
@@ -103,23 +103,24 @@ cp examples/cell.conf cell.conf
 | `T` | 8000 | 初期温度 [K] |
 | `dt_years` | 1000 | 時間刻み [年] |
 | `steps` | 10 | 更新回数 |
-| `x_HII` | 0.5 | 非平衡での初期水素電離分率 `n(H⁺)/nH` |
+| `x_HII` | 0.5 | 非平衡での初期水素電離分率 `n(H⁺)/nH`。H₂ のみ非平衡では `1 - x_H2` を上限とする初期電荷探索の手掛かり |
 | `x_H2` | 0 | 非平衡での初期 H₂ 水素核分率 `2 n(H₂)/nH` |
 | `G0` | 0 | 遠紫外線強度 |
 | `NLyn` | 0 | 水素電離光子束 [cm⁻² s⁻¹] |
 | `Nt` | 0 | 水素柱密度 [cm⁻²] |
 | `Zd` | 0 | ダスト対ガス質量比 |
+| `h2_cr_dissociation_rate` | 0 | H₂ 1分子あたりの宇宙線直接破壊率 [s⁻¹]。正の場合は宇宙線を有効にして `X0=1` を使う |
 | `uvb` | `off` | `on` で宇宙紫外線背景を有効化 |
 | `uvb_directory` | `../data/FG20` | `fg20_cloudy.ascii` のあるディレクトリ。相対パスは実行ディレクトリが基準 |
 | `uvb_redshift` | `on` の場合は必須 | UVB の赤方偏移 |
 | `uvb_column_top` | `on` の場合は必須 | 上側境界からセルまでの遮蔽柱密度 [cm⁻²] |
 | `uvb_column_bottom` | `on` の場合は必須 | 下側境界からセルまでの遮蔽柱密度 [cm⁻²] |
 
-平衡モードは指定された `T` で化学平衡を解き、その組成から初期の内部エネルギーを計算します。非平衡モードは `x_HII` と `x_H2` を初期値に使い、He・C・O は中性から始めます。He/H、C/H、O/H の数比は 0.1、`3×10⁻⁴`、`5×10⁻⁴` です。H₂ 生成は `Zd` が正の場合と、非平衡で初期 H₂ がある場合に有効になります。
+平衡モードは指定された `T` で化学平衡を解き、その組成から初期の内部エネルギーを計算します。非平衡モードは `x_HII` と `x_H2` を初期値に使い、He・C・O は中性から始めます。H₂ のみ非平衡モードは初期分率 `x_H2` を固定して原子・イオンを平衡化します。He/H、C/H、O/H の数比は 0.1、`3×10⁻⁴`、`5×10⁻⁴` です。H₂ の反応は `Zd` が正の場合、非平衡で初期 H₂ がある場合、H₂ のみ非平衡モードで有効になります。
 
 `NLyn` が正の場合は、第2引数にスペクトルのディレクトリを渡します。同梱データを使う場合は、リポジトリのルートから `./src/eqclib-cell cell.conf data/PEGASE2` と実行します。標準出力の CSV には初期状態と各ステップ後の温度、組成、加熱・冷却率 [erg cm⁻³ s⁻¹] が入ります。 [必要なスペクトル](#pegase2-のスペクトルを指定する)
 
-`chemistry_mode` は `eqclib-cell` の起動時に読み込みます。この実行例では、非平衡モードを選ぶと高温側の金属 CIE 冷却を有効にします。平衡モードでは無効です。 [単一セルの CIE 設定](docs/physics.md#元素別-cie-冷却と酸素輝線の切り替え)
+`chemistry_mode` は `eqclib-cell` の起動時に読み込みます。この実行例では、`nonequilibrium` を選ぶと高温側の金属 CIE 冷却を有効にします。 [単一セルの CIE 設定](docs/physics.md#元素別-cie-冷却と酸素輝線の切り替え)
 
 ### 単一セルで UVB を有効にする
 
@@ -148,7 +149,9 @@ ASURA などのホストコードでは、起動時に設定を読み込み、�
 chemistry_mode = nonequilibrium
 ```
 
-設定値は `equilibrium`（`EQC_CHEMISTRY_EQUILIBRIUM`）と `nonequilibrium`（`EQC_CHEMISTRY_NONEQUILIBRIUM`）です。項目を省略すると従来の平衡モードを使います。`EQCLibTryLoadChemistryMode` は `名前 = 値` 形式で `chemistry_mode` を読み取り、ホストの他の設定項目や `#` 以降のコメントは読み飛ばします。設定ファイルを使わない場合はパスに `NULL` を渡せます。パスを指定してファイルを開けない場合や、`chemistry_mode` の値が不正または重複している場合はエラーを返します。ホストに設定パーサーがある場合は、前後の空白を除いた値を `EQCLibTryParseChemistryMode` に渡せます。その場合も項目を省略できるように、モード変数を `EQC_CHEMISTRY_EQUILIBRIUM` で初期化します。
+設定値は `equilibrium`（`EQC_CHEMISTRY_EQUILIBRIUM`）、`nonequilibrium`（`EQC_CHEMISTRY_NONEQUILIBRIUM`）、`h2_nonequilibrium`（`EQC_CHEMISTRY_H2_NONEQUILIBRIUM`）です。項目を省略すると従来の平衡モードを使います。`EQCLibTryLoadChemistryMode` は `名前 = 値` 形式で `chemistry_mode` を読み取り、ホストの他の設定項目や `#` 以降のコメントは読み飛ばします。設定ファイルを使わない場合はパスに `NULL` を渡せます。パスを指定してファイルを開けない場合や、`chemistry_mode` の値が不正または重複している場合はエラーを返します。ホストに設定パーサーがある場合は、前後の空白を除いた値を `EQCLibTryParseChemistryMode` に渡せます。その場合も項目を省略できるように、モード変数を `EQC_CHEMISTRY_EQUILIBRIUM` で初期化します。
+
+`h2_nonequilibrium` は `U` と `nmol[ipH2]` をステップ間で引き継ぐ試験モードです。初回は正の温度の初期推定値を `T` に入れるか、状態方程式の値を設定します。H₂ 生成を有効にし、CO 生成を無効、初期 CO 存在量をゼロにします。所定の温度で初期状態を作るときは、`EQCLibTryCalculateFixedH2CoolingHeatingRates` で H₂ を保持したまま原子・イオン組成と加熱・冷却率を求めます。ホスト側で温度制限などにより `U` を補正した場合は、`EQCLibTryNetCoolingRateFixedH2` で補正後の `U` に整合する温度と率を求めます。 [H₂ の時間更新と適用条件](docs/physics.md#h₂-のみを非平衡で進めるモデル) · [試験モードの検証](test/README.md#h₂-のみ非平衡と宇宙線解離のテスト)
 
 ライブラリの実行パラメータを設定し、並列計算を始める前に `EQCLibTryInitialization` を呼びます。H II 領域を有効にした場合は、第2引数に PEGASE.2 のスペクトルがあるディレクトリを渡します。ホスト側でモードを保持し、各粒子の更新に渡します。 [必要なスペクトル](#pegase2-のスペクトルを指定する)
 
@@ -175,9 +178,9 @@ static EQCLibStatus AdvanceCooling(StructEQCData *cell, double accuracy,
 }
 ```
 
-共通 API は両モードで `U`、温度、化学種などを更新し、`Du` にステップ平均の比内部エネルギー変化率を格納します。`U` の時間更新はこの呼び出しで完結します。`dt = 0` の場合とエラー時は入力状態を保持します。
+共通 API は各モードで `U`、温度、化学種などを更新し、`Du` にステップ平均の比内部エネルギー変化率を格納します。`U` の時間更新はこの呼び出しで完結します。`dt = 0` の場合とエラー時は入力状態を保持します。
 
-同じ粒子データでモードを切り替える場合は、CO 生成を既定の無効設定にして `nmol[ipCO]` をゼロにします。Si を含む粒子は両モードで使えます。非平衡モードでの Si の入力と扱いは下記の節に示します。
+同じ粒子データでモードを切り替える場合は、CO 生成を既定の無効設定にして `nmol[ipCO]` をゼロにします。`h2_nonequilibrium` では Si の平衡組成を求めます。`nonequilibrium` での Si の入力と扱いは下記の節に示します。
 
 平衡モードで指定温度から新規に計算を始める場合は、その温度で `EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates` を呼び、成功を確認してから `EQCLibConvertTtoU` で平衡組成に対応する `U` を求めます。非平衡モードでは初期組成に対応する `U` を設定し、次のステップや再開計算に更新後の `U` と組成を引き継ぎます。モードは起動時に決めます。非平衡組成から平衡計算を再開する場合は、指定温度なら組成をそろえて `U` を再計算し、`U` を引き継ぐ場合は再平衡化で温度が変わり得ることを考慮してください。 [初期化の実装例](src/CellRunner.c)
 
@@ -185,7 +188,7 @@ static EQCLibStatus AdvanceCooling(StructEQCData *cell, double accuracy,
 
 ### 宇宙紫外線背景と遮蔽
 
-UVB は既定で無効です。平衡・非平衡の両モードで有効にできます。UVB の追加で `StructEQCData` の ABI が変わるため、ライブラリとホストコードを同じヘッダーで再ビルドしてください。 [FG20 の取得方法](#fg20-のスペクトルを用意する) · [物理モデルと適用範囲](docs/physics.md#宇宙紫外線背景)
+UVB は既定で無効です。すべての化学モードで有効にできます。UVB の追加で `StructEQCData` の ABI が変わるため、ライブラリとホストコードを同じヘッダーで再ビルドしてください。 [FG20 の取得方法](#fg20-のスペクトルを用意する) · [物理モデルと適用範囲](docs/physics.md#宇宙紫外線背景)
 
 1. 初期化前に `EQCLibSetRunParamUVBackground(true, uvbDirectory)` を呼びます。ディレクトリに `NULL` を渡すと、実行ディレクトリからの相対パス `../data/FG20` を使います。光子エネルギーの上限を設ける場合は、初期化前に `EQCLibSetRunParamUVBackgroundMaximumEnergy(energyEV)` を呼びます。既定値の `0` ではスペクトルの上端まで積分します。
 2. `EQCLibTryInitialization` の成功を確認します。初期化直後は表の最小赤方偏移を使います。赤方偏移を設定・更新するには、並列のセル更新に入る前に `EQCLibTrySetUVBackgroundRedshift(z)` を呼び、戻り値を確認します。背景の表は並列更新中には読み取り専用です。

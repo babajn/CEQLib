@@ -48,7 +48,7 @@ def check_uvb(program, config):
     def settings_text(options):
         return "".join(f"{key} = {value}\n" for key, value in options.items())
 
-    for mode in ("equilibrium", "nonequilibrium"):
+    for mode in ("equilibrium", "nonequilibrium", "h2_nonequilibrium"):
         illuminated_gas = gas + f"chemistry_mode = {mode}\n"
         thin = run_cell(program, config, illuminated_gas + settings_text(settings))
         later = run_cell(program, config, illuminated_gas + settings_text(dict(settings, uvb_redshift=2)))
@@ -105,6 +105,14 @@ def main():
         molecular_nonequilibrium = run_cell(program, config,
                                            "chemistry_mode = nonequilibrium\n" + irradiated + "x_H2 = 0.8\n")
         assert float(molecular_nonequilibrium[0]["H2"]) == 0.8
+        hybrid = run_cell(program, config, "chemistry_mode = h2_nonequilibrium\n" +
+                          irradiated + "x_H2 = 0.8\n")
+        assert hybrid[0]["chemistry_mode"] == "h2_nonequilibrium"
+        assert float(hybrid[0]["H2"]) == 0.8
+        assert float(hybrid[1]["H2"]) > 0.79
+        hybrid_default_seed = run_cell(program, config, step + "T = 100\n"
+                                       "chemistry_mode = h2_nonequilibrium\nx_H2 = 0.8\n")
+        assert float(hybrid_default_seed[0]["H2"]) == 0.8
         check_uvb(program, config)
     print("Cell runner initialization checks passed.")
 

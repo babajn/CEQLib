@@ -14,6 +14,9 @@ EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithUVB(StructEQCDa
 EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
     StructEQCData *state, double accuracy, const CEQUVBRates *uvb, struct CEQUVBEquilibriumStats *stats,
     struct CEQSecondaryIonizationSeed *seed);
+EQCLibStatus CEQCalculateEquilibriumRatesHoldingH2(StructEQCData *state, double accuracy,
+                                                   const CEQUVBRates *uvb, struct CEQSecondaryIonizationSeed *seed);
+EQCLibStatus CEQAdvanceH2Thermochemistry(StructEQCData *state, double accuracy);
 EQCLibStatus CEQSolveEquilibriumEnergyWithStats(StructEQCData *state, double accuracy, double *rate,
                                               struct CEQUVBEquilibriumStats *stats);
 /* Same operation as the public equilibrium update, with per-call counters. */

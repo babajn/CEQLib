@@ -4,6 +4,7 @@ void InitializeCosmicRayIonization(int Check);
 double CosmicRayIonizationRateHI(double xe);
 double CosmicRayIonizationRateDI(double xe);
 double CosmicRayIonizationRateH2(double xe);
+double CEQH2CosmicRayDissociationRate(double X0);
 double CosmicRayIonizationRateHeI(double xe);
 double CosmicRayIonizationRateCI(double xe);
 double CosmicRayIonizationRateOI(double xe);

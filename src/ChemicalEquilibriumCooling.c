@@ -225,11 +225,12 @@ EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithUVB(StructEQCDa
     return CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(state,accuracy,uvb,NULL,NULL);
 }
 
-EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
+static EQCLibStatus CalculateEquilibriumRates(
     StructEQCData *state, double accuracy, const CEQUVBRates *uvb, CEQUVBEquilibriumStats *stats,
-    CEQSecondaryIonizationSeed *seed){
+    CEQSecondaryIonizationSeed *seed, bool fixedMolecularHydrogen){
     StructEQCData trial = *state;
-    int status = CEQChemicalReactionEquilibriumWithUVBSeed(&trial,accuracy,uvb,stats,seed);
+    int status = fixedMolecularHydrogen ? CEQChemicalReactionEquilibriumHoldingH2(&trial,accuracy,uvb,seed) :
+        CEQChemicalReactionEquilibriumWithUVBSeed(&trial,accuracy,uvb,stats,seed);
     if(status < 0) return (EQCLibStatus)status;
 
     trial.invT = 1.0/trial.T;
@@ -239,6 +240,25 @@ EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
 
     *state = trial;
     return EQC_SUCCESS;
+}
+
+EQCLibStatus CEQCalculateChemicalAbundanceCoolingHeatingRatesWithSeed(
+    StructEQCData *state, double accuracy, const CEQUVBRates *uvb, CEQUVBEquilibriumStats *stats,
+    CEQSecondaryIonizationSeed *seed){
+    return CalculateEquilibriumRates(state,accuracy,uvb,stats,seed,false);
+}
+
+EQCLibStatus CEQCalculateEquilibriumRatesHoldingH2(StructEQCData *state, double accuracy,
+                                                   const CEQUVBRates *uvb, CEQSecondaryIonizationSeed *seed){
+    return CalculateEquilibriumRates(state,accuracy,uvb,NULL,seed,true);
+}
+
+EQCLibStatus EQCLibTryCalculateFixedH2CoolingHeatingRates(StructEQCData *state, double accuracy){
+    if(!state) return EQC_INVALID_INPUT;
+    CEQUVBRates uvb;
+    const EQCLibStatus status = CEQEvaluateUVBackgroundWithMetallicity(state->NHIuvb,state->Z,&uvb);
+    if(status != EQC_SUCCESS) return status;
+    return CEQCalculateEquilibriumRatesHoldingH2(state,accuracy,&uvb,NULL);
 }
 
 void EQCLibCalulateChemcalAbundanceCoolingHeatingRates(StructEQCData *PhydroPP){

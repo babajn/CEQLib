@@ -37,6 +37,7 @@ static double x_e[] = {1.e-4,1.e-3,1.e-2,1.e-1};
 static double f_3[] = {3.25,7.20,16.2,31.0};
 enum { ElectronFractionTableSize = sizeof(x_e)/sizeof(x_e[0]) };
 static gsl_spline *f3Access;
+static double h2CosmicRayDissociationRateAtUnitX0;
 void InitializeCosmicRayIonization(int Check){
     if(f3Access == NULL){
         f3Access = gsl_spline_alloc(gsl_interp_linear,ElectronFractionTableSize);
@@ -88,6 +89,18 @@ double CosmicRayIonizationRateH2(double xe){
     // Le Teuff et al. (2000)
     // see Table B3 in Glover et al. (2010)
     return zetaH2;  // [s^-1]
+}
+
+EQCLibStatus EQCLibSetRunParamH2CosmicRayDissociationRate(double rateAtUnitX0){
+    if(!isfinite(rateAtUnitX0) || rateAtUnitX0 < 0.0) return EQC_INVALID_INPUT;
+    h2CosmicRayDissociationRateAtUnitX0 = rateAtUnitX0;
+    return EQC_SUCCESS;
+}
+
+double CEQH2CosmicRayDissociationRate(double X0){
+    if(!EQCLibRunParameters.UseCosmicRayIonization ||
+       h2CosmicRayDissociationRateAtUnitX0 == 0.0 || X0 == 0.0) return 0.0;
+    return X0*h2CosmicRayDissociationRateAtUnitX0;
 }
 
 double CosmicRayIonizationRateHeI(double xe){

@@ -194,6 +194,61 @@ static void CheckFullyMolecularStart(void)
     assert(MolecularFraction(&state) < accuracy);
 }
 
+static void CheckCosmicRayMolecularDissociation(void)
+{
+    const bool previousCosmicRaySetting = EQCLibRunParameters.UseCosmicRayIonization;
+    const double rateAtUnitX0 = 1.3626e-17;
+    const double duration = 1.0/rateAtUnitX0;
+    StructEQCData initial = HydrogenState(10.0,20.0,0.0,1.0);
+    initial.X0 = 2.0;
+    initial.Nt = 2.0e21;
+    EQCLibSetRunParamCosmicRayIonization(true);
+
+    /* Cold, dark, dust-free gas isolates the destruction rate. */
+    StructEQCData state = initial;
+    Advance(&state,duration);
+    assert(MolecularFraction(&state) == 1.0);
+
+    assert(EQCLibSetRunParamH2CosmicRayDissociationRate(rateAtUnitX0) == EQC_SUCCESS);
+    assert(EQCLibSetRunParamH2CosmicRayDissociationRate(-1.0) == EQC_INVALID_INPUT);
+    assert(EQCLibSetRunParamH2CosmicRayDissociationRate(NAN) == EQC_INVALID_INPUT);
+    assert(EQCLibSetRunParamH2CosmicRayDissociationRate(INFINITY) == EQC_INVALID_INPUT);
+    state = initial;
+    Advance(&state,duration);
+    assert(fabs(MolecularFraction(&state)-exp(-2.0)) < 20.0*accuracy);
+
+    state = initial;
+    state.X0 = 0.0;
+    Advance(&state,duration);
+    assert(MolecularFraction(&state) == 1.0);
+    EQCLibSetRunParamCosmicRayIonization(false);
+    state = initial;
+    Advance(&state,duration);
+    assert(MolecularFraction(&state) == 1.0);
+    EQCLibSetRunParamCosmicRayIonization(true);
+
+    /* With dust, both the Newton and the tight bracket path must balance
+       formation against CR destruction at the same effective rate. */
+    initial.Zd = SOLAR_METALLICITY;
+    initial.Td = 20.0;
+    const double tolerances[] = {1.0e-8, 1.0e-13};
+    for(size_t i=0;i<sizeof(tolerances)/sizeof(tolerances[0]);i++){
+        state = initial;
+        assert(EQCLibChemicalReactionEquilibrium(&state,tolerances[i]) == EQC_SUCCESS);
+        const double nH = state.n[ipHYDROGEN];
+        const double hydrogenSum = state.natom[ipHYDROGEN]+state.nion[ipHYDROGEN]+2.0*state.nmol[ipH2];
+        assert(fabs(hydrogenSum-nH) <= 8.0*DBL_EPSILON*nH);
+        assert(fabs(state.nel-state.nion[ipHYDROGEN]) <= tolerances[i]*fmax(state.nel,state.nion[ipHYDROGEN]));
+        assert(MolecularFraction(&state) > 0.0 && MolecularFraction(&state) < 1.0);
+        const double formed = nH*H2FormationRate(state.T,state.Zd,state.Td)*state.natom[ipHYDROGEN];
+        const double destroyed = (initial.X0*rateAtUnitX0)*state.nmol[ipH2];
+        assert(fabs(formed-destroyed) <= 2.0*tolerances[i]*fmax(formed,destroyed));
+    }
+
+    assert(EQCLibSetRunParamH2CosmicRayDissociationRate(0.0) == EQC_SUCCESS);
+    EQCLibSetRunParamCosmicRayIonization(previousCosmicRaySetting);
+}
+
 static void CheckUnchanged(StructEQCData *state, EQCLibStatus expected)
 {
     unsigned char before[sizeof(*state)];
@@ -902,6 +957,7 @@ int main(int argc, char **argv)
     CheckIonizingLightSwitch();
     CheckMolecularHydrogen();
     CheckFullyMolecularStart();
+    CheckCosmicRayMolecularDissociation();
     CheckInvalidInputs();
     CheckThermochemicalLightSwitch();
     CheckRepeatedAtomicThermochemistry();

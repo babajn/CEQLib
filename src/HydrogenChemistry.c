@@ -235,8 +235,10 @@ static int ChemistryDerivative(double time, const double y[], double derivative[
                                                                    h2->doppler,h2->dustShielding);
         const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nH*neutral,
                                                                (0.5*molecular)*nH);
-        if(!ValidRate(h2->formation) || !ValidRate(photo) || !ValidRate(collision)) return invalidRates;
-        derivative[molecularOffset] = 2.0*(h2->formation*neutralStage) - (photo+collision)*trialHydrogen[1];
+        const double destruction = photo+h2->cosmicRayDissociation+collision;
+        if(!ValidRate(h2->formation) || !ValidRate(photo) || !ValidRate(collision) || !ValidRate(destruction))
+            return invalidRates;
+        derivative[molecularOffset] = 2.0*(h2->formation*neutralStage) - destruction*trialHydrogen[1];
     }
     if(oxygen && !OxygenDerivative(problem,y,neutralStage,derivative)) return GSL_FAILURE;
     if(helium && !LadderDerivative(CEQHeliumIonizationRates(state,coefficients),y+helium,derivative+helium))

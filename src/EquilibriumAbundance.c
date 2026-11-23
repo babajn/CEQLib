@@ -191,7 +191,7 @@ typedef struct {
 
 typedef struct {
     const HydrogenBalance *balance;
-    double nH2, photo;
+    double nH2, fixedDestruction;
 } TraceAtomicFlux;
 
 /* Under binary64 round-to-nearest, 1 - atomic rounds to 1 in this range. */
@@ -276,7 +276,15 @@ static HydrogenFluxes MolecularHydrogenFluxes(const HydrogenBalance *balance, do
     const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,(0.5*molecular)*state->Nt,
                                                                h2->doppler,h2->dustShielding);
     const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,nH2);
-    return (HydrogenFluxes){(photo+collision)*nH2,h2->formation*nHI};
+    return (HydrogenFluxes){(photo+h2->cosmicRayDissociation+collision)*nH2,h2->formation*nHI};
+}
+
+double CEQH2DestructionRate(const StructEQCData *state, const CEQMolecularHydrogenCoefficients *h2){
+    const double nH2 = state->nmol[ipH2];
+    const double column = (nH2/state->n[ipHYDROGEN])*state->Nt;
+    const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,column,h2->doppler,h2->dustShielding);
+    const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,state->natom[ipHYDROGEN],nH2);
+    return photo+h2->cosmicRayDissociation+collision;
 }
 
 static double HydrogenFluxResidual(double fraction, const void *parameters){
@@ -294,8 +302,10 @@ static bool CacheTraceAtomicFlux(const HydrogenBalance *balance, TraceAtomicFlux
     const StructEQCData *state = balance->state;
     cache->balance = balance;
     cache->nH2 = 0.5*state->n[ipHYDROGEN];
-    cache->photo = H2PhotoDissociationRateWithDustFactor(state->G0,0.5*state->Nt,
-                                                        balance->h2->doppler,balance->h2->dustShielding);
+    const CEQMolecularHydrogenCoefficients *h2 = balance->h2;
+    const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,0.5*state->Nt,
+                                                               h2->doppler,h2->dustShielding);
+    cache->fixedDestruction = photo+h2->cosmicRayDissociation;
     return true;
 }
 
@@ -305,7 +315,7 @@ static double CachedTraceAtomicResidual(double fraction, const TraceAtomicFlux *
     const CEQMolecularHydrogenCoefficients *h2 = balance->h2;
     const double nHI = (state->n[ipHYDROGEN]*fraction)*balance->neutralFraction;
     const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,cache->nH2);
-    return FluxResidual((cache->photo+collision)*cache->nH2,h2->formation*nHI);
+    return FluxResidual((cache->fixedDestruction+collision)*cache->nH2,h2->formation*nHI);
 }
 
 static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget, bool wide){
@@ -340,7 +350,8 @@ static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *paramet
         const double nHImax = (nH*upper->fraction)*balance->neutralFraction;
         const double nH2max = 0.5*nH;
         const double maximumCollision = H2DissociationFromCoefficients(h2->collision,s->nel,nHImax,nH2max);
-        flux = (HydrogenFluxes){(4.0*thin+maximumCollision)*nH2max,h2->formation*nHImax};
+        const double destructionBound = 4.0*thin+h2->cosmicRayDissociation+maximumCollision;
+        flux = (HydrogenFluxes){destructionBound*nH2max,h2->formation*nHImax};
     }
     if(!(flux.destroyed > 0.0) || !isfinite(flux.destroyed) ||
        !(flux.formed > 0.0) || !isfinite(flux.formed)) return 0;
@@ -378,7 +389,8 @@ static bool StableMolecularHydrogen(const HydrogenBalance *balance, double atomi
     double shieldSlope;
     const double photo = CEQH2PhotoRateAndShieldingSlope(state->G0,(0.5*molecular)*state->Nt,
                                                          h2->doppler,h2->dustShielding,&shieldSlope);
-    const double destruction = photo+state->nel*h2->collision.electron+byAtom*atomic+byMolecule*molecular;
+    const double destruction = photo+h2->cosmicRayDissociation+state->nel*h2->collision.electron
+                               + byAtom*atomic+byMolecule*molecular;
     return destruction+atomic*(photo*shieldSlope+molecular*(byMolecule-byAtom)) >= 0.0;
 }
 #endif
@@ -392,10 +404,15 @@ static void RefreshMolecularHydrogenCoefficients(const StructEQCData *state,
     h2->collision = CEQH2DissociationCoefficientsWithTemperatureTable(state->T,point);
 }
 
-static CEQMolecularHydrogenCoefficients MolecularHydrogenCoefficients(const StructEQCData *state){
-    CEQMolecularHydrogenCoefficients h2 = {
+static CEQMolecularHydrogenCoefficients MolecularHydrogenRadiationCoefficients(const StructEQCData *state){
+    return (CEQMolecularHydrogenCoefficients){
         .dustShielding = DustShieldingFactorFUV(state->Nt,state->Zd),
+        .cosmicRayDissociation = CEQH2CosmicRayDissociationRate(state->X0),
     };
+}
+
+CEQMolecularHydrogenCoefficients CEQPrepareMolecularHydrogenCoefficients(const StructEQCData *state){
+    CEQMolecularHydrogenCoefficients h2 = MolecularHydrogenRadiationCoefficients(state);
     RefreshMolecularHydrogenCoefficients(state,&h2,NULL);
     return h2;
 }
@@ -502,7 +519,7 @@ static double UnshieldedMolecularFraction(const StructEQCData *state, const CEQM
     const double photo = H2PhotoDissociationRateWithDustFactor(state->G0,0.0,h2->doppler,h2->dustShielding);
     const double formation = h2->formation*neutral;
     const double q2 = 0.5*(byMolecule-byAtom);
-    const double q1 = 0.5*(photo+byElectron+byAtom) + formation;
+    const double q1 = 0.5*(photo+h2->cosmicRayDissociation+byElectron+byAtom) + formation;
     const double discriminant = q1*q1 + 4.0*q2*formation;
     const double guess = discriminant >= 0.0 ? (2.0*formation)/(q1+sqrt(discriminant)) : 0.5;
     return guess > 0.0 && guess < 1.0 ? guess : 0.5;
@@ -536,7 +553,7 @@ static int SolveMolecularHydrogenNewton(const StructEQCData *state, const CEQMol
         const double photo = CEQH2PhotoRateAndShieldingSlope(state->G0,column,h2->doppler,h2->dustShielding,
                                                              &shieldSlope);
         const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,nH2);
-        const double destruction = photo+collision;
+        const double destruction = photo+h2->cosmicRayDissociation+collision;
         const double destroyed = destruction*nH2;
         const double formed = h2->formation*nHI;
         if(!(destroyed >= DBL_MIN && formed >= DBL_MIN)) return EQC_NO_CONVERGENCE;
@@ -692,7 +709,7 @@ static void InitializeRateCoefficients(const StructEQCData *s, CEQRateCoefficien
         c->silicon.photo0 = SiIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_SI_I];
         c->silicon.photo1 = SiIIPhotoionizationRate(NLyn) + uvb->metalIonization[CEQ_UVB_SI_II];
     }
-    if(c->hasMolecularHydrogen) c->molecularHydrogen.dustShielding = DustShieldingFactorFUV(s->Nt,s->Zd);
+    if(c->hasMolecularHydrogen) c->molecularHydrogen = MolecularHydrogenRadiationCoefficients(s);
 }
 
 static void RefreshHydrogenCoefficients(double T, CEQLadderCoefficients *hydrogen, const CEQTemperaturePoint *point){
@@ -886,11 +903,19 @@ static double ChargeTransferResidual(double s, ChargeTransferBalance *b){
     return s - (log(ionization) - log(recombination));
 }
 
-int CEQSolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogenRates *hydrogen,
-                                         const CEQIonLadderRates *oxygen,
-                                         const CEQRateCoefficients *coefficients, double accuracy){
+static double AvailableAtomicHydrogen(const StructEQCData *state){
+    const double nH = state->n[ipHYDROGEN], nH2 = state->nmol[ipH2];
+    if(!isfinite(nH) || nH <= 0.0 || !isfinite(nH2) || nH2 < 0.0 || nH2 > 0.5*nH) return NAN;
+    const double atomic = nH-2.0*nH2;
+    return atomic >= 0.0 ? atomic : NAN;
+}
+
+static int SolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogenRates *hydrogen,
+                                             const CEQIonLadderRates *oxygen, const CEQRateCoefficients *coefficients,
+                                             double accuracy, bool fixedH2){
     const double freeOxygen = state->n[ipOXYGEN]-state->nmol[ipCO];
-    const double atomicHydrogen = state->natom[ipHYDROGEN]+state->nion[ipHYDROGEN];
+    const double atomicHydrogen = fixedH2 ? AvailableAtomicHydrogen(state)
+                                          : state->natom[ipHYDROGEN]+state->nion[ipHYDROGEN];
     ChargeTransferBalance b = {
         .state = state, .oxygen = oxygen, .atomicHydrogen = atomicHydrogen, .freeOxygen = freeOxygen,
         .ionization = hydrogen->ionization, .recombination = hydrogen->recombination,
@@ -923,7 +948,7 @@ int CEQSolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogen
        slowly when O/H is small, so a fixed-point step followed by secant steps
        converges in a few evaluations; the bracket keeps every step bounded. */
     double s = log(b.ionization) - log(b.recombination);
-    if(EQCLibRunParameters.UseH2Formation){
+    if(EQCLibRunParameters.UseH2Formation && !fixedH2){
         /* The incoming state holds an H2 split already solved for its own H
            ionization ratio: the uncoupled root after the H solve, or the
            previous coupled root when the caller repeats this after updating CO.
@@ -961,6 +986,25 @@ int CEQSolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogen
     return EQC_NO_CONVERGENCE;
 }
 
+int CEQSolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogenRates *hydrogen,
+                                         const CEQIonLadderRates *oxygen,
+                                         const CEQRateCoefficients *coefficients, double accuracy){
+    return SolveHydrogenOxygenChargeTransfer(state,hydrogen,oxygen,coefficients,accuracy,false);
+}
+
+int CEQSolveHydrogenOxygenChargeTransferWithFixedH2(StructEQCData *state, const CEQHydrogenRates *hydrogen,
+                                                    const CEQIonLadderRates *oxygen,
+                                                    const CEQRateCoefficients *coefficients, double accuracy){
+    return SolveHydrogenOxygenChargeTransfer(state,hydrogen,oxygen,coefficients,accuracy,true);
+}
+
+int CEQSolveHydrogenWithFixedH2(StructEQCData *state, const CEQHydrogenRates *rates){
+    const double atomic = AvailableAtomicHydrogen(state);
+    double unused;
+    return CEQSolveIonLadder(atomic,rates->ionization,rates->recombination,0.0,0.0,
+                            &state->natom[ipHYDROGEN],&state->nion[ipHYDROGEN],&unused);
+}
+
 int CEQSolveHydrogenEquilibrium(StructEQCData *state, double accuracy){
     const double nH = state->n[ipHYDROGEN];
     if(!isfinite(nH) || nH <= 0.0) return EQC_INVALID_INPUT;
@@ -982,7 +1026,7 @@ int CEQSolveHydrogenEquilibriumWithRates(StructEQCData *state, const CEQHydrogen
     double molecular = 0.0;
     if(EQCLibRunParameters.UseH2Formation){
         const CEQMolecularHydrogenCoefficients h2 = coefficients != NULL && coefficients->hasMolecularHydrogen ?
-            coefficients->molecularHydrogen : MolecularHydrogenCoefficients(state);
+            coefficients->molecularHydrogen : CEQPrepareMolecularHydrogenCoefficients(state);
         status = SolveMolecularHydrogen(state,&h2,neutral,state->nmol[ipH2],accuracy,&atomic,&molecular);
         if(status != EQC_SUCCESS) return status;
     }
@@ -1027,7 +1071,7 @@ void EquilibriumHydrogenFractionalAbundance(StructEQCData *PhydroPP){
         double dnH2_form  = nH*H2FormationRate(T,Zd,Tdust);
         double dnH2_diss  = H2PhotoDissociationRate(G0,Ntot,Nh2,b5,Zd);
         double dnH2_dest  = H2CollisionalDissociationRate(T,nH,nHI,nH2,ne);
-        double H2toHI     = dnH2_form/(dnH2_diss + dnH2_dest);
+        double H2toHI     = dnH2_form/(dnH2_diss + CEQH2CosmicRayDissociationRate(X0) + dnH2_dest);
         double HIItoHt    = MIN(1.0,HIItoHI/(HIItoHI+2*H2toHI+1.0));
         double HItoHt     = MIN(1.0,1.0    /(HIItoHI+2*H2toHI+1.0));
         fHII = HIItoHt;

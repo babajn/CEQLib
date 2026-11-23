@@ -14,6 +14,7 @@ EQCLibStatus EQCLibTryParseChemistryMode(const char *value, EQCLibChemistryMode 
     if(!value || !mode) return EQC_INVALID_INPUT;
     if(strcmp(value,"equilibrium") == 0) *mode = EQC_CHEMISTRY_EQUILIBRIUM;
     else if(strcmp(value,"nonequilibrium") == 0) *mode = EQC_CHEMISTRY_NONEQUILIBRIUM;
+    else if(strcmp(value,"h2_nonequilibrium") == 0) *mode = EQC_CHEMISTRY_H2_NONEQUILIBRIUM;
     else return EQC_INVALID_INPUT;
     return EQC_SUCCESS;
 }
@@ -67,7 +68,8 @@ EQCLibStatus EQCLibTryLoadChemistryMode(const char *path, EQCLibChemistryMode *m
         seen = true;
     }
     if(status == EQC_INVALID_INPUT){
-        fprintf(stderr,"%s:%zu: set chemistry_mode once to equilibrium or nonequilibrium\n",path,lineNumber);
+        fprintf(stderr,"%s:%zu: set chemistry_mode once to equilibrium, nonequilibrium, or h2_nonequilibrium\n",
+                path,lineNumber);
     }else if(!feof(file)){
         perror(path);
         status = EQC_INITIALIZATION_FAILED;
@@ -86,7 +88,8 @@ static EQCLibStatus AdvanceCell(StructEQCData *state, double accuracy, EQCLibChe
 {
     if(!state || !isfinite(state->dt) || state->dt < 0.0 ||
        !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0 ||
-       (mode != EQC_CHEMISTRY_EQUILIBRIUM && mode != EQC_CHEMISTRY_NONEQUILIBRIUM)) return EQC_INVALID_INPUT;
+       (mode != EQC_CHEMISTRY_EQUILIBRIUM && mode != EQC_CHEMISTRY_NONEQUILIBRIUM &&
+        mode != EQC_CHEMISTRY_H2_NONEQUILIBRIUM)) return EQC_INVALID_INPUT;
     if(state->dt == 0.0) return EQC_SUCCESS;
 
     StructEQCData updated = *state;
@@ -96,7 +99,9 @@ static EQCLibStatus AdvanceCell(StructEQCData *state, double accuracy, EQCLibChe
         if(status != EQC_SUCCESS) return status;
         updated.U += state->dt*updated.Du;
     }else{
-        const EQCLibStatus status = EQCLibTryAdvanceHydrogenThermochemistry(&updated,accuracy);
+        const EQCLibStatus status = mode == EQC_CHEMISTRY_H2_NONEQUILIBRIUM ?
+            CEQAdvanceH2Thermochemistry(&updated,accuracy) :
+            EQCLibTryAdvanceHydrogenThermochemistry(&updated,accuracy);
         if(status != EQC_SUCCESS) return status;
         updated.Du = (updated.U-state->U)/state->dt;
     }

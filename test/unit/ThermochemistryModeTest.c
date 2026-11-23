@@ -32,6 +32,8 @@ static void CheckModeSettings(void)
     assert(mode == EQC_CHEMISTRY_NONEQUILIBRIUM);
     assert(EQCLibTryParseChemistryMode("equilibrium",&mode) == EQC_SUCCESS);
     assert(mode == EQC_CHEMISTRY_EQUILIBRIUM);
+    assert(EQCLibTryParseChemistryMode("h2_nonequilibrium",&mode) == EQC_SUCCESS);
+    assert(mode == EQC_CHEMISTRY_H2_NONEQUILIBRIUM);
 
     WriteSettings("n_H = 10\r\n  chemistry_mode = nonequilibrium  # enable ODEs\r\n");
     assert(EQCLibTryLoadChemistryMode(settingsPath,&mode) == EQC_SUCCESS);
@@ -226,7 +228,9 @@ static void CheckUpdateInputs(void)
     StructEQCData state = initial;
     CheckUnchanged(&state,accuracy,(EQCLibChemistryMode)42,EQC_INVALID_INPUT);
 
-    const EQCLibChemistryMode modes[] = {EQC_CHEMISTRY_EQUILIBRIUM,EQC_CHEMISTRY_NONEQUILIBRIUM};
+    const EQCLibChemistryMode modes[] = {
+        EQC_CHEMISTRY_EQUILIBRIUM,EQC_CHEMISTRY_NONEQUILIBRIUM,EQC_CHEMISTRY_H2_NONEQUILIBRIUM
+    };
     for(size_t i = 0; i < sizeof(modes)/sizeof(modes[0]); i++){
         state = initial;
         CheckUnchanged(&state,NAN,modes[i],EQC_INVALID_INPUT);
@@ -240,6 +244,51 @@ static void CheckUpdateInputs(void)
     }
 }
 
+static void CheckMolecularNonequilibrium(void)
+{
+    const EQCLibChemistryMode mode = EQC_CHEMISTRY_H2_NONEQUILIBRIUM;
+    StructEQCData initial = InitialCell();
+    const double nH = initial.n[ipHYDROGEN];
+    initial.T = 100.0;
+    initial.G0 = 1.0;
+    initial.dt = 0.5/3.3e-11;
+    initial.natom[ipHYDROGEN] = 0.2*nH;
+    initial.nion[ipHYDROGEN] = 0.0;
+    initial.nmol[ipH2] = 0.4*nH;
+    SetCellThermodynamics(&initial);
+
+    EQCLibSetRunParamH2Formation(true,1.0);
+    StructEQCData state = initial;
+    assert(EQCLibTryCalculateFixedH2CoolingHeatingRates(&state,accuracy) == EQC_SUCCESS);
+    assert(state.nmol[ipH2] == initial.nmol[ipH2] && state.U == initial.U);
+    assert(EQCLibTryAdvanceCell(&state,accuracy,mode) == EQC_SUCCESS);
+    /* At low T and zero dust and column, optically thin photo loss dominates. */
+    assert(fabs(state.nmol[ipH2]/initial.nmol[ipH2] - exp(-0.5)) < 1.e-6);
+    const double hydrogen = state.natom[ipHYDROGEN] + state.nion[ipHYDROGEN] + 2.0*state.nmol[ipH2];
+    assert(fabs(hydrogen/nH-1.0) <= 8.0*DBL_EPSILON);
+    assert(fabs(state.nel-EQCLibGetElectronNumberDensity(&state)) <= accuracy*nH);
+    assert(fabs(EQCLibConvertTtoU(&state)/state.U-1.0) <= accuracy);
+    assert(state.Du == (state.U-initial.U)/initial.dt);
+
+    const double molecular = state.nmol[ipH2];
+    state.U *= 0.9;
+    const double limitedEnergy = state.U;
+    double rate;
+    assert(EQCLibTryNetCoolingRateFixedH2(&state,&rate) == EQC_SUCCESS);
+    assert(state.nmol[ipH2] == molecular && state.U == limitedEnergy);
+    assert(fabs(EQCLibConvertTtoU(&state)/state.U-1.0) <= accuracy);
+    assert(rate == (state.H_tot-state.L_tot)/state.Rho);
+
+    state = initial;
+    state.nmol[ipH2] = nH;
+    CheckUnchanged(&state,accuracy,mode,EQC_INVALID_INPUT);
+    EQCLibSetRunParamCOFormation(true,1.0);
+    state = initial;
+    CheckUnchanged(&state,accuracy,mode,EQC_INVALID_INPUT);
+    EQCLibSetRunParamCOFormation(false,1.0);
+    EQCLibSetRunParamH2Formation(false,1.0);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -249,6 +298,7 @@ int main(int argc, char **argv)
     CheckUpdateInputs();
     CheckSilicon();
     CheckCOCompatibility();
+    CheckMolecularNonequilibrium();
     puts("Common thermochemistry updates and chemistry mode configuration checks passed.");
     return 0;
 }

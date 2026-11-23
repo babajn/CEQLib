@@ -56,12 +56,13 @@ typedef enum {
 
 typedef enum {
     EQC_CHEMISTRY_EQUILIBRIUM = 0,
-    EQC_CHEMISTRY_NONEQUILIBRIUM
+    EQC_CHEMISTRY_NONEQUILIBRIUM,
+    EQC_CHEMISTRY_H2_NONEQUILIBRIUM
 } EQCLibChemistryMode;
 
 /* Parse a trimmed value from a host application's configuration. */
 EQCLibStatus EQCLibTryParseChemistryMode(const char *value, EQCLibChemistryMode *mode);
-/* Read 'chemistry_mode = equilibrium' or 'chemistry_mode = nonequilibrium'.
+/* Read chemistry_mode = equilibrium, nonequilibrium, or h2_nonequilibrium.
    Other settings belong to the host, and # introduces a line comment.
    A NULL path or a file without the key selects equilibrium. I/O failures
    return EQC_INITIALIZATION_FAILED and invalid or duplicate entries return
@@ -122,6 +123,11 @@ EQCLibStatus EQCLibSetRunParamChemistryAccuracy(double value);
 void EQCLibSetRunParamDustAttenuation(bool Use);
 void EQCLibSetRunParamGrainSurfaceProcesses(bool Use);
 void EQCLibSetRunParamCosmicRayIonization(bool Use);
+/* Effective neutral dissociation H2 -> 2 H I, in s^-1 per molecule at X0 = 1.
+   The rate is multiplied by X0 when cosmic rays are enabled. The default is
+   zero. Invalid (negative or non-finite) inputs leave the setting intact.
+   Change the setting only when no evaluations are running. */
+EQCLibStatus EQCLibSetRunParamH2CosmicRayDissociationRate(double rateAtUnitX0);
 void EQCLibSetRunParamSoftXrayIonization(bool Use);
 /* Enable CIE metal cooling (default off). At positive Z, the C, O and Si
    coefficients are weighted by n_e and each element's total number density.
@@ -173,8 +179,18 @@ EQCLibStatus EQCLibTryAdvanceHydrogenThermochemistry(StructEQCData *state, doubl
    with the selected solver. Du is the mean change in specific energy per
    second during the step. The caller takes the updated U directly. Use the
    chosen solver's initial-state requirements and carry its accepted species
-   into the next step. A zero dt is a no-op. Errors leave state intact. */
+   into the next step. H2 nonequilibrium evolves n(H2) and U with split
+   chemistry and thermal steps, and equilibrates the other species at fixed
+   n(H2). Supply initial n(H2), U, and a positive T seed or initialized
+   equation-of-state fields. Enable H2 formation and disable CO.
+   A zero dt is a no-op. Errors leave state intact. */
 EQCLibStatus EQCLibTryAdvanceCell(StructEQCData *state, double accuracy, EQCLibChemistryMode mode);
+/* Equilibrate the other species and evaluate rates at the supplied T and
+   n(H2). CO must be disabled. U is unchanged. */
+EQCLibStatus EQCLibTryCalculateFixedH2CoolingHeatingRates(StructEQCData *state, double accuracy);
+/* As above, with T solved from the supplied U. The net heating rate is in
+   erg/g/s. U and n(H2) remain fixed, and outputs are kept on failure. */
+EQCLibStatus EQCLibTryNetCoolingRateFixedH2(StructEQCData *state, double *rate);
 /* The checked calls publish outputs and state only when they succeed. */
 EQCLibStatus EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(StructEQCData *state, double accuracy);
 EQCLibStatus EQCLibTryNetCoolingRateChemcalEquilibrium(StructEQCData *state, double *rate);

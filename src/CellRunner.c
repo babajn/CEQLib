@@ -18,6 +18,7 @@ typedef struct {
     double nH, temperature, timestepYears, steps;
     double ionizedHydrogen, molecularHydrogen;
     double G0, NLyn, Nt, Zd;
+    double h2CosmicRayDissociationRate;
     bool useUVB;
     char *uvbDirectory;
     double uvbRedshift, uvbColumns[2];
@@ -42,6 +43,7 @@ static bool ReadSettings(const char *path, CellSettings *settings)
         {"x_HII", &settings->ionizedHydrogen, false}, {"x_H2", &settings->molecularHydrogen, false},
         {"G0", &settings->G0, false}, {"NLyn", &settings->NLyn, false},
         {"Nt", &settings->Nt, false}, {"Zd", &settings->Zd, false},
+        {"h2_cr_dissociation_rate", &settings->h2CosmicRayDissociationRate, false},
         {"uvb_redshift", &settings->uvbRedshift, false},
         {"uvb_column_top", &settings->uvbColumns[0], false},
         {"uvb_column_bottom", &settings->uvbColumns[1], false},
@@ -73,7 +75,8 @@ static bool ReadSettings(const char *path, CellSettings *settings)
         if(strcmp(key,"chemistry_mode") == 0){
             valid = !seenMode && EQCLibTryParseChemistryMode(value,&settings->chemistryMode) == EQC_SUCCESS;
             if(!valid){
-                fprintf(stderr,"%s:%zu: set chemistry_mode once to equilibrium or nonequilibrium\n",path,lineNumber);
+                fprintf(stderr,"%s:%zu: set chemistry_mode once to equilibrium, nonequilibrium, or h2_nonequilibrium\n",
+                        path,lineNumber);
                 break;
             }
             seenMode = true;
@@ -145,13 +148,19 @@ static bool ValidateSettings(const CellSettings *settings)
         fputs("steps must be a positive integer and the total time must be finite\n",stderr);
         return false;
     }
-    if(settings->ionizedHydrogen < 0.0 || settings->molecularHydrogen < 0.0 ||
-       settings->ionizedHydrogen+settings->molecularHydrogen > 1.0){
-        fputs("x_HII and x_H2 must be nonnegative and sum to at most one\n",stderr);
+    const bool fixedH2Seed = settings->chemistryMode == EQC_CHEMISTRY_H2_NONEQUILIBRIUM;
+    if(settings->ionizedHydrogen < 0.0 || settings->ionizedHydrogen > 1.0 ||
+       settings->molecularHydrogen < 0.0 || settings->molecularHydrogen > 1.0 ||
+       (!fixedH2Seed && settings->ionizedHydrogen+settings->molecularHydrogen > 1.0)){
+        fputs("x_HII and x_H2 must be in [0,1] and sum to at most one outside h2_nonequilibrium\n",stderr);
         return false;
     }
     if(settings->G0 < 0.0 || settings->NLyn < 0.0 || settings->Nt < 0.0 || settings->Zd < 0.0){
         fputs("G0, NLyn, Nt, and Zd must be nonnegative\n",stderr);
+        return false;
+    }
+    if(settings->h2CosmicRayDissociationRate < 0.0){
+        fputs("h2_cr_dissociation_rate must be nonnegative\n",stderr);
         return false;
     }
     if(settings->useUVB && !(settings->uvbRedshift >= 0.0 &&
@@ -169,6 +178,7 @@ static EQCLibStatus InitializeCell(const CellSettings *settings, StructEQCData *
     StructEQCData state = {
         .T = settings->temperature, .dt = settings->timestepYears*YEAR_CGS,
         .G0 = settings->G0, .NLyn = settings->NLyn, .Nt = settings->Nt, .Zd = settings->Zd,
+        .X0 = settings->h2CosmicRayDissociationRate > 0.0 ? 1.0 : 0.0,
         .Td = EQCApproximateDustTemperature(settings->Nt,settings->G0),
     };
     if(settings->useUVB) memcpy(state.NHIuvb,settings->uvbColumns,sizeof state.NHIuvb);
@@ -177,9 +187,11 @@ static EQCLibStatus InitializeCell(const CellSettings *settings, StructEQCData *
     state.n[ipCARBON] = 3.0e-4*nH;
     state.n[ipOXYGEN] = 5.0e-4*nH;
     for(int i=0;i<NumberChemicalElement;i++) state.natom[i] = state.n[i];
-    if(nonequilibrium){
-        state.natom[ipHYDROGEN] = nH*(1.0-(settings->ionizedHydrogen+settings->molecularHydrogen));
-        state.nion[ipHYDROGEN] = nH*settings->ionizedHydrogen;
+    if(settings->chemistryMode != EQC_CHEMISTRY_EQUILIBRIUM){
+        const double ionized = nonequilibrium ? settings->ionizedHydrogen :
+            fmin(settings->ionizedHydrogen,1.0-settings->molecularHydrogen);
+        state.natom[ipHYDROGEN] = nH*(1.0-(ionized+settings->molecularHydrogen));
+        state.nion[ipHYDROGEN] = nH*ionized;
         state.nmol[ipH2] = 0.5*nH*settings->molecularHydrogen;
         state.nel = EQCLibGetElectronNumberDensity(&state);
     }else{
@@ -199,7 +211,9 @@ static EQCLibStatus InitializeCell(const CellSettings *settings, StructEQCData *
         state.MeanMolecularWeight = EQCLibGetMeanMolecularWeight(&state);
         state.DegreeOfFreedom = EQCLibGetMeanDegreeOfFreedom(&state);
     }else{
-        const EQCLibStatus status = EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,0.1*CellAccuracy);
+        const EQCLibStatus status = settings->chemistryMode == EQC_CHEMISTRY_H2_NONEQUILIBRIUM ?
+            EQCLibTryCalculateFixedH2CoolingHeatingRates(&state,0.1*CellAccuracy) :
+            EQCLibTryCalculateChemicalAbundanceCoolingHeatingRates(&state,0.1*CellAccuracy);
         if(status != EQC_SUCCESS) return status;
     }
     /* Use the composition at the requested temperature to set the energy. */
@@ -256,9 +270,14 @@ int main(int argc, char *argv[])
     EQCLibSetRunParamDustAttenuation(true);
     EQCLibSetRunParamGrainSurfaceProcesses(true);
     const bool nonequilibrium = settings.chemistryMode == EQC_CHEMISTRY_NONEQUILIBRIUM;
+    const bool molecularNonequilibrium = settings.chemistryMode == EQC_CHEMISTRY_H2_NONEQUILIBRIUM;
     EQCLibSetRunParamCIEResonanceCooling(nonequilibrium);
-    const bool useH2 = settings.Zd > 0.0 || (nonequilibrium && settings.molecularHydrogen > 0.0);
+    const bool useH2 = molecularNonequilibrium || settings.Zd > 0.0 ||
+        (nonequilibrium && settings.molecularHydrogen > 0.0);
     EQCLibSetRunParamH2Formation(useH2,1.0);
+    EQCLibSetRunParamCosmicRayIonization(settings.h2CosmicRayDissociationRate > 0.0);
+    if(EQCLibSetRunParamH2CosmicRayDissociationRate(settings.h2CosmicRayDissociationRate) != EQC_SUCCESS)
+        return EXIT_FAILURE;
     if(EQCLibTryInitialization(0,argc == 3 ? argv[2] : NULL) != EQC_SUCCESS) return EXIT_FAILURE;
     if(settings.useUVB){
         const EQCLibStatus status = EQCLibTrySetUVBackgroundRedshift(settings.uvbRedshift);
@@ -269,7 +288,8 @@ int main(int argc, char *argv[])
     }
 
     StructEQCData state;
-    const char *mode = nonequilibrium ? "nonequilibrium" : "equilibrium";
+    const char *mode = molecularNonequilibrium ? "h2_nonequilibrium" :
+        (nonequilibrium ? "nonequilibrium" : "equilibrium");
     const EQCLibStatus initialStatus = InitializeCell(&settings,&state);
     if(initialStatus != EQC_SUCCESS){
         fprintf(stderr,"%s: could not initialize the cell at T=%g K (status %d)\n",

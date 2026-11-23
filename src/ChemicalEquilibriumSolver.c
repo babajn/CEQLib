@@ -41,6 +41,7 @@ typedef struct {
     bool hasUVBSecondaries;
     bool hasXrayIonization;
     CEQSoftXrayColumn softXrayColumn;
+    bool fixedMolecularHydrogen;
     bool hasMolecularChargeCoupling;
     bool oneWayChargeTransfer;
     unsigned int solutions;
@@ -57,8 +58,11 @@ static int SolveOxygen(StructEQCData *state, const CEQHydrogenRates *hydrogen,
                        const CEQIonLadderRates *oxygen, const ChargeSearch *search)
 {
     const CEQRateCoefficients *c = search->coefficients;
-    if(UsesTwoWayChargeTransfer())
+    if(UsesTwoWayChargeTransfer()){
+        if(search->fixedMolecularHydrogen)
+            return CEQSolveHydrogenOxygenChargeTransferWithFixedH2(state,hydrogen,oxygen,c,search->accuracy);
         return CEQSolveHydrogenOxygenChargeTransfer(state,hydrogen,oxygen,c,search->accuracy);
+    }
     CEQIonLadderRates rates = *oxygen;
     if(search->oneWayChargeTransfer){
         const double nHI = state->natom[ipHYDROGEN];
@@ -105,6 +109,12 @@ static int SolveOxygenAndSilicon(StructEQCData *state, const CEQHydrogenRates *h
         &state->natom[ipSILICON], &state->nion[ipSILICON], &state->nSiIII);
 }
 
+static int SolveHydrogen(StructEQCData *state, const CEQHydrogenRates *rates, const ChargeSearch *search)
+{
+    return search->fixedMolecularHydrogen ? CEQSolveHydrogenWithFixedH2(state,rates) :
+        CEQSolveHydrogenEquilibriumWithRates(state,rates,search->coefficients,search->accuracy);
+}
+
 static int SolveIonsAtFixedCharge(StructEQCData *state, const ChargeSearch *search,
                                   const CEQHydrogenRates *adjustedHydrogen, const CEQIonLadderRates *adjustedHelium,
                                   double softXrayRate)
@@ -113,7 +123,7 @@ static int SolveIonsAtFixedCharge(StructEQCData *state, const ChargeSearch *sear
     const CEQHydrogenRates hydrogen = adjustedHydrogen ?
         *adjustedHydrogen : CEQEvaluateFixedChargeHydrogenLadder(
             CEQHydrogenLadderAtFixedCharge(state,coefficients,softXrayRate),coefficients->hydrogen.photo0);
-    int status = CEQSolveHydrogenEquilibriumWithRates(state,&hydrogen,coefficients,search->accuracy);
+    int status = SolveHydrogen(state,&hydrogen,search);
     if(status == EQC_SUCCESS)
         status = CEQSolveCarbonWithIntervals(state,search->previousCO,search->accuracy,
                                              search->carbonIntervals,search->carbonIntervalCount,
@@ -183,7 +193,7 @@ static int SolveIonsWithUVBSecondaries(StructEQCData *state, ChargeSearch *searc
         const CEQIonLadderRates heliumRates = CEQEvaluateFixedChargeLadder(heliumLadder,primary->helium.photo0+secondaryHeI);
         int status;
         if(deferMetals){
-            status = CEQSolveHydrogenEquilibriumWithRates(state,&hydrogenRates,primary,search->accuracy);
+            status = SolveHydrogen(state,&hydrogenRates,search);
             if(status == EQC_SUCCESS) status = SolveHelium(state,&heliumRates);
         }else{
             status = SolveIonsAtFixedCharge(state,search,&hydrogenRates,&heliumRates,softXrayRate);
@@ -537,8 +547,9 @@ int CEQChemicalReactionEquilibriumWithUVBStats(StructEQCData *state, double accu
     return CEQChemicalReactionEquilibriumWithUVBSeed(state,accuracy,uvb,stats,NULL);
 }
 
-int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
-                                               CEQUVBEquilibriumStats *stats, CEQSecondaryIonizationSeed *seed)
+static int SolveChemicalEquilibrium(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
+                                    CEQUVBEquilibriumStats *stats, CEQSecondaryIonizationSeed *seed,
+                                    bool fixedMolecularHydrogen)
 {
     if(!state || !isfinite(accuracy) || accuracy <= 0.0 || accuracy >= 1.0 ||
             !isfinite(state->T) || state->T <= 0.0) return EQC_INVALID_INPUT;
@@ -549,6 +560,8 @@ int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accur
     }
     const double nH = state->n[ipHYDROGEN];
     if(nH <= 0.0) return EQC_INVALID_INPUT;
+    if(fixedMolecularHydrogen && (EQCLibRunParameters.UseCOFormation || state->nmol[ipCO] != 0.0 ||
+       !(state->nmol[ipH2] >= 0.0 && state->nmol[ipH2] <= 0.5*nH))) return EQC_INVALID_INPUT;
     double maximumCharge = nH;
     for(int i=0;i<NumberChemicalElement;i++){
         if(!isfinite(state->n[i]) || state->n[i] < 0.0) return EQC_INVALID_INPUT;
@@ -576,7 +589,8 @@ int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accur
         .carbonIntervalCount = carbonIntervalCount,
         .hasUVBSecondaries = CEQHasUVBHighPower(uvb,state->n[ipHELIUM]),
         .hasXrayIonization = EQCLibRunParameters.UseSoftXrayIonization && state->X0 > 0.0,
-        .hasMolecularChargeCoupling = EQCLibRunParameters.UseH2Formation ||
+        .fixedMolecularHydrogen = fixedMolecularHydrogen,
+        .hasMolecularChargeCoupling = (EQCLibRunParameters.UseH2Formation && !fixedMolecularHydrogen) ||
                                      (EQCLibRunParameters.UseCOFormation && state->T <= 1.0e4),
         .oneWayChargeTransfer = !EQCLibRunParameters.UseHIIRegion && EQCLibRunParameters.UseChargeTransfer &&
                                 state->n[ipOXYGEN] > 0.0 && CEQUVBackgroundIsEnabled(),
@@ -666,4 +680,16 @@ int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accur
     if(seed) *seed = search.solutionSecondary;
     *state = *solution;
     return EQC_SUCCESS;
+}
+
+int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
+                                               CEQUVBEquilibriumStats *stats, CEQSecondaryIonizationSeed *seed)
+{
+    return SolveChemicalEquilibrium(state,accuracy,uvb,stats,seed,false);
+}
+
+int CEQChemicalReactionEquilibriumHoldingH2(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
+                                            CEQSecondaryIonizationSeed *seed)
+{
+    return SolveChemicalEquilibrium(state,accuracy,uvb,NULL,seed,true);
 }

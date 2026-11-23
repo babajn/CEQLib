@@ -19,6 +19,8 @@ int CEQChemicalReactionEquilibriumWithUVBStats(StructEQCData *state, double accu
                                                 CEQUVBEquilibriumStats *stats);
 int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
                                                CEQUVBEquilibriumStats *stats, CEQSecondaryIonizationSeed *seed);
+int CEQChemicalReactionEquilibriumHoldingH2(StructEQCData *state, double accuracy, const CEQUVBRates *uvb,
+                                            CEQSecondaryIonizationSeed *seed);
 
 /* Ladder coefficients that do not depend on n_e: photoionization rates [1/s],
    electron-impact ionization and recombination coefficients [cm^3/s]. */
@@ -31,14 +33,19 @@ typedef struct {
     double formation;       /* n_H times the grain-surface formation rate [1/s] */
     double doppler;         /* Doppler parameter for self-shielding [km/s] */
     double dustShielding;   /* Dust shielding of the dissociating radiation */
+    double cosmicRayDissociation; /* Neutral dissociation per molecule [1/s] */
     H2CollisionalDissociationCoefficients collision;
 } CEQMolecularHydrogenCoefficients;
+
+CEQMolecularHydrogenCoefficients CEQPrepareMolecularHydrogenCoefficients(const StructEQCData *state);
+/* LW, collisions and neutral cosmic-ray dissociation per molecule [1/s]. */
+double CEQH2DestructionRate(const StructEQCData *state, const CEQMolecularHydrogenCoefficients *h2);
 
 typedef struct {
     double formationPerH2, photoCI, photoCII, photoCO;
 } CEQMolecularCarbonCoefficients;
 
-/* Coefficients fixed by T, NLyn, G0, Nt, Zd and the UVB rates. A fixed-temperature equilibrium
+/* Coefficients fixed by T, NLyn, G0, X0, Nt, Zd and the UVB rates. A fixed-temperature equilibrium
    evaluates them once and reuses them for every trial electron density. */
 typedef struct {
     CEQLadderCoefficients hydrogen, helium, carbon, oxygen, silicon;
@@ -71,6 +78,8 @@ CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData 
 /* coefficients may be NULL; the H2 terms are then evaluated here. */
 int CEQSolveHydrogenEquilibriumWithRates(StructEQCData *state, const CEQHydrogenRates *rates,
                                          const CEQRateCoefficients *coefficients, double accuracy);
+/* Balance H I and H II while keeping the molecular population fixed. */
+int CEQSolveHydrogenWithFixedH2(StructEQCData *state, const CEQHydrogenRates *rates);
 
 /* Per-species ladder rates [1/s]: ionization of the neutral, recombination of
    the ion, ionization of the ion, and recombination of the doubly charged ion. */
@@ -116,6 +125,10 @@ CEQIonLadderRates CEQOxygenIonizationRates(const StructEQCData *state,
 int CEQSolveHydrogenOxygenChargeTransfer(StructEQCData *state, const CEQHydrogenRates *hydrogen,
                                          const CEQIonLadderRates *oxygen,
                                          const CEQRateCoefficients *coefficients, double accuracy);
+/* Balance the coupled ladders at fixed H2 after the uncoupled H I/H II solve. */
+int CEQSolveHydrogenOxygenChargeTransferWithFixedH2(StructEQCData *state, const CEQHydrogenRates *hydrogen,
+                                                    const CEQIonLadderRates *oxygen,
+                                                    const CEQRateCoefficients *coefficients, double accuracy);
 int CEQSolveCarbonEquilibrium(StructEQCData *state, double previousCO, double accuracy);
 
 typedef struct {
