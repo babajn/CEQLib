@@ -82,9 +82,9 @@ typedef struct {
     double collision0, external0, recombination1, ionization1, recombination2;
 } CEQFixedChargeLadder;
 CEQFixedChargeLadder CEQHydrogenLadderAtFixedCharge(const StructEQCData *state,
-                                                   const CEQRateCoefficients *coefficients);
+                                                   const CEQRateCoefficients *coefficients, double softXrayRate);
 CEQFixedChargeLadder CEQHeliumLadderAtFixedCharge(const StructEQCData *state,
-                                                 const CEQRateCoefficients *coefficients);
+                                                 const CEQRateCoefficients *coefficients, double softXrayRate);
 static inline CEQIonLadderRates CEQEvaluateFixedChargeLadder(CEQFixedChargeLadder ladder, double photoionization)
 {
     return (CEQIonLadderRates){
@@ -93,6 +93,12 @@ static inline CEQIonLadderRates CEQEvaluateFixedChargeLadder(CEQFixedChargeLadde
         .ionization1 = ladder.ionization1,
         .recombination2 = ladder.recombination2
     };
+}
+static inline CEQHydrogenRates CEQEvaluateFixedChargeHydrogenLadder(CEQFixedChargeLadder ladder,
+                                                                    double photoionization)
+{
+    const CEQIonLadderRates rates = CEQEvaluateFixedChargeLadder(ladder,photoionization);
+    return (CEQHydrogenRates){.ionization = rates.ionization0, .recombination = rates.recombination1};
 }
 CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state,
                                          const CEQRateCoefficients *coefficients);

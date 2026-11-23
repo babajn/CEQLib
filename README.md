@@ -246,7 +246,7 @@ EQCLibSetRunParamChargeTransfer(true);
 EQCLibSetRunParamChemistryAccuracy(1.0e-5);
 ```
 
-陰的エネルギー更新の許容誤差は `1e-4` を目安にします。 [設定比較の測定結果](test/README.md#h₂coho-電荷交換の設定比較)
+陰的エネルギー更新の許容誤差は `1e-4` を目安にします。 [設定比較の測定結果](test/README.md#h₂coho-電荷交換の設定比較) · [ASURA での平衡冷却の実測](test/README.md#asura-での平衡冷却の実測)
 
 この設定例は、アプリケーションが初期化前に指定する銀河計算向けの推奨設定です。C API の初期値では H₂ と CIE は無効、化学平衡許容誤差は `1e-8` です。
 

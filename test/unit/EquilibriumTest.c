@@ -674,6 +674,28 @@ static void CheckTraceHydrogen(void)
     assert(CEQSolveHydrogenEquilibrium(&molecular,accuracy) == EQC_SUCCESS);
     assert(molecular.natom[ipHYDROGEN] > 0.0 && molecular.natom[ipHYDROGEN] < 1.0e-190);
     CheckHydrogenFlux(&molecular,accuracy);
+
+    /* Bracket roots on both sides of the trace cache threshold and test
+       the fallback for a positive, subnormal optically thin photo rate. */
+    const int atomicExponents[] = {-53,-55,-950};
+    for(size_t i=0; i<sizeof atomicExponents/sizeof atomicExponents[0]; i++){
+        const double target = scalbn(1.0,atomicExponents[i]);
+        molecular = (StructEQCData){
+            .G0 = i == 2 ? 0x1p-994 : 1.0,
+            .n = {[ipHYDROGEN] = 2.0}, .nmol = {[ipH2] = 1.0},
+        };
+        const double photo = H2PhotoDissociationRateWithDustFactor(molecular.G0,0.0,1.0,1.0);
+        const CEQRateCoefficients coefficients = {
+            .hasMolecularHydrogen = true,
+            .molecularHydrogen = {
+                .formation = scalbn(photo,-atomicExponents[i]-1), .doppler = 1.0, .dustShielding = 1.0,
+            },
+        };
+        const CEQHydrogenRates rates = {.recombination = 1.0};
+        assert(photo > 0.0 && (i != 2 || photo < DBL_MIN));
+        assert(CEQSolveHydrogenEquilibriumWithRates(&molecular,&rates,&coefficients,accuracy) == EQC_SUCCESS);
+        assert(fabs((0.5*molecular.natom[ipHYDROGEN])/target-1.0) <= 2.0*accuracy);
+    }
 }
 
 static void CheckOxygenLineEmissivities(void)

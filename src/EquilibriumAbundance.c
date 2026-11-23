@@ -182,8 +182,25 @@ typedef struct {
     double residual;
 } FluxPoint;
 
+typedef struct {
+    const StructEQCData *state;
+    const CEQMolecularHydrogenCoefficients *h2;
+    double neutralFraction;
+    bool useAtomicFraction;
+} HydrogenBalance;
+
+typedef struct {
+    const HydrogenBalance *balance;
+    double nH2, photo;
+} TraceAtomicFlux;
+
+/* Under binary64 round-to-nearest, 1 - atomic rounds to 1 in this range. */
+static const double TraceAtomicFraction = 0x1p-54;
+
 static double HydrogenFluxResidual(double fraction, const void *parameters);
-static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget);
+static bool CacheTraceAtomicFlux(const HydrogenBalance *balance, TraceAtomicFlux *cache);
+static double CachedTraceAtomicResidual(double fraction, const TraceAtomicFlux *cache);
+static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget, bool wide);
 
 static int SolveFluxBracket(double (*residual)(double,const void *), const void *parameters,
                             FluxPoint lower, FluxPoint upper, double accuracy,
@@ -196,15 +213,29 @@ static int SolveFluxBracket(double (*residual)(double,const void *), const void 
     // Interpolate between periodic bisections and retain the sign bracket.
     const int limit = 2*(DBL_MAX_EXP+DBL_MANT_DIG);
     bool tryTraceSkip = residual == HydrogenFluxResidual;
+    bool tryWideSkip = tryTraceSkip;
+    bool tryTraceCache = tryTraceSkip;
+    bool useTraceCache = false;
+    TraceAtomicFlux traceCache;
     for(int i=0;i<limit;i++){
         const bool useInitialFraction = i == 0 && initialFraction > lower.fraction && initialFraction < upper.fraction;
-        if(tryTraceSkip && !useInitialFraction && lower.fraction == 0.0 &&
-           lower.residual == 1.0 && upper.residual == -1.0 && upper.fraction <= 0x1p-54){
+        const bool saturated = !useInitialFraction && lower.fraction == 0.0
+                            && lower.residual == 1.0 && upper.residual == -1.0;
+        if(tryWideSkip && saturated && upper.fraction > TraceAtomicFraction){
+            tryWideSkip = false;
+            i += SkipSaturatedHydrogenBisections(&upper,parameters,limit-i,true);
+            if(i == limit) break;
+        }
+        if(tryTraceSkip && saturated && upper.fraction <= TraceAtomicFraction){
             /* The opposite saturated residuals make the secant a midpoint, too.
                Count the omitted halvings so later interpolation keeps its parity. */
             tryTraceSkip = false;
-            i += SkipSaturatedHydrogenBisections(&upper,parameters,limit-i);
+            i += SkipSaturatedHydrogenBisections(&upper,parameters,limit-i,false);
             if(i == limit) break;
+        }
+        if(tryTraceCache && upper.fraction <= TraceAtomicFraction){
+            tryTraceCache = false;
+            useTraceCache = CacheTraceAtomicFlux(parameters,&traceCache);
         }
         double middle = lower.fraction + 0.5*(upper.fraction-lower.fraction);
         if(useInitialFraction){
@@ -219,7 +250,8 @@ static int SolveFluxBracket(double (*residual)(double,const void *), const void 
             if(estimate > lower.fraction && estimate < upper.fraction) middle = estimate;
         }
         if(middle == lower.fraction || middle == upper.fraction) break;
-        const double value = residual(middle,parameters);
+        const double value = useTraceCache ? CachedTraceAtomicResidual(middle,&traceCache)
+                                           : residual(middle,parameters);
         if(!isfinite(value)) return EQC_INVALID_INPUT;
         if(fabs(value) <= accuracy){ *root = middle; return EQC_SUCCESS; }
         if((value < 0.0) == (lower.residual < 0.0))
@@ -229,13 +261,6 @@ static int SolveFluxBracket(double (*residual)(double,const void *), const void 
     }
     return EQC_NO_CONVERGENCE;
 }
-
-typedef struct {
-    const StructEQCData *state;
-    const CEQMolecularHydrogenCoefficients *h2;
-    double neutralFraction;
-    bool useAtomicFraction;
-} HydrogenBalance;
 
 typedef struct {
     double destroyed;
@@ -262,20 +287,61 @@ static double HydrogenFluxResidual(double fraction, const void *parameters){
     return FluxResidual(flux.destroyed,flux.formed);
 }
 
-static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget){
+static bool CacheTraceAtomicFlux(const HydrogenBalance *balance, TraceAtomicFlux *cache){
+    if(FLT_RADIX != 2 || DBL_MANT_DIG != 53 || FLT_EVAL_METHOD != 0 ||
+       !balance->useAtomicFraction || fegetround() != FE_TONEAREST) return false;
+
+    const StructEQCData *state = balance->state;
+    cache->balance = balance;
+    cache->nH2 = 0.5*state->n[ipHYDROGEN];
+    cache->photo = H2PhotoDissociationRateWithDustFactor(state->G0,0.5*state->Nt,
+                                                        balance->h2->doppler,balance->h2->dustShielding);
+    return true;
+}
+
+static double CachedTraceAtomicResidual(double fraction, const TraceAtomicFlux *cache){
+    const HydrogenBalance *balance = cache->balance;
+    const StructEQCData *state = balance->state;
+    const CEQMolecularHydrogenCoefficients *h2 = balance->h2;
+    const double nHI = (state->n[ipHYDROGEN]*fraction)*balance->neutralFraction;
+    const double collision = H2DissociationFromCoefficients(h2->collision,state->nel,nHI,cache->nH2);
+    return FluxResidual((cache->photo+collision)*cache->nH2,h2->formation*nHI);
+}
+
+static int SkipSaturatedHydrogenBisections(FluxPoint *upper, const void *parameters, int budget, bool wide){
     const HydrogenBalance *balance = parameters;
-    /* Below 2^-54, 1 - atomic rounds to exactly 1 in binary64 round-to-nearest.
-       The H2 density and shielding are then constant. Both the destruction
-       (including collisions with H I) and formation are nondecreasing with
-       atomic abundance. Bound every skipped residual using the destruction
-       at the old upper endpoint and the formation at the new one. */
+    /* Bound every skipped residual with an upper bound on destruction and
+       the formation flux at the new, smaller atomic fraction. */
     if(FLT_RADIX != 2 || DBL_MANT_DIG != 53 || FLT_EVAL_METHOD != 0 ||
        !balance->useAtomicFraction || !(upper->fraction >= DBL_MIN) ||
        !(balance->state->n[ipHYDROGEN] > 0.0) || !(balance->neutralFraction > 0.0) ||
        !(balance->h2->formation > 0.0) || !(balance->h2->collision.atomicHydrogen >= 0.0) ||
        fegetround() != FE_TONEAREST) return 0;
 
-    const HydrogenFluxes flux = MolecularHydrogenFluxes(balance,upper->fraction,1.0);
+    HydrogenFluxes flux;
+    if(!wide){
+        /* With constant H2 density and shielding, destruction increases
+           with H I, so the old upper endpoint bounds the whole range. */
+        flux = MolecularHydrogenFluxes(balance,upper->fraction,1.0);
+    }else{
+        const StructEQCData *s = balance->state;
+        const CEQMolecularHydrogenCoefficients *h2 = balance->h2;
+        if(!(s->G0 >= 0.0) || !(h2->dustShielding >= 0.0) ||
+           !(h2->doppler > 0.0) || !isfinite(h2->doppler) ||
+           !(s->Nt >= 0.0) || !isfinite(s->Nt) || !(s->nel >= 0.0) ||
+           !(h2->collision.electron >= 0.0) || !(h2->collision.molecularHydrogen >= 0.0)) return 0;
+        /* Bound the photo rate by the optically thin value with a floating-
+           point safety margin. In both shielding fits the factor is at most
+           1/0.965 even ignoring the decrease in the exponential. Require a
+           normal optically thin result unless the photo source is absent. */
+        const double thin = H2PhotoDissociationRateWithDustFactor(s->G0,0.0,h2->doppler,h2->dustShielding);
+        if(s->G0 > 0.0 && h2->dustShielding > 0.0 && !(thin >= DBL_MIN)) return 0;
+        const double nH = s->n[ipHYDROGEN];
+        const double nHImax = (nH*upper->fraction)*balance->neutralFraction;
+        const double nH2max = 0.5*nH;
+        const double maximumCollision = H2DissociationFromCoefficients(h2->collision,s->nel,nHImax,nH2max);
+        flux = (HydrogenFluxes){(4.0*thin+maximumCollision)*nH2max,h2->formation*nHImax};
+    }
     if(!(flux.destroyed > 0.0) || !isfinite(flux.destroyed) ||
        !(flux.formed > 0.0) || !isfinite(flux.formed)) return 0;
 
@@ -687,11 +753,12 @@ void CEQRefreshNonEquilibriumRateCoefficients(const StructEQCData *s, CEQRateCoe
     RefreshRateCoefficients(s,c,false,point);
 }
 
-CEQFixedChargeLadder CEQHydrogenLadderAtFixedCharge(const StructEQCData *s, const CEQRateCoefficients *c){
+CEQFixedChargeLadder CEQHydrogenLadderAtFixedCharge(const StructEQCData *s, const CEQRateCoefficients *c,
+                                                   double softXrayRate){
     const double xe = s->nel/s->n[ipHYDROGEN];
     return (CEQFixedChargeLadder){
         .collision0 = s->nel*c->hydrogen.collision0,
-        .external0 = s->X0*(CosmicRayIonizationRateHI(xe) + SoftXrayIonizationRateHI(xe,s->Nt)),
+        .external0 = s->X0*(CosmicRayIonizationRateHI(xe) + softXrayRate),
         .recombination1 = s->nel*c->hydrogen.recombination1
                         + s->n[ipHYDROGEN]*HIIRecombinationRateOnDust(s->T,s->G0,s->nel,s->Zd),
     };
@@ -699,9 +766,9 @@ CEQFixedChargeLadder CEQHydrogenLadderAtFixedCharge(const StructEQCData *s, cons
 
 CEQHydrogenRates CEQHydrogenIonizationRatesWithCoefficients(const StructEQCData *s,
                                                             const CEQRateCoefficients *c){
-    const CEQIonLadderRates rates = CEQEvaluateFixedChargeLadder(CEQHydrogenLadderAtFixedCharge(s,c),
-                                                                c->hydrogen.photo0);
-    return (CEQHydrogenRates){.ionization = rates.ionization0, .recombination = rates.recombination1};
+    const double softXrayRate = SoftXrayIonizationRateHI(s->nel/s->n[ipHYDROGEN],s->Nt);
+    return CEQEvaluateFixedChargeHydrogenLadder(CEQHydrogenLadderAtFixedCharge(s,c,softXrayRate),
+                                                c->hydrogen.photo0);
 }
 
 CEQHydrogenRates CEQHydrogenIonizationRates(const StructEQCData *s){
@@ -716,13 +783,14 @@ CEQHydrogenRates CEQHydrogenIonizationRates(const StructEQCData *s){
     return CEQHydrogenIonizationRatesWithCoefficients(s,&c);
 }
 
-CEQFixedChargeLadder CEQHeliumLadderAtFixedCharge(const StructEQCData *state, const CEQRateCoefficients *c){
+CEQFixedChargeLadder CEQHeliumLadderAtFixedCharge(const StructEQCData *state, const CEQRateCoefficients *c,
+                                                 double softXrayRate){
     const double ne = state->nel;
     const double nH = state->n[ipHYDROGEN];
     const double xe = ne/nH;
     return (CEQFixedChargeLadder){
         .collision0 = ne*c->helium.collision0,
-        .external0 = state->X0*(CosmicRayIonizationRateHeI(xe) + SoftXrayIonizationRateHeI(xe,state->Nt)),
+        .external0 = state->X0*(CosmicRayIonizationRateHeI(xe) + softXrayRate),
         .recombination1 = ne*c->helium.recombination1
                         + nH*HeIIRecombinationRateOnDust(state->T,state->G0,ne,state->Zd),
         .ionization1 = c->helium.photo1 + ne*c->helium.collision1,
@@ -731,7 +799,8 @@ CEQFixedChargeLadder CEQHeliumLadderAtFixedCharge(const StructEQCData *state, co
 }
 
 CEQIonLadderRates CEQHeliumIonizationRates(const StructEQCData *state, const CEQRateCoefficients *c){
-    return CEQEvaluateFixedChargeLadder(CEQHeliumLadderAtFixedCharge(state,c),c->helium.photo0);
+    const double softXrayRate = SoftXrayIonizationRateHeI(state->nel/state->n[ipHYDROGEN],state->Nt);
+    return CEQEvaluateFixedChargeLadder(CEQHeliumLadderAtFixedCharge(state,c,softXrayRate),c->helium.photo0);
 }
 
 CEQIonLadderRates CEQCarbonIonizationRates(const StructEQCData *state, const CEQRateCoefficients *coefficients){

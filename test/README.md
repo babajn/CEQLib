@@ -37,6 +37,7 @@ make -C test xray-legacy-check
 | 検証・比較 | コードと参照データ | 実行コマンド | 作図ノートブック |
 | --- | --- | --- | --- |
 | [熱化学更新の計算時間](#熱化学更新の並列ベンチマーク) | [benchmark/](benchmark/) | `make -C test benchmark` | |
+| [ASURA の平衡冷却の実測](#asura-での平衡冷却の実測) | [平衡ソルバー](../src/ChemicalEquilibriumSolver.c) | ASURA の銀河円盤計算の比較 | |
 | [H II 領域](#h-ii-領域の検証計算と描画) | [hii/](hii/) | `make -C test hii`、`make -C test hii-benchmark` | [平衡・冷却・反応率](../plot/PlotHIIRegion.ipynb) |
 | [H₂・CO 化学と反応設定](#h₂co-化学の検証計算と描画) | [co/](co/) | `make -C test co`、`make -C test molecular-settings-benchmark`、[設定比較の計算ノートブック](co/RunMolecularSettingsBenchmark.ipynb) | [H₂・CO 化学](../plot/PlotCOChemistry.ipynb)、[設定比較](../plot/PlotMolecularSettings.ipynb) |
 | [非平衡化学と高温ガスの冷却](#非平衡化学の検証計算と描画) | [noneq/](noneq/) | `make -C test noneq`、`make -C test noneq-benchmark`、`make -C test noneq-hot` | [非平衡化学](../plot/PlotNonEquilibrium.ipynb) |
@@ -49,6 +50,20 @@ make -C test xray-legacy-check
 ### 熱化学更新の並列ベンチマーク
 
 熱化学更新の並列性能は `OMP_NUM_THREADS=12 make -C test benchmark` で測定できます。このベンチマークは OpenMP を使い、原子ガスと分子ガスそれぞれの325点を、10年・1万年・100万年の時間刻みで3ステップずつ進めます。各ステップの収束数、実行時間、逐次と並列の比較を表示します。
+
+### ASURA での平衡冷却の実測
+
+B25LightE19GC20 の銀河円盤を、同じ入力と CPU に固定した4 MPI ランクで 200 Myr まで進めました。3実行とも、化学平衡モードで H₂・軟 X 線を有効にし、CO・UVB を無効にしました。ASURA の実行条件をそろえ、リンクする EQCLib の静的ライブラリを切り替えました。
+
+| リンクした平衡冷却の実装 | 全体の経過時間（初期化込み） | 冷却処理の経過時間（rank 0） |
+| --- | ---: | ---: |
+| `c8fbca3` | 5842.78 s | 5102.35 s |
+| `1631477` の H₂ 求解 | 3395.92 s | 2664.98 s |
+| H₂ の光解離率の再利用と電子密度探索の省略を追加 | 2298.36 s | 1614.76 s |
+
+最後の構成では全体で2.54倍、冷却処理で3.16倍になりました。活動粒子の更新66,233,193回と冷却失敗0件は全実行で一致しました。201時刻×4ランクのスナップショットで、粒子レコードと再開に使うデータも一致しました。
+
+H₂ 平衡探索では、残差が丸めの範囲で一定の二分ステップを省き、H₂ 密度と自己遮蔽が一定の範囲で光解離率を再利用します。電子密度探索では、初期推定値により近い根を得られる区間を調べます。軟 X 線の柱密度依存項を探索内で再利用し、同じ試行の H・He の電離率を共有する変更は、採取した粒子入力での追加検証です。10・130・190 Myr の各時刻から、ほぼ全粒子を更新する場合と活動粒子が少ない場合を採取し、平衡更新の状態と戻り値のビット一致を確認しました。 [H₂ 平衡探索](../src/EquilibriumAbundance.c) · [電子密度探索](../src/ChemicalEquilibriumSolver.c) · [軟 X 線電離率](../src/Xray.c)
 
 ### H II 領域の検証計算と描画
 

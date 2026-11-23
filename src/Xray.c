@@ -8,7 +8,7 @@
 #include "ChemicalEquilibriumCooling.h"
 #include "Xray.h"
 
-static double SoftXrayIonizationRate(double xe, double Ntot);
+static double SoftXrayIonizationRate(double xe, double Ntot, CEQSoftXrayColumn *column);
 static double SoftXrayHeatingRateBody(double xe, double Ntot);
 
 void InitializeSoftXrayIonization(int Check){
@@ -20,7 +20,7 @@ void InitializeSoftXrayIonization(int Check){
             fprintf(output,"%e ",Ntot);
             for(double logxe = -4.0; logxe<=0.0; logxe+=1.0){
                 double xe    = pow(10.0,logxe);
-                double xi_XR = SoftXrayIonizationRate(xe,Ntot);
+                double xi_XR = SoftXrayIonizationRate(xe,Ntot,NULL);
                 double Gm_XR = SoftXrayHeatingRateBody(xe,Ntot);
                 fprintf(output,"%e ",xi_XR);
                 fprintf(output,"%e ",Gm_XR);
@@ -35,7 +35,7 @@ void InitializeSoftXrayIonization(int Check){
 }
 
 /// X-ray ionization per H [1/s/H]
-static double SoftXrayIonizationRate(double xe, double Ntot){
+static double SoftXrayIonizationRate(double xe, double Ntot, CEQSoftXrayColumn *column){
     // ref. (A6)(A7)(A8) of Wolfire et al. (1995)
     if(xe<=0.0) return 0.0;
 #ifdef EQC_LEGACY_XRAY_CUTOFF
@@ -43,11 +43,18 @@ static double SoftXrayIonizationRate(double xe, double Ntot){
 #else
     if(xe >= EQC_XRAY_IONIZATION_MAX_XE) return 0.0;
 #endif
-    double p1 = MAX(-0.3,log10(1.e-18*Ntot));
+    CEQSoftXrayColumn local = {0};
+    if(column == NULL) column = &local;
+    if(!column->ready){
+        const double p1 = MAX(-0.3,log10(1.e-18*Ntot));
+        column->base = -15.6-1.10*p1+9.13e-2*SQ(p1);
+        column->attenuation = exp(-SQ((p1-0.41)/0.84));
+        column->ready = true;
+    }
     double p2 = log10(xe);
     double f4 = 1.06 + 4.08e-2*p2 + 6.51e-3*SQ(p2);
     double f5 = 1.90 + 0.678*p2 + 0.113*SQ(p2);
-    double rate = f4*(-15.6-1.10*p1+9.13e-2*SQ(p1)) + f5*0.87*exp(-SQ((p1-0.41)/0.84));
+    double rate = f4*column->base + f5*0.87*column->attenuation;
     double ionization = pow(10.0,rate);
 #ifndef EQC_LEGACY_XRAY_CUTOFF
     /* Appendix A fits the rate through xe=0.1. Join the fit smoothly to zero
@@ -63,14 +70,17 @@ static double SoftXrayIonizationRate(double xe, double Ntot){
     return ionization;
 }
 
-double SoftXrayIonizationRateHI(double xe, double Ntot){
+double CEQSoftXrayIonizationRate(double xe, double Ntot, CEQSoftXrayColumn *column){
     if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
-    return 0.5*SoftXrayIonizationRate(xe,Ntot);
+    return 0.5*SoftXrayIonizationRate(xe,Ntot,column);
+}
+
+double SoftXrayIonizationRateHI(double xe, double Ntot){
+    return CEQSoftXrayIonizationRate(xe,Ntot,NULL);
 }
 
 double SoftXrayIonizationRateHeI(double xe, double Ntot){
-    if(EQCLibRunParameters.UseSoftXrayIonization==false)    return 0.e0;
-    return 0.5*SoftXrayIonizationRate(xe,Ntot);
+    return CEQSoftXrayIonizationRate(xe,Ntot,NULL);
 }
 
 double SoftXrayIonizationRateHeII(double xe, double Ntot){

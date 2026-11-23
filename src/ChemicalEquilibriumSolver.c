@@ -40,6 +40,7 @@ typedef struct {
     double seedSecondaryHI, seedSecondaryHeI;
     bool hasUVBSecondaries;
     bool hasXrayIonization;
+    CEQSoftXrayColumn softXrayColumn;
     bool hasMolecularChargeCoupling;
     bool oneWayChargeTransfer;
     unsigned int solutions;
@@ -105,11 +106,13 @@ static int SolveOxygenAndSilicon(StructEQCData *state, const CEQHydrogenRates *h
 }
 
 static int SolveIonsAtFixedCharge(StructEQCData *state, const ChargeSearch *search,
-                                  const CEQHydrogenRates *adjustedHydrogen, const CEQIonLadderRates *adjustedHelium)
+                                  const CEQHydrogenRates *adjustedHydrogen, const CEQIonLadderRates *adjustedHelium,
+                                  double softXrayRate)
 {
     const CEQRateCoefficients *coefficients = search->coefficients;
     const CEQHydrogenRates hydrogen = adjustedHydrogen ?
-        *adjustedHydrogen : CEQHydrogenIonizationRatesWithCoefficients(state,coefficients);
+        *adjustedHydrogen : CEQEvaluateFixedChargeHydrogenLadder(
+            CEQHydrogenLadderAtFixedCharge(state,coefficients,softXrayRate),coefficients->hydrogen.photo0);
     int status = CEQSolveHydrogenEquilibriumWithRates(state,&hydrogen,coefficients,search->accuracy);
     if(status == EQC_SUCCESS)
         status = CEQSolveCarbonWithIntervals(state,search->previousCO,search->accuracy,
@@ -119,7 +122,8 @@ static int SolveIonsAtFixedCharge(StructEQCData *state, const ChargeSearch *sear
     CEQIonLadderRates oxygen;
     if(status == EQC_SUCCESS){
         const CEQIonLadderRates helium = adjustedHelium ?
-            *adjustedHelium : CEQHeliumIonizationRates(state,coefficients);
+            *adjustedHelium : CEQEvaluateFixedChargeLadder(
+                CEQHeliumLadderAtFixedCharge(state,coefficients,softXrayRate),coefficients->helium.photo0);
         status = SolveHelium(state,&helium);
         if(status == EQC_SUCCESS)
             status = SolveOxygenAndSilicon(state,&hydrogen,&oxygen,search);
@@ -153,11 +157,11 @@ static double SecondaryRateResidual(double previous, double next, double primary
     return scale > 0.0 ? fabs(next-previous)/scale : 0.0;
 }
 
-static int SolveIonsWithUVBSecondaries(StructEQCData *state, ChargeSearch *search)
+static int SolveIonsWithUVBSecondaries(StructEQCData *state, ChargeSearch *search, double softXrayRate)
 {
     const CEQRateCoefficients *primary = search->coefficients;
-    const CEQFixedChargeLadder hydrogenLadder = CEQHydrogenLadderAtFixedCharge(state,primary);
-    const CEQFixedChargeLadder heliumLadder = CEQHeliumLadderAtFixedCharge(state,primary);
+    const CEQFixedChargeLadder hydrogenLadder = CEQHydrogenLadderAtFixedCharge(state,primary,softXrayRate);
+    const CEQFixedChargeLadder heliumLadder = CEQHeliumLadderAtFixedCharge(state,primary,softXrayRate);
     const double hydrogen = CEQEvaluateFixedChargeLadder(hydrogenLadder,primary->hydrogen.photo0).ionization0;
     const double helium = CEQEvaluateFixedChargeLadder(heliumLadder,primary->helium.photo0).ionization0;
     /* One-way exchange lets H and He converge before solving O and CO. Keep
@@ -174,15 +178,15 @@ static int SolveIonsWithUVBSecondaries(StructEQCData *state, ChargeSearch *searc
        fraction and the available neutral targets from the resulting state. */
     for(int iteration = 0; iteration < 128; iteration++){
         if(search->uvbStats) search->uvbStats->iterations++;
-        const CEQIonLadderRates h = CEQEvaluateFixedChargeLadder(hydrogenLadder,primary->hydrogen.photo0+secondaryHI);
-        const CEQHydrogenRates hydrogenRates = {.ionization = h.ionization0, .recombination = h.recombination1};
+        const CEQHydrogenRates hydrogenRates = CEQEvaluateFixedChargeHydrogenLadder(
+            hydrogenLadder,primary->hydrogen.photo0+secondaryHI);
         const CEQIonLadderRates heliumRates = CEQEvaluateFixedChargeLadder(heliumLadder,primary->helium.photo0+secondaryHeI);
         int status;
         if(deferMetals){
             status = CEQSolveHydrogenEquilibriumWithRates(state,&hydrogenRates,primary,search->accuracy);
             if(status == EQC_SUCCESS) status = SolveHelium(state,&heliumRates);
         }else{
-            status = SolveIonsAtFixedCharge(state,search,&hydrogenRates,&heliumRates);
+            status = SolveIonsAtFixedCharge(state,search,&hydrogenRates,&heliumRates,softXrayRate);
         }
         if(status != EQC_SUCCESS) return status;
 
@@ -232,8 +236,10 @@ static ChargePoint EvaluateCharge(ChargeSearch *search, double electronDensity)
     state.nel = electronDensity;
     /* Continue the H2 branch from the latest successful charge trial. */
     state.nmol[ipH2] = search->seedH2;
-    const int status = search->hasUVBSecondaries ? SolveIonsWithUVBSecondaries(&state,search) :
-                                                  SolveIonsAtFixedCharge(&state,search,NULL,NULL);
+    const double softXrayRate = CEQSoftXrayIonizationRate(
+        electronDensity/state.n[ipHYDROGEN],state.Nt,&search->softXrayColumn);
+    const int status = search->hasUVBSecondaries ? SolveIonsWithUVBSecondaries(&state,search,softXrayRate) :
+                                                  SolveIonsAtFixedCharge(&state,search,NULL,NULL,softXrayRate);
     if(status == EQC_SUCCESS) search->seedH2 = state.nmol[ipH2];
     ChargePoint point = {.density = electronDensity, .status = status};
     if(status != EQC_SUCCESS){
@@ -626,7 +632,12 @@ int CEQChemicalReactionEquilibriumWithUVBSeed(StructEQCData *state, double accur
             }
             if(!search.found){
                 SearchChargeInterval(&search,0.0,boundary,hint);
-                if(afterBoundary <= maximumCharge)
+                /* An upper-interval root can replace a positive lower root
+                   only if it is closer to the original electron density. */
+                const bool upperCanImprove = !search.found || search.solution.nel <= 0.0 ||
+                    hint.density > boundary ||
+                    fabs(search.solution.nel-hint.density) >= afterBoundary-hint.density;
+                if(afterBoundary <= maximumCharge && upperCanImprove)
                     SearchChargeInterval(&search,afterBoundary,maximumCharge,hint);
             }
         }
