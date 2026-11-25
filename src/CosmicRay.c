@@ -38,6 +38,14 @@ static double f_3[] = {3.25,7.20,16.2,31.0};
 enum { ElectronFractionTableSize = sizeof(x_e)/sizeof(x_e[0]) };
 static gsl_spline *f3Access;
 static double h2CosmicRayDissociationRateAtUnitX0;
+static EQCLibCosmicRayHeatingModel cosmicRayHeatingModel = EQC_CR_HEATING_NATIVE;
+
+EQCLibStatus EQCLibSetRunParamCosmicRayHeatingModel(EQCLibCosmicRayHeatingModel model){
+    if(model != EQC_CR_HEATING_NATIVE && model != EQC_CR_HEATING_B) return EQC_INVALID_INPUT;
+    cosmicRayHeatingModel = model;
+    return EQC_SUCCESS;
+}
+
 void InitializeCosmicRayIonization(int Check){
     if(f3Access == NULL){
         f3Access = gsl_spline_alloc(gsl_interp_linear,ElectronFractionTableSize);
@@ -49,6 +57,7 @@ void InitializeCosmicRayIonization(int Check){
         StructEQCData state = {.n = {1.0}, .X0 = 1.0};
         for(double xe = 1.e-6; xe <= 1.0; xe *= 2.0){
             state.nel = xe*state.n[ipHYDROGEN];
+            state.natom[ipHYDROGEN] = state.n[ipHYDROGEN] - state.nel;
             double deposited = HeatDepositedForEachPrimaryElectron((double)E_ELECTRON,xe);
             fprintf(output,"%e %e %e\n",xe,deposited,TotalCosmicRayHeatingRate(&state));
         }
@@ -194,9 +203,29 @@ static double HeatDepositedForEachPrimaryElectron(double E_in_eV, double xe){
     }
     return (E_in_eV*EV_TO_ERG)*(f1 + 1.0/(f2/f3+1.0/(1.0-f1))); // [erg]
 }
+/* Heat per H2 ionization from the density fit of Krumholz (2014, Eq. B3)
+   to Glassgold, Galli & Padovani (2012, Table 6). Density is in H nuclei/cm^3. */
+static double CosmicRayHeatingYieldH2(double nH){
+    if(nH <= 100.0) return 10.0;
+    const double logn = log10(nH);
+    if(logn < 4.0) return 10.0 + 3.0*(logn - 2.0)/2.0;
+    if(logn < 7.0) return 13.0 + 4.0*(logn - 4.0)/3.0;
+    if(logn < 10.0) return 17.0 + (logn - 7.0)/3.0;
+    return 18.0;
+}
+
 double TotalCosmicRayHeatingRate(StructEQCData *PhydroPP){
     if(EQCLibRunParameters.UseCosmicRayIonization==false)   return 0.0;
     double nH = PhydroPP->n[ipHYDROGEN];
+    if(cosmicRayHeatingModel == EQC_CR_HEATING_B){
+        const double xe = nH > 0.0 ? fmax(0.0, PhydroPP->nel/nH) : 0.0;
+        // Draine (2011), also Krumholz (2014, Eq. B2).
+        const double qHI = 6.5 + 26.4*sqrt(xe/(xe + 0.07));
+        const double qH2 = CosmicRayHeatingYieldH2(nH);
+        // Glover et al. (2010, Table B3): the primary H2 ionization rate is 2 zetaHI.
+        return (PhydroPP->X0*zetaHI) *
+            (qHI*PhydroPP->natom[ipHYDROGEN] + 2.0*qH2*PhydroPP->nmol[ipH2]) * 1.602176634e-12;
+    }
     double xe = PhydroPP->nel/nH;
     double X0 = PhydroPP->X0;
     if(xe<0.0||xe>=1.0)  return 0.e0;

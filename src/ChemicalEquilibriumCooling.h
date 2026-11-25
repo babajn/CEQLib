@@ -60,6 +60,11 @@ typedef enum {
     EQC_CHEMISTRY_H2_NONEQUILIBRIUM
 } EQCLibChemistryMode;
 
+typedef enum {
+    EQC_CR_HEATING_NATIVE = 0,
+    EQC_CR_HEATING_B
+} EQCLibCosmicRayHeatingModel;
+
 /* Parse a trimmed value from a host application's configuration. */
 EQCLibStatus EQCLibTryParseChemistryMode(const char *value, EQCLibChemistryMode *mode);
 /* Read chemistry_mode = equilibrium, nonequilibrium, or h2_nonequilibrium.
@@ -123,6 +128,10 @@ EQCLibStatus EQCLibSetRunParamChemistryAccuracy(double value);
 void EQCLibSetRunParamDustAttenuation(bool Use);
 void EQCLibSetRunParamGrainSurfaceProcesses(bool Use);
 void EQCLibSetRunParamCosmicRayIonization(bool Use);
+/* Select cosmic-ray heating (default native) without changing the ionization
+   or reaction rates. Set only outside cell evaluations. An invalid value
+   leaves the current model intact. */
+EQCLibStatus EQCLibSetRunParamCosmicRayHeatingModel(EQCLibCosmicRayHeatingModel model);
 /* Effective neutral dissociation H2 -> 2 H I, in s^-1 per molecule at X0 = 1.
    The rate is multiplied by X0 when cosmic rays are enabled. The default is
    zero. Invalid (negative or non-finite) inputs leave the setting intact.
